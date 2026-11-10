@@ -44,6 +44,11 @@ jobs:
           npm run rules:build
           npm run web:build
 
+      - name: Check Firebase credential is configured
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: test -n "$FIREBASE_TOKEN" || { echo "::error::Configura el secreto FIREBASE_TOKEN en GitHub Actions"; exit 1; }
+
       - name: Deploy Hosting and Firestore rules
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
