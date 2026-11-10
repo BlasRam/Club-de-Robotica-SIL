@@ -452,7 +452,7 @@ function canManageClub(): boolean {
 }
 
 function roleLabel(): string {
-  return isStudentPreview() ? "Vista estudiante" : isAdmin() ? "Administrador" : isModerator() ? "Moderador" : "Estudiante";
+  return isStudentPreview() ? "Vista estudiante" : isAdmin() ? "Administrador" : isModerator() ? "Moderador" : state.profile?.tipoUsuario === "docente" ? "Docente" : "Alumno";
 }
 
 function createStudentSandbox(): StudentSandbox {
@@ -999,18 +999,29 @@ async function renderHome(): Promise<string> {
       <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos", "prestamos", "prestamos", "loans")}${adminQuickLink("Estudiantes", "estudiantes", "estudiantes", "people")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
       <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
   }
-  const [loans, presence, notices, calendar] = await Promise.all([
+  const [loans, presence, notices, calendar, assignedByOwner, assignedByList] = await Promise.all([
     getDocs(query(collection(db, "reservas"), where("solicitanteUid", "==", state.user!.uid))),
     getDoc(doc(db, "presencias", state.user!.uid)),
-    getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(3))),
+    getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(10))),
     renderHomeCalendar(),
+    getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", state.user!.uid), limit(20))).catch(() => null),
+    getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", state.user!.uid), limit(20))).catch(() => null),
   ]);
   const inside = presence.exists() && presenceIsCurrent(presence.data());
-  return `${pageHeading(`Hola, ${esc(greeting)}`, "Aquí tienes lo que requiere tu atención hoy.")}
+  const tasks = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+  for (const task of [...(assignedByOwner?.docs ?? []), ...(assignedByList?.docs ?? [])]) {
+    if (task.get("estado") !== "Completada") tasks.set(task.ref.path, task);
+  }
+  const nextTasks = [...tasks.values()].sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER)).slice(0, 3);
+  const importantNotices = notices.docs.map((item) => ({ id: item.id, data: item.data() })).sort((a, b) => Number(b.data.prioridad === "Importante") - Number(a.data.prioridad === "Importante") || (b.data.fechaCreacion?.toMillis?.() ?? 0) - (a.data.fechaCreacion?.toMillis?.() ?? 0)).slice(0, 3);
+  const teacher = state.profile?.tipoUsuario === "docente";
+  return `${pageHeading(`Hola, ${esc(greeting)}`, teacher ? "Tu espacio docente: revisa cursos, actividades y avisos del club." : "Aquí tienes lo que requiere tu atención hoy.")}
+    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">ESPACIO DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Organiza tu participación en el club desde cursos, tareas y calendario.</p></div><div class="teacher-quick-links"><button data-page="cursos">${icon("cursos", 20)} Cursos</button><button data-page="tareas">${icon("tareas", 20)} Actividades</button><button data-page="calendario">${icon("calendario", 20)} Calendario</button></div></section>` : ""}
     <section class="student-overview"><div class="access-status ${inside ? "inside" : "outside"}"><div class="status-top"><span class="status-dot"></span>${inside ? "Dentro del laboratorio" : "Fuera del laboratorio"}</div><div class="status-label">ESTADO DE ACCESO</div><button class="status-action" data-page="acceso">Abrir control de acceso${icon("ir", 16)}</button><span class="status-watermark">${icon("acceso", 120)}</span></div></section>
     ${renderStudentShortcuts()}
+    ${nextTasks.length ? `<section class="unframed-section"><div class="section-heading"><h2>${teacher ? "Actividades próximas" : "Mis tareas pendientes"}</h2><button class="text-button" data-page="tareas">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => `<button class="home-task-item" data-page="tareas"><span class="state-pill warning">Pendiente</span><strong>${esc(item.get("titulo") || "Tarea")}</strong>${item.get("fechaLimite") ? `<small>Entrega: ${dateText(item.get("fechaLimite"))}</small>` : ""}</button>`).join("")}</div></section>` : ""}
     ${calendar}
-    <section class="unframed-section"><div class="section-heading"><h2>Avisos recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${notices.empty ? emptyInline("No hay avisos publicados.") : `<div class="notice-list">${notices.docs.map((item) => noticeCard(item.id, item.data(), false)).join("")}</div>`}</section>`;
+    <section class="unframed-section"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${importantNotices.length ? `<div class="notice-list">${importantNotices.map((item) => noticeCard(item.id, item.data, false)).join("")}</div>` : emptyInline("No hay avisos publicados.")}</section>`;
 }
 
 function metric(title: string, value: number, hint: string, page: Page, tone = "plain"): string {
@@ -1213,7 +1224,7 @@ async function renderNotices(): Promise<string> {
   const personal = userNotices?.docs.map((item) => ({ id: item.id, ...item.data(), personal: true })) ?? [];
   const global = snapshot.docs.map((item) => ({ id: item.id, ...item.data(), personal: false }));
   const all: Array<Record<string, any>> = [...personal, ...global];
-  all.sort((a, b) => (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0));
+  all.sort((a, b) => Number(b.prioridad === "Importante") - Number(a.prioridad === "Importante") || (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0));
   return `${pageHeading("Avisos", "Comunicaciones y notificaciones del club.", canManageClub() ? `<button class="primary-button compact" data-action="new-notice">${icon("sumar")} Publicar aviso</button>` : "")}
     ${all.length ? `<div class="notice-list">${all.map((item) => item.personal ? personalNoticeCard(item) : noticeCardWithAdminAction(item.id, item)).join("")}</div>` : emptyPanel("No hay avisos", "Los avisos publicados aparecerán en esta sección.")}`;
 }
@@ -1425,7 +1436,8 @@ function noticeCardWithAdminAction(id: string, data: DocumentData): string {
 }
 
 function noticeCard(id: string, data: DocumentData, reactions: boolean): string {
-  return `<article class="notice-card"><div class="notice-card-header"><span class="priority-dot ${String(data.prioridad).toLowerCase()}"></span><span class="priority-label">${esc(data.prioridad || "Normal")}</span><time>${dateText(data.fechaCreacion, true)}</time></div><h3>${esc(data.titulo || "Aviso")}</h3><p>${esc(data.mensaje || "")}</p><div class="notice-author">Publicado por ${esc(data.autorNombre || "Administración")}</div>${reactions && isAuthorized() ? `<div class="reaction-row">${reactionButton(id, "me_gusta", "👍")}${reactionButton(id, "me_encanta", "❤️")}${reactionButton(id, "celebrar", "🎉")}${reactionButton(id, "apoyar", "👏")}</div>` : ""}</article>`;
+  const important = data.prioridad === "Importante";
+  return `<article class="notice-card ${important ? "notice-important" : ""}" ${important ? 'aria-label="Aviso importante"' : ""}><div class="notice-card-header"><span class="priority-dot ${String(data.prioridad).toLowerCase()}"></span><span class="priority-label">${important ? "IMPORTANTE · " : ""}${esc(data.prioridad || "Normal")}</span><time>${dateText(data.fechaCreacion, true)}</time></div><h3>${esc(data.titulo || "Aviso")}</h3><p>${esc(data.mensaje || "")}</p><div class="notice-author">Publicado por ${esc(data.autorNombre || "Administración")}</div>${reactions && isAuthorized() ? `<div class="reaction-row">${reactionButton(id, "me_gusta", "👍")}${reactionButton(id, "me_encanta", "❤️")}${reactionButton(id, "celebrar", "🎉")}${reactionButton(id, "apoyar", "👏")}</div>` : ""}</article>`;
 }
 
 function reactionButton(noticeId: string, reaction: string, symbol: string): string {

@@ -291,3 +291,15 @@ html[data-theme="dark"] .feedback-card{background:#202329;border-color:var(--lin
 
 .auth-form [data-member-grade][hidden],
 .profile-fields [data-member-grade][hidden] { display: none; }
+
+/* Student and teacher home panels; comfortable touch and reading sizes on phones. */
+.teacher-quick-panel{display:grid;gap:14px;padding:18px;margin:14px 0 20px;border:1px solid #d7e5f2;border-radius:12px;background:linear-gradient(135deg,#f4f9ff,#fff)}
+.teacher-quick-panel h2{margin:5px 0;font-size:19px}.teacher-quick-panel p{margin:0;color:var(--muted);line-height:1.55}
+.teacher-quick-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.teacher-quick-links button,.home-task-item{min-height:48px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font:inherit;cursor:pointer}
+.teacher-quick-links button{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;font-weight:700}
+.teacher-quick-links button:focus-visible,.home-task-item:focus-visible{outline:3px solid #1769aa;outline-offset:2px}
+.home-task-list{display:grid;gap:8px}.home-task-item{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px 10px;padding:11px;text-align:left}
+.home-task-item strong{font-size:14px}.home-task-item small{grid-column:2;color:var(--muted);font-size:12px}
+.notice-important{border-left:4px solid #a8182e;background:#fff9fa}.notice-important .priority-label{font-weight:800;color:#8d1428}
+@media(max-width:680px){.teacher-quick-panel{padding:14px}.teacher-quick-links{grid-template-columns:1fr}.teacher-quick-links button{justify-content:flex-start;min-height:50px}.home-task-item{min-height:52px}.mobile-nav-item{min-height:48px;font-size:10px}}
