@@ -1539,6 +1539,44 @@ match /puertas/{puertaId} {
         || esGestorClub();
 
 
+      // Bitácora de etapas y evidencias escritas del proyecto.
+      match /etapas/{etapaId} {
+        allow read: if estaAutorizado();
+
+        allow create: if
+          (esGestorClub() || esResponsableProyecto(proyectoId))
+          && !exists(
+            /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
+          )
+          && request.resource.data.keys().hasOnly([
+            "titulo",
+            "evidencia",
+            "creadoPorUid",
+            "creadoPorNombre",
+            "fechaCreacion"
+          ])
+          && request.resource.data.keys().hasAll([
+            "titulo",
+            "evidencia",
+            "creadoPorUid",
+            "creadoPorNombre",
+            "fechaCreacion"
+          ])
+          && request.resource.data.titulo is string
+          && request.resource.data.titulo.size() > 0
+          && request.resource.data.titulo.size() <= 100
+          && request.resource.data.evidencia is string
+          && request.resource.data.evidencia.size() > 0
+          && request.resource.data.evidencia.size() <= 1200
+          && request.resource.data.creadoPorUid == request.auth.uid
+          && request.resource.data.creadoPorNombre is string
+          && request.resource.data.creadoPorNombre.size() <= 120
+          && request.resource.data.fechaCreacion is timestamp;
+
+        allow update, delete: if false;
+      }
+
+
       match /eventos/{eventoId} {
         allow read: if esGestorClub() || estaAutorizado();
 

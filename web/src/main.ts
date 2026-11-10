@@ -1800,6 +1800,7 @@ document.addEventListener("submit", (event) => {
   else if (type === "club-activity") void submitClubActivity(form);
   else if (type === "item") void submitItem(form);
   else if (type === "project") void submitProject(form);
+  else if (type === "project-stage") void submitProjectStage(form);
   else if (type === "course") void submitCourse(form);
   else if (type === "project-task") void submitProjectTask(form);
   else if (type === "task-assignment") void submitTaskAssignment(form);
@@ -2996,6 +2997,42 @@ async function submitProjectTask(form: HTMLFormElement): Promise<void> {
   }
 }
 
+function openProjectStageDialog(projectId: string, project: DocumentData): void {
+  const dialog = document.createElement("dialog");
+  dialog.className = "detail-dialog form-dialog";
+  dialog.innerHTML = `<form class="dialog-form" data-form="project-stage" data-project="${esc(projectId)}"><div class="dialog-head"><div><p class="eyebrow">${esc(project.nombre || "PROYECTO")}</p><h2>Registrar etapa</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Etapa<input name="titulo" required maxlength="100" placeholder="Ej.: Diseño del prototipo" /></label><label>Avance y evidencia<textarea name="evidencia" rows="4" required maxlength="1200" placeholder="Describe qué hizo el equipo, qué aprendió o qué evidencia obtuvo."></textarea></label><button class="primary-button" type="submit">Guardar etapa</button></form>`;
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.addEventListener("click", (event) => { if (event.target === dialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+}
+
+async function submitProjectStage(form: HTMLFormElement): Promise<void> {
+  const projectId = form.dataset.project;
+  if (!projectId || !state.user) return;
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  setBusy(button, true, "Guardando etapa");
+  try {
+    const data = new FormData(form);
+    const title = String(data.get("titulo") || "").trim();
+    const evidence = String(data.get("evidencia") || "").trim();
+    if (!title || !evidence) throw new Error("Completa la etapa y su evidencia.");
+    await addDoc(collection(db, "proyectos", projectId, "etapas"), {
+      titulo: title,
+      evidencia,
+      creadoPorUid: state.user.uid,
+      creadoPorNombre: fullName(),
+      fechaCreacion: serverTimestamp(),
+    });
+    notify("Etapa registrada.");
+    closeDialog();
+    await showProject(projectId);
+  } catch (error) {
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudo guardar la etapa."), "error");
+  }
+}
+
 async function submitTaskAssignment(form: HTMLFormElement): Promise<void> {
   const projectId = form.dataset.project;
   const taskId = form.dataset.task;
@@ -3118,10 +3155,12 @@ async function showProject(id: string): Promise<void> {
   const joined = (data.miembrosUids || []).includes(state.user?.uid);
   const lead = projectLead(data) === state.user?.uid;
   let tasks: QueryDocumentSnapshot<DocumentData>[] = [];
+  let stages: QueryDocumentSnapshot<DocumentData>[] = [];
   let requests: QueryDocumentSnapshot<DocumentData>[] = [];
   if (joined || lead || canManageClub()) {
     try { tasks = (await getDocs(collection(db, "proyectos", id, "tareas"))).docs; } catch { /* Rules may limit task access for admins outside the project. */ }
   }
+  try { stages = (await getDocs(query(collection(db, "proyectos", id, "etapas"), orderBy("fechaCreacion", "desc"), limit(30)))).docs; } catch { /* The project logbook is available to authorized club accounts. */ }
   if ((lead || canManageClub()) && !isStudentPreview()) {
     try { requests = (await getDocs(query(collection(db, "proyectos", id, "solicitudes"), where("estado", "==", "pendiente"), limit(50)))).docs; } catch { /* Only the project lead can review requests. */ }
   }
@@ -3141,7 +3180,7 @@ async function showProject(id: string): Promise<void> {
   dialog.className = "detail-dialog";
   const taskObjects = tasks.map((task) => ({ id: task.id, path: task.ref.path, ...task.data() }));
   const joinStatus = !joined && !lead && !canManageClub() ? ownRequestState === "pendiente" ? `<div class="notice-box info">Tu solicitud está pendiente de revisión.</div>` : ownRequestState === "rechazada" ? `<div class="notice-box danger">La solicitud fue rechazada. Puedes volver a enviarla.</div><button class="primary-button" data-action="join-project" data-id="${esc(id)}">Volver a solicitar</button>` : ownRequestState === "aceptada" ? `<div class="notice-box info">Tu solicitud fue aceptada.</div>` : `<button class="primary-button" data-action="join-project" data-id="${esc(id)}">Solicitar ingreso</button>` : "";
-  dialog.innerHTML = `<div class="dialog-head"><span class="project-mark">${icon("proyectos", 22)}</span><button class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="eyebrow">PROYECTO</p><h2>${esc(data.nombre || data.titulo || "Proyecto")}</h2><p>${esc(data.descripcion || "Sin descripción")}</p><div class="project-meta"><span>Responsable: ${esc(data.responsableNombre || "Sin asignar")}</span><span>${(data.miembrosUids || []).length} miembros</span></div><section class="project-progress project-detail-progress"><div><span>Avance del proyecto</span><strong>${tasks.length ? `${percent}%` : "Sin tareas"}</strong></div><progress max="100" value="${percent}" aria-label="Progreso del proyecto"></progress><small>${done} de ${tasks.length} tareas completadas</small></section>${canManage && !completionEvent?.exists() ? `<div class="project-toolbar"><button class="primary-button compact" data-action="new-project-task" data-id="${esc(id)}">${icon("sumar")} Nueva tarea</button>${tasks.length > 0 && done === tasks.length ? `<button class="secondary-button compact" data-action="finish-project" data-id="${esc(id)}">Confirmar cierre y avisar</button>` : ""}</div>` : completionEvent?.exists() ? `<div class="notice-box info">Proyecto completado al 100%. Se notificó a los miembros y administradores.</div>` : ""}${requests.length ? `<section class="project-requests"><div class="section-heading"><h3>Solicitudes pendientes</h3><span class="section-count">${requests.length}</span></div>${requests.map((request) => `<article class="request-row"><div><strong>${esc(request.get("nombreCompleto") || "Estudiante")}</strong><small>${esc(request.get("carrera") || "")} · ${esc(request.get("semestre") || "")}</small></div><div class="request-actions"><button class="secondary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="rechazada">Rechazar</button><button class="primary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="aceptada">Aceptar</button></div></article>`).join("")}</section>` : ""}${tasks.length ? `<h3>Tareas del proyecto</h3><div class="dialog-task-list">${taskObjects.map((task) => projectTaskRow(task, id, canManage, Boolean(completionEvent?.exists()))).join("")}</div>` : `<p class="empty-inline">Todavía no hay tareas en este proyecto.</p>`}${joinStatus}`;
+  dialog.innerHTML = `<div class="dialog-head"><span class="project-mark">${icon("proyectos", 22)}</span><button class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="eyebrow">FICHA DEL PROYECTO</p><h2>${esc(data.nombre || data.titulo || "Proyecto")}</h2><p>${esc(data.descripcion || "Sin descripción")}</p><div class="project-meta"><span>Responsable: ${esc(data.responsableNombre || "Sin asignar")}</span><span>${(data.miembrosUids || []).length} miembros</span></div><section class="project-progress project-detail-progress"><div><span>Avance del proyecto</span><strong>${tasks.length ? `${percent}%` : "Sin tareas"}</strong></div><progress max="100" value="${percent}" aria-label="Progreso del proyecto"></progress><small>${done} de ${tasks.length} tareas completadas</small></section>${canManage && !completionEvent?.exists() ? `<div class="project-toolbar"><button class="primary-button compact" data-action="new-project-task" data-id="${esc(id)}">${icon("sumar")} Nueva tarea</button><button class="secondary-button compact" data-action="new-project-stage" data-id="${esc(id)}">Registrar etapa</button>${tasks.length > 0 && done === tasks.length ? `<button class="secondary-button compact" data-action="finish-project" data-id="${esc(id)}">Confirmar cierre y avisar</button>` : ""}</div>` : completionEvent?.exists() ? `<div class="notice-box info">Proyecto completado al 100%. Se notificó a los miembros y administradores.</div>` : ""}<section class="project-logbook"><h3>Etapas y evidencias</h3>${stages.length ? `<div class="project-stage-list">${stages.map((stage) => `<article class="project-stage"><div><strong>${esc(stage.get("titulo") || "Etapa")}</strong><time>${dateText(stage.get("fechaCreacion"))}</time></div><p>${esc(stage.get("evidencia") || "Sin detalle")}</p></article>`).join("")}</div>` : `<p class="empty-inline">El equipo todavía no registró etapas.</p>`}</section>${requests.length ? `<section class="project-requests"><div class="section-heading"><h3>Solicitudes pendientes</h3><span class="section-count">${requests.length}</span></div>${requests.map((request) => `<article class="request-row"><div><strong>${esc(request.get("nombreCompleto") || "Estudiante")}</strong><small>${esc(request.get("carrera") || "")} · ${esc(request.get("semestre") || "")}</small></div><div class="request-actions"><button class="secondary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="rechazada">Rechazar</button><button class="primary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="aceptada">Aceptar</button></div></article>`).join("")}</section>` : ""}${tasks.length ? `<h3>Tareas del proyecto</h3><div class="dialog-task-list">${taskObjects.map((task) => projectTaskRow(task, id, canManage, Boolean(completionEvent?.exists()))).join("")}</div>` : `<p class="empty-inline">Todavía no hay tareas en este proyecto.</p>`}${joinStatus}`;
   if (canEditResponsible) dialog.insertAdjacentHTML("beforeend", `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(id)}">${icon("people", 16)} Cambiar responsable del proyecto</button>`);
   document.body.append(dialog);
   dialog.showModal();
@@ -3152,6 +3191,7 @@ async function showProject(id: string): Promise<void> {
     if (event.target === dialog || action === "close-dialog") dialog.close();
     else if (action === "join-project") void joinProject(id, button);
     else if (action === "new-project-task") void openProjectTaskDialog(id, data);
+    else if (action === "new-project-stage") void openProjectStageDialog(id, data);
     else if (action === "resolve-project-request") void resolveProjectRequest(button, dialog);
     else if (action === "finish-project") void finishProject(id, button, dialog);
     else if (action === "complete-task") void completeTask(button.dataset.path!, button, async () => { dialog.close(); await showProject(id); });
