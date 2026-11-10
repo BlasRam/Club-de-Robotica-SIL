@@ -13,7 +13,7 @@ La plantilla quedó adaptada y ahora apunta al proyecto `club-de-robotica-sil`. 
 - Worker y secretos de Firebase para notificaciones push, si se habilitan.
 - URL del Worker en `web/src/main.ts` si se habilita el envío de eventos de acceso.
 
-Mientras no se defina el dominio institucional, solo `plataformapy.oficial@gmail.com` puede crear el primer perfil; ese perfil se crea como administrador tras verificar el correo. Para habilitar otras cuentas, configurar el dominio en `web/src/club-config.ts`, `firestore-rules/00-core.rules`, `firestore-rules/40-usuarios.rules` y `workers/notifications/wrangler.jsonc`. No desplegar las reglas con `__DOMINIO_INSTITUCIONAL__` sin sustituirlo por el dominio autorizado. En los patrones de reglas, escapar los puntos; por ejemplo, `colegio.edu.py` se escribe `colegio\\.edu\\.py`.
+Mientras no se defina el dominio institucional, `plataformapy.oficial@gmail.com` y `bramirez@sil.edu.py` pueden crear su perfil; ambos perfiles se crean como administradores tras verificar el correo. Las cuentas ya existentes conservan su rol y requieren que un administrador lo actualice. Para habilitar otras cuentas, configurar el dominio en `web/src/club-config.ts`, `firestore-rules/00-core.rules`, `firestore-rules/40-usuarios.rules` y `workers/notifications/wrangler.jsonc`. No desplegar las reglas con `__DOMINIO_INSTITUCIONAL__` sin sustituirlo por el dominio autorizado. En los patrones de reglas, escapar los puntos; por ejemplo, `colegio.edu.py` se escribe `colegio\\.edu\\.py`.
 
 La cuenta Firebase CLI debe ser miembro del proyecto. Si `firebase projects:list` no muestra `club-de-robotica-sil`, inicia sesión con la cuenta que lo creó o pide que inviten a la cuenta de despliegue con permisos para Hosting, Firestore y Storage.
 

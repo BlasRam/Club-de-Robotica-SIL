@@ -288,3 +288,6 @@ html[data-theme="dark"] .feedback-card{background:#202329;border-color:var(--lin
 @media(max-width:680px){.feedback-card{padding:12px}.feedback-title-row{align-items:flex-start;flex-direction:column;gap:6px}.feedback-card-top time{font-size:9px}.feedback-form{padding:13px}}
 
 .club-logo-preview{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px}.club-logo-preview img{width:76px;height:76px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}.logo-upload-label{display:grid;gap:8px;color:var(--ink);font-size:12px;font-weight:700}.logo-upload-label input{font-size:12px;font-weight:400}
+
+.auth-form [data-member-grade][hidden],
+.profile-fields [data-member-grade][hidden] { display: none; }

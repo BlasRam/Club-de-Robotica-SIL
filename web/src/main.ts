@@ -4,6 +4,7 @@ import {
   getAuth,
   onAuthStateChanged,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   type User,
@@ -158,6 +159,7 @@ function updateAccessLockButton(): void {
 }
 
 type Profile = {
+  tipoUsuario?: "alumno" | "docente";
   uid: string;
   nombre?: string;
   apellido?: string;
@@ -573,8 +575,11 @@ function errorMessage(error: unknown, fallback: string): string {
   return (error as { message?: string })?.message || fallback;
 }
 
+let authSubmissionInProgress = false;
+
 onAuthStateChanged(auth, (user) => {
   state.user = user;
+  if (authSubmissionInProgress) return;
   if (user && state.authMode !== "register" &&
       (!isInstitutionalEmail(user.email || "") || !user.emailVerified)) {
     state.user = null;
@@ -700,6 +705,7 @@ function render(): void {
   }
   if (!state.user || !state.profile) {
     root.innerHTML = renderAuth();
+    restorePendingRegistration();
     return;
   }
   root.innerHTML = appShell(`<div class="loading-block"><span class="spinner"></span><span>Cargando ${esc(navItems().find((item) => item.id === state.page)?.label.toLowerCase() ?? "inicio")}…</span></div>`);
@@ -713,6 +719,55 @@ window.setInterval(() => {
   presenceCutoffRefreshDate = clock.dateKey;
   if (state.user && (state.page === "inicio" || state.page === "acceso")) render();
 }, 30_000);
+
+function renderMemberFields(profile?: Profile): string {
+  const docente = profile?.tipoUsuario === "docente";
+  return `<label>Tipo de usuario<select name="tipoUsuario" data-member-type><option value="alumno" ${!docente ? "selected" : ""}>Alumno</option><option value="docente" ${docente ? "selected" : ""}>Docente</option></select></label>
+    <label><span data-member-area-label>${docente ? "Asignatura o área de enseñanza" : "Área de interés"}</span><input name="carrera" value="${esc(profile?.carrera || "")}" maxlength="100" required placeholder="${docente ? "Ej. informática, ciencias, tecnología" : "Ej. electrónica, programación, diseño"}" /></label>
+    <label data-member-grade ${docente ? "hidden" : ""}>Curso o grado<input name="semestre" value="${esc(profile?.semestre || "")}" maxlength="40" ${docente ? "disabled" : "required"} placeholder="Ej. 2.º curso" /></label>`;
+}
+
+document.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement) || !target.matches("[data-member-type]")) return;
+  const form = target.closest("form")!;
+  const docente = target.value === "docente";
+  form.querySelector<HTMLElement>("[data-member-area-label]")!.textContent = docente ? "Asignatura o área de enseñanza" : "Área de interés";
+  form.querySelector<HTMLInputElement>('[name="carrera"]')!.placeholder = docente ? "Ej. informática, ciencias, tecnología" : "Ej. electrónica, programación, diseño";
+  form.querySelector<HTMLElement>("[data-member-grade]")!.hidden = docente;
+  const grade = form.querySelector<HTMLInputElement>('[name="semestre"]')!;
+  grade.disabled = docente;
+  grade.required = !docente;
+});
+
+const pendingRegistrationKey = "cdr-pending-registration";
+
+function restorePendingRegistration(): void {
+  const form = document.querySelector<HTMLFormElement>('[data-form="auth"]');
+  if (!form || state.authMode !== "register") return;
+  try {
+    const values = JSON.parse(sessionStorage.getItem(pendingRegistrationKey) || "{}") as Record<string, string>;
+    for (const name of ["nombre", "apellido", "email", "carrera", "semestre", "tipoUsuario"]) {
+      const field = form.elements.namedItem(name);
+      if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) {
+        if (values[name]) field.value = values[name];
+      }
+    }
+    const type = form.querySelector<HTMLSelectElement>("[data-member-type]");
+    if (type && values.tipoUsuario === "docente") type.dispatchEvent(new Event("change", { bubbles: true }));
+  } catch { sessionStorage.removeItem(pendingRegistrationKey); }
+}
+
+document.addEventListener("input", (event) => {
+  const form = (event.target as HTMLElement).closest<HTMLFormElement>('[data-form="auth"]');
+  if (!form || state.authMode !== "register") return;
+  const data = new FormData(form);
+  const values: Record<string, string> = {};
+  for (const name of ["nombre", "apellido", "email", "carrera", "semestre", "tipoUsuario"]) {
+    values[name] = String(data.get(name) || "");
+  }
+  sessionStorage.setItem(pendingRegistrationKey, JSON.stringify(values));
+});
 
 function renderAuth(): string {
   const register = state.authMode === "register";
@@ -730,14 +785,15 @@ function renderAuth(): string {
           <div class="auth-install-area">${mobileInstallButton("secondary-button auth-install-button")}</div>
           <p class="eyebrow">ACCESO A LA PLATAFORMA</p>
           <h2>${reactivating ? "Crear perfil de nuevo" : register ? "Crear cuenta" : "Iniciar sesión"}</h2>
-          <p class="auth-subtitle">${reactivating ? "Tu correo ya está verificado. Completa tus datos para restaurar el perfil." : register ? (INSTITUTIONAL_EMAIL_DOMAIN ? `Usa tu correo @${esc(INSTITUTIONAL_EMAIL_DOMAIN)} y verifícalo para solicitar acceso.` : `Por ahora, la cuenta administradora ${INITIAL_ADMIN_EMAIL} puede crear el primer perfil.`) : "Ingresa con tu correo institucional verificado."}</p>
+          <p class="auth-subtitle">${reactivating ? "Tu correo ya está verificado. Completa tus datos para restaurar el perfil." : register ? (INSTITUTIONAL_EMAIL_DOMAIN ? `Usa tu correo @${esc(INSTITUTIONAL_EMAIL_DOMAIN)} y verifícalo para solicitar acceso.` : `Por ahora, las cuentas administradoras ${INITIAL_ADMIN_EMAIL} pueden crear su perfil.`) : "Ingresa con tu correo institucional verificado."}</p>
           ${state.authMessage ? `<div class="notice-box ${state.authMessage.includes("error") ? "danger" : "info"}">${icon("alerta", 18)}<span>${esc(state.authMessage)}</span></div>` : ""}
           ${register ? `<div class="field-row"><label>Nombre<input name="nombre" autocomplete="given-name" required maxlength="60" /></label><label>Apellido<input name="apellido" autocomplete="family-name" required maxlength="60" /></label></div>
             <label>Correo institucional<input name="email" type="email" autocomplete="email" required ${state.user ? `value="${esc(state.user.email)}" readonly` : ""} /></label>
-            ${state.user ? "" : `<label>Contraseña<div class="password-wrap"><input name="password" type="password" autocomplete="new-password" minlength="6" required /><button type="button" class="password-toggle" data-action="toggle-password" aria-label="Mostrar contraseña" title="Mostrar contraseña">${icon("ver", 18)}</button></div></label>`}
-            <div class="field-row"><label>Área de interés<input name="carrera" required maxlength="100" placeholder="Ej. electrónica, programación, diseño" /></label><label>Curso o grado<input name="semestre" required maxlength="40" placeholder="Ej. 2.º curso" /></label></div>`
+            ${state.user ? "" : `<div class="field-row"><label>Contraseña<div class="password-wrap"><input name="password" type="password" autocomplete="new-password" minlength="6" required /><button type="button" class="password-toggle" data-action="toggle-password" aria-label="Mostrar contraseña" title="Mostrar contraseña">${icon("ver", 18)}</button></div></label><label>Repite la contraseña<div class="password-wrap"><input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required /><button type="button" class="password-toggle" data-action="toggle-password" aria-label="Mostrar contraseña" title="Mostrar contraseña">${icon("ver", 18)}</button></div></label></div>`}
+            ${renderMemberFields()}`
             : `<label>Correo electrónico<input name="email" type="email" autocomplete="email" required /></label><label>Contraseña<div class="password-wrap"><input name="password" type="password" autocomplete="current-password" required /><button type="button" class="password-toggle" data-action="toggle-password" aria-label="Mostrar contraseña" title="Mostrar contraseña">${icon("ver", 18)}</button></div></label>`}
           <button class="primary-button auth-submit" type="submit">${register ? "Crear cuenta" : "Entrar"}${icon("ir", 17)}</button>
+          ${!register && !state.user ? `<button type="button" class="text-button auth-forgot" data-action="forgot-password">Olvidé mi contraseña</button>` : ""}
           <p class="auth-switch">${register ? "¿Ya tienes cuenta?" : "¿Primera vez aquí?"} <button type="button" class="text-button" data-action="auth-toggle">${register ? "Inicia sesión" : "Crea una cuenta"}</button></p>
           <p class="auth-legal">El acceso a proyectos y recursos se habilita después de la autorización del administrador.</p>
         </form>
@@ -822,7 +878,7 @@ function renderProfile(): string {
   return `${pageHeading("Mi perfil", "Actualiza tus datos personales y académicos.")}
     <div class="profile-layout"><form class="profile-form" data-form="profile">
       <div class="profile-fields"><label>Nombre<input name="nombre" value="${esc(profile.nombre)}" autocomplete="given-name" maxlength="60" required /></label><label>Apellido<input name="apellido" value="${esc(profile.apellido)}" autocomplete="family-name" maxlength="60" required /></label>
-        <label>Área de interés<input name="carrera" value="${esc(profile.carrera || "")}" maxlength="100" required placeholder="Ej. electrónica, programación, diseño" /></label><label>Curso o grado<input name="semestre" value="${esc(profile.semestre || "")}" maxlength="40" required placeholder="Ej. 2.º curso" /></label></div>
+        ${renderMemberFields(profile)}</div>
       <div class="profile-readonly"><div class="profile-line"><span>Correo de la cuenta</span><strong>${esc(profile.correoInstitucional || state.user?.email)}</strong></div><div class="profile-line"><span>Tipo de cuenta</span><strong>${roleLabel()}</strong></div><div class="profile-line"><span>Acceso</span><strong>${isAdmin() ? "Administrador" : profile.autorizado ? "Autorizado" : "Pendiente de autorización"}</strong></div></div>
       <p class="profile-note">El correo, el rol y la autorización no se pueden cambiar desde esta pantalla.</p><button class="primary-button" type="submit">Guardar cambios ${icon("listo", 16)}</button>
     </form></div>`;
@@ -1582,6 +1638,20 @@ root.addEventListener("click", (event) => {
     state.authMode = state.authMode === "login" ? "register" : "login";
     state.authMessage = "";
     render();
+  } else if (action === "forgot-password") {
+    const email = document.querySelector<HTMLInputElement>('[data-form="auth"] [name="email"]')?.value.trim();
+    if (!email) {
+      state.authMessage = "Escribe tu correo y vuelve a pulsar «Olvidé mi contraseña».";
+      render();
+      return;
+    }
+    void sendPasswordResetEmail(auth, email).then(() => {
+      state.authMessage = "Si el correo corresponde a una cuenta, recibirás instrucciones para cambiar la contraseña. Revisa también Spam.";
+      render();
+    }).catch((error) => {
+      state.authMessage = errorMessage(error, "No se pudo enviar el correo de recuperación.");
+      render();
+    });
   } else if (action === "logout") {
     void signOut(auth);
   } else if (action === "refresh") {
@@ -1847,8 +1917,9 @@ async function submitProfile(form: HTMLFormElement): Promise<void> {
   const data = new FormData(form);
   const nombre = String(data.get("nombre") || "").trim();
   const apellido = String(data.get("apellido") || "").trim();
+  const tipoUsuario = data.get("tipoUsuario") === "docente" ? "docente" : "alumno";
   const carrera = String(data.get("carrera") || "");
-  const semestre = String(data.get("semestre") || "");
+  const semestre = tipoUsuario === "docente" ? "" : String(data.get("semestre") || "");
   if (!nombre || !apellido) {
     notify("Escribe tu nombre y apellido.", "error");
     return;
@@ -1856,8 +1927,8 @@ async function submitProfile(form: HTMLFormElement): Promise<void> {
   setBusy(button, true, "Guardando");
   try {
     const nombreCompleto = `${nombre} ${apellido}`;
-    await updateDoc(doc(db, "usuarios", state.user.uid), { nombre, apellido, nombreCompleto, carrera, semestre });
-    state.profile = { ...state.profile, nombre, apellido, nombreCompleto, carrera, semestre };
+    await updateDoc(doc(db, "usuarios", state.user.uid), { nombre, apellido, nombreCompleto, carrera, semestre, tipoUsuario });
+    state.profile = { ...state.profile, nombre, apellido, nombreCompleto, carrera, semestre, tipoUsuario };
     notify("Perfil actualizado.");
     render();
   } catch (error) {
@@ -1867,16 +1938,29 @@ async function submitProfile(form: HTMLFormElement): Promise<void> {
 }
 
 async function submitAuth(form: HTMLFormElement): Promise<void> {
+  if (authSubmissionInProgress) return;
+  authSubmissionInProgress = true;
   const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
   setBusy(button, true, state.authMode === "register" ? "Creando cuenta" : "Ingresando");
   const data = new FormData(form);
   const email = String(data.get("email") || "").trim().toLowerCase();
   const password = String(data.get("password") || "");
+  const confirmPassword = String(data.get("confirmPassword") || "");
   try {
+    if (state.authMode === "register" && !state.user && password !== confirmPassword) {
+      throw new Error("Las contraseñas no coinciden. Revísalas e inténtalo de nuevo.");
+    }
+    if (state.authMode === "register") {
+      sessionStorage.setItem(pendingRegistrationKey, JSON.stringify({
+        nombre: String(data.get("nombre") || ""), apellido: String(data.get("apellido") || ""), email,
+        carrera: String(data.get("carrera") || ""), semestre: String(data.get("semestre") || ""),
+        tipoUsuario: String(data.get("tipoUsuario") || "alumno"),
+      }));
+    }
     if (!isInstitutionalEmail(email)) {
       throw new Error(INSTITUTIONAL_EMAIL_DOMAIN
         ? `Solo se permite el acceso con correo institucional @${INSTITUTIONAL_EMAIL_DOMAIN} o con la cuenta administradora autorizada.`
-        : `Por ahora solo está autorizada la cuenta administradora ${INITIAL_ADMIN_EMAIL}.`);
+        : `Por ahora solo están autorizadas las cuentas administradoras ${INITIAL_ADMIN_EMAIL}.`);
     }
     let user = state.user;
     if (!user) {
@@ -1896,16 +1980,11 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
           } finally {
             await signOut(auth);
           }
-          throw new Error("Te enviamos un correo de verificación. Confirma tu dirección y vuelve a crear el perfil con el mismo correo y contraseña.");
+          throw new Error("Te enviamos el enlace de verificación. Ábrelo y vuelve aquí: tus datos quedarán guardados. Luego pulsa Crear cuenta otra vez.");
         } catch (error) {
-          if (error instanceof Error && error.message.startsWith("Te enviamos un correo")) throw error;
+          if (error instanceof Error && error.message.startsWith("Te enviamos el enlace")) throw error;
           if ((error as { code?: string }).code !== "auth/email-already-in-use") throw error;
           user = (await signInWithEmailAndPassword(auth, email, password)).user;
-          const existingProfile = await getDoc(doc(db, "usuarios", user.uid));
-          if (existingProfile.exists()) {
-            await signOut(auth);
-            throw new Error("Esta cuenta ya tiene perfil. Inicia sesión desde el acceso.");
-          }
           await user.reload();
           if (!user.emailVerified) {
             try {
@@ -1942,20 +2021,29 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
         apellido,
         nombreCompleto: `${nombre} ${apellido}`,
         correoInstitucional: email || user.email || "",
+        tipoUsuario: data.get("tipoUsuario") === "docente" ? "docente" : "alumno",
         carrera: String(data.get("carrera") || ""),
-        semestre: String(data.get("semestre") || ""),
+        semestre: data.get("tipoUsuario") === "docente" ? "" : String(data.get("semestre") || ""),
         rol: isInitialAdminEmail(email) ? "admin" : "estudiante",
         autorizado: isInitialAdminEmail(email),
         rostroRegistrado: false,
         fechaCreacion: serverTimestamp(),
       });
-      notify("Perfil creado. Espera la autorización del administrador.");
+      sessionStorage.removeItem(pendingRegistrationKey);
+      notify(isInitialAdminEmail(email) ? "Perfil de administrador creado." : "Perfil creado. Espera la autorización del administrador.");
     }
     await loadProfile(user!);
   } catch (error) {
     state.authMessage = errorMessage(error, "No se pudo completar el acceso.");
     if ((error as { code?: string }).code === "auth/invalid-credential") state.authMessage = "Correo o contraseña incorrectos.";
+    if ((error as { code?: string }).code === "permission-denied") {
+      state.authMessage = "Firestore rechazó el acceso al perfil. Comprueba que estén publicadas las reglas del proyecto club-de-robotica-sil y que hayas verificado tu correo.";
+    }
+    state.loading = false;
     render();
+    document.querySelector(".auth-form")?.scrollIntoView({ block: "start" });
+  } finally {
+    authSubmissionInProgress = false;
   }
 }
 

@@ -1,0 +1,50 @@
+name: Deploy PWA and Firestore rules
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'web/**'
+      - 'firestore-rules/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'firebase.json'
+      - '.firebaserc'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-firebase.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build Firestore rules and PWA
+        run: |
+          npm run rules:build
+          npm run web:build
+
+      - name: Deploy Hosting and Firestore rules
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: npx firebase-tools deploy --project club-de-robotica-sil --only hosting,firestore:rules --non-interactive

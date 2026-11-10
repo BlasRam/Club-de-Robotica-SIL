@@ -28,6 +28,7 @@
           "autorizado",
           "rostroRegistrado",
           "fechaCreacion",
+          "tipoUsuario",
           "fechaRegistro"
         ])
 
@@ -53,11 +54,16 @@
         && request.resource.data.nombre is string
         && request.resource.data.apellido is string
         && request.resource.data.nombreCompleto is string
+        && (!request.resource.data.keys().hasAny(["tipoUsuario"])
+          || request.resource.data.tipoUsuario in ["alumno", "docente"])
         && request.resource.data.carrera is string
         && request.resource.data.carrera.size() > 0
         && request.resource.data.carrera.size() <= 100
         && request.resource.data.semestre is string
-        && request.resource.data.semestre.size() > 0
+        && ((request.resource.data.get("tipoUsuario", "alumno") == "docente"
+          && request.resource.data.semestre == "")
+          || (request.resource.data.get("tipoUsuario", "alumno") == "alumno"
+            && request.resource.data.semestre.size() > 0))
         && request.resource.data.semestre.size() <= 40
         && (
           !request.resource.data.keys().hasAny(["fechaCreacion"])
@@ -120,7 +126,7 @@
           && (!esPropietario(userId) || request.resource.data.rol == resource.data.rol)
           && resource.data.correoInstitucional is string
           && (
-            resource.data.correoInstitucional == "plataformapy.oficial@gmail.com"
+            resource.data.correoInstitucional in ["plataformapy.oficial@gmail.com", "bramirez@sil.edu.py"]
             || resource.data.correoInstitucional.matches('^[^@]+@__DOMINIO_INSTITUCIONAL__$')
           )
           && (
@@ -145,7 +151,7 @@
         || (
           esPropietario(userId)
           && request.resource.data.diff(resource.data)
-            .affectedKeys().hasOnly(["carrera", "semestre", "nombre", "apellido", "nombreCompleto"])
+            .affectedKeys().hasOnly(["carrera", "semestre", "nombre", "apellido", "nombreCompleto", "tipoUsuario"])
           && (
             !request.resource.data.diff(resource.data)
               .affectedKeys().hasAny(["nombre", "apellido", "nombreCompleto"])
@@ -160,11 +166,15 @@
               && request.resource.data.nombreCompleto == request.resource.data.nombre + " " + request.resource.data.apellido
             )
           )
+          && request.resource.data.get("tipoUsuario", "alumno") in ["alumno", "docente"]
           && request.resource.data.carrera is string
           && request.resource.data.carrera.size() > 0
           && request.resource.data.carrera.size() <= 100
           && request.resource.data.semestre is string
-          && request.resource.data.semestre.size() > 0
+          && ((request.resource.data.get("tipoUsuario", "alumno") == "docente"
+          && request.resource.data.semestre == "")
+          || (request.resource.data.get("tipoUsuario", "alumno") == "alumno"
+            && request.resource.data.semestre.size() > 0))
           && request.resource.data.semestre.size() <= 40
         );
 

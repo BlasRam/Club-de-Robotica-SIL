@@ -1,7 +1,8 @@
 /** Configuración del Club de Robótica San Ignacio de Loyola. */
 export const CLUB_NAME = "Club de Robótica San Ignacio de Loyola";
 export const CLUB_SHORT_NAME = "Club de Robótica";
-export const INITIAL_ADMIN_EMAIL = "plataformapy.oficial@gmail.com";
+export const INITIAL_ADMIN_EMAILS = ["plataformapy.oficial@gmail.com", "bramirez@sil.edu.py"] as const;
+export const INITIAL_ADMIN_EMAIL = INITIAL_ADMIN_EMAILS.join(" y ");
 
 /**
  * Dominio de correo que la institución autorizará para registrarse.
@@ -16,7 +17,7 @@ export function isInstitutionalEmail(email: string): boolean {
 }
 
 export function isInitialAdminEmail(email: string): boolean {
-  return email.trim().toLowerCase() === INITIAL_ADMIN_EMAIL;
+  return INITIAL_ADMIN_EMAILS.some((adminEmail) => email.trim().toLowerCase() === adminEmail);
 }
 
 function escapeRegExp(value: string): string {

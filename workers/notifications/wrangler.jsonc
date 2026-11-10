@@ -25,6 +25,7 @@
     "FIREBASE_PROJECT_ID": "club-de-robotica-sil",
     "INSTITUTIONAL_EMAIL_DOMAIN": "",
     "BOOTSTRAP_ADMIN_EMAIL": "plataformapy.oficial@gmail.com",
+    "BOOTSTRAP_ADMIN_EMAILS": "plataformapy.oficial@gmail.com,bramirez@sil.edu.py",
     "DOOR_CONTROL_ENABLED": "false",
     "DOOR_ENTRY_TEST_ENABLED": "true",
     "DOOR_ID": "club-main",

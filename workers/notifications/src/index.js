@@ -788,8 +788,9 @@ async function verifyFirebaseIdToken(idToken, env) {
   if (!user?.localId) throw httpError(401, "invalid_firebase_token");
   const institutionalDomain = String(env.INSTITUTIONAL_EMAIL_DOMAIN || "").trim().toLowerCase();
   const email = String(user.email || "").trim().toLowerCase();
-  const bootstrapAdminEmail = String(env.BOOTSTRAP_ADMIN_EMAIL || "").trim().toLowerCase();
-  if (user.emailVerified !== true || (email !== bootstrapAdminEmail && (!institutionalDomain || !email.endsWith(`@${institutionalDomain}`)))) {
+  const bootstrapAdminEmails = String(env.BOOTSTRAP_ADMIN_EMAILS || env.BOOTSTRAP_ADMIN_EMAIL || "")
+    .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+  if (user.emailVerified !== true || (!bootstrapAdminEmails.includes(email) && (!institutionalDomain || !email.endsWith(`@${institutionalDomain}`)))) {
     throw httpError(403, "institutional_email_verification_required");
   }
   return user;
