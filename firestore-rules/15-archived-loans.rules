@@ -1,0 +1,23 @@
+// =====================================================
+
+    match /prestamosArchivados/{prestamoId} {
+      allow read: if estaAutenticado()
+        && (esAdministrador() || resource.data.solicitanteUid == request.auth.uid);
+      allow create: if esAdministrador()
+        && request.resource.data.keys().hasOnly([
+          "reservaId", "recursoId", "recursoNombre", "cantidadSolicitada", "motivo",
+          "solicitanteUid", "solicitanteNombre", "fechaInicioUso", "fechaDevolucion",
+          "aprobadoPorUid", "aprobadoPorNombre", "devueltoPorUid", "devueltoPorNombre",
+          "fechaDevolucionReal", "estado"
+        ])
+        && request.resource.data.keys().hasAll([
+          "reservaId", "recursoId", "recursoNombre", "cantidadSolicitada", "motivo",
+          "solicitanteUid", "solicitanteNombre", "fechaInicioUso", "fechaDevolucion",
+          "aprobadoPorUid", "aprobadoPorNombre", "devueltoPorUid", "devueltoPorNombre",
+          "fechaDevolucionReal", "estado"
+        ])
+        && request.resource.data.estado == "Devuelta"
+        && request.resource.data.devueltoPorUid == request.auth.uid
+        && request.resource.data.fechaDevolucionReal is timestamp;
+      allow update, delete: if false;
+    }

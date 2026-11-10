@@ -1,0 +1,65 @@
+// =====================================================
+    // INVENTARIO
+
+// =====================================================
+
+    match /inventario/{itemId} {
+
+      allow read: if estaAutorizado() || esAdministrador();
+
+      allow create: if
+        esAdministrador()
+        && request.resource.data.keys().hasOnly([
+          "nombre",
+          "descripcion",
+          "categoria",
+          "cantidad",
+          "ubicacion",
+          "estado",
+          "creadoPorUid",
+          "creadoPorNombre",
+          "fechaCreacion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "nombre",
+          "descripcion",
+          "categoria",
+          "cantidad",
+          "ubicacion",
+          "estado",
+          "creadoPorUid",
+          "creadoPorNombre",
+          "fechaCreacion"
+        ])
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() > 0
+        && request.resource.data.descripcion is string
+        && request.resource.data.categoria is string
+        && request.resource.data.cantidad is int
+        && request.resource.data.cantidad >= 0
+        && request.resource.data.ubicacion is string
+        && request.resource.data.estado in [
+          "Disponible",
+          "Prestado",
+          "Mantenimiento",
+          "Baja"
+        ]
+        && request.resource.data.creadoPorUid == request.auth.uid
+        && request.resource.data.creadoPorNombre is string
+        && request.resource.data.fechaCreacion is timestamp;
+
+      allow update: if
+        esAdministrador()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["estado", "cantidad"])
+        && request.resource.data.cantidad is int
+        && request.resource.data.cantidad >= 0
+        && request.resource.data.estado in [
+          "Disponible",
+          "Prestado",
+          "Mantenimiento",
+          "Baja"
+        ];
+
+      allow delete: if esAdministrador();
+    }

@@ -1,0 +1,2031 @@
+rules_version = '2';
+
+service cloud.firestore {
+
+  match /databases/{database}/documents {
+
+    // =====================================================
+    // FUNCIONES GENERALES
+    // =====================================================
+
+    function estaAutenticado() {
+      return request.auth != null;
+    }
+
+
+    function usuarioActual() {
+      return get(
+        /databases/$(database)/documents/usuarios/$(request.auth.uid)
+      );
+    }
+
+
+    function esPropietario(userId) {
+      return estaAutenticado()
+        && request.auth.uid == userId;
+    }
+
+
+    function entradaCalendarioPersonalValida(data) {
+      return
+        (
+          data.get("tipo", "") == "clase"
+          && data.keys().hasOnly([
+            "tipo", "materia", "diasSemana", "horaInicio", "horaFin",
+            "aula", "desde", "hasta", "fechaCreacion"
+          ])
+          && data.keys().hasAll([
+            "tipo", "materia", "diasSemana", "horaInicio", "horaFin",
+            "aula", "desde", "hasta", "fechaCreacion"
+          ])
+          && data.materia is string
+          && data.materia.size() > 0
+          && data.materia.size() <= 80
+          && data.diasSemana is list
+          && data.diasSemana.size() > 0
+          && data.diasSemana.size() <= 7
+          && data.diasSemana.hasOnly([1, 2, 3, 4, 5, 6, 7])
+          && data.horaInicio is string
+          && data.horaInicio.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+          && data.horaFin is string
+          && data.horaFin.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+          && data.horaFin > data.horaInicio
+          && data.aula is string
+          && data.aula.size() <= 60
+          && data.desde is timestamp
+          && data.hasta is timestamp
+          && data.hasta >= data.desde
+          && data.fechaCreacion is timestamp
+        )
+        ||
+        (
+          data.get("tipo", "") == "examen"
+          && data.keys().hasOnly([
+            "tipo", "titulo", "materia", "fechaHora", "lugar", "notas", "fechaCreacion"
+          ])
+          && data.keys().hasAll([
+            "tipo", "titulo", "materia", "fechaHora", "lugar", "notas", "fechaCreacion"
+          ])
+          && data.titulo is string
+          && data.titulo.size() > 0
+          && data.titulo.size() <= 100
+          && data.materia is string
+          && data.materia.size() > 0
+          && data.materia.size() <= 80
+          && data.fechaHora is timestamp
+          && data.lugar is string
+          && data.lugar.size() <= 100
+          && data.notas is string
+          && data.notas.size() <= 300
+          && data.fechaCreacion is timestamp
+        );
+    }
+
+
+    function actividadClubValida(data) {
+      return data.keys().hasOnly([
+          "titulo", "categoria", "descripcion", "fechaInicio", "fechaFin",
+          "lugar", "creadoPorUid", "creadoPorNombre", "fechaCreacion"
+        ])
+        && data.keys().hasAll([
+          "titulo", "categoria", "descripcion", "fechaInicio", "fechaFin",
+          "lugar", "creadoPorUid", "creadoPorNombre", "fechaCreacion"
+        ])
+        && data.titulo is string
+        && data.titulo.size() > 0
+        && data.titulo.size() <= 100
+        && data.categoria in ["Reunión", "Taller", "Evento", "Entrega", "Otro"]
+        && data.descripcion is string
+        && data.descripcion.size() <= 500
+        && data.fechaInicio is timestamp
+        && data.fechaFin is timestamp
+        && data.fechaFin >= data.fechaInicio
+        && data.lugar is string
+        && data.lugar.size() > 0
+        && data.lugar.size() <= 100
+        && data.creadoPorUid == request.auth.uid
+        && data.creadoPorNombre is string
+        && data.creadoPorNombre.size() > 0
+        && data.creadoPorNombre.size() <= 120
+        && data.fechaCreacion is timestamp;
+    }
+
+
+    function cursoValido(data) {
+      return data.keys().hasOnly([
+          "titulo", "descripcion", "instructor", "fechaInicio", "fechaFin",
+          "horario", "modalidad", "lugar", "estado", "creadoPorUid",
+          "creadoPorNombre", "fechaCreacion"
+        ])
+        && data.keys().hasAll([
+          "titulo", "descripcion", "instructor", "fechaInicio", "fechaFin",
+          "horario", "modalidad", "lugar", "estado", "creadoPorUid",
+          "creadoPorNombre", "fechaCreacion"
+        ])
+        && data.titulo is string
+        && data.titulo.size() > 0
+        && data.titulo.size() <= 100
+        && data.descripcion is string
+        && data.descripcion.size() <= 1000
+        && data.instructor is string
+        && data.instructor.size() > 0
+        && data.instructor.size() <= 100
+        && data.fechaInicio is timestamp
+        && data.fechaFin is timestamp
+        && data.fechaFin >= data.fechaInicio
+        && data.horario is string
+        && data.horario.size() > 0
+        && data.horario.size() <= 120
+        && data.modalidad in ["Presencial", "Virtual", "Híbrido"]
+        && data.lugar is string
+        && data.lugar.size() <= 120
+        && data.estado in ["Publicado", "Cerrado"]
+        && data.creadoPorUid is string
+        && data.creadoPorNombre is string
+        && data.creadoPorNombre.size() > 0
+        && data.creadoPorNombre.size() <= 120
+        && data.fechaCreacion is timestamp;
+    }
+
+
+    function esAdministradorInicial() {
+      return estaAutenticado()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == "plataformapy.oficial@gmail.com";
+    }
+
+
+    function correoInstitucionalVerificado() {
+      return estaAutenticado()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && (
+          request.auth.token.email == "plataformapy.oficial@gmail.com"
+          || request.auth.token.email.matches('^[^@]+@__DOMINIO_INSTITUCIONAL__$')
+        );
+    }
+
+
+    function esAdministrador() {
+      return correoInstitucionalVerificado()
+        && usuarioActual().data.rol == "admin";
+    }
+
+
+    function esModerador() {
+      return correoInstitucionalVerificado()
+        && usuarioActual().data.rol == "moderador"
+        && usuarioActual().data.autorizado == true;
+    }
+
+
+    function esGestorClub() {
+      return esAdministrador() || esModerador();
+    }
+
+
+    function estaAutorizado() {
+      return correoInstitucionalVerificado()
+        && usuarioActual().data.autorizado == true;
+    }
+
+
+    // =====================================================
+    // USUARIO VÁLIDO PARA RESPONSABILIDADES
+    // =====================================================
+
+    function usuarioAsignable(uid) {
+
+      let usuario = get(
+        /databases/$(database)/documents/usuarios/$(uid)
+      ).data;
+
+      return uid is string
+        && uid != ""
+        && (
+          usuario.rol == "admin"
+          ||
+          usuario.autorizado == true
+        );
+    }
+
+
+    // =====================================================
+    // PROYECTOS
+    // =====================================================
+
+    function proyectoActual(proyectoId) {
+      return get(
+        /databases/$(database)/documents/proyectos/$(proyectoId)
+      );
+    }
+
+
+    function esCreadorProyecto(proyectoId) {
+
+      return estaAutenticado()
+        && proyectoActual(proyectoId)
+          .data
+          .creadoPorUid == request.auth.uid;
+    }
+
+
+    // =====================================================
+    // RESPONSABLE DEL PROYECTO
+    //
+    // Compatible con proyectos viejos:
+    // si responsableUid no existe, usa creadoPorUid.
+    // =====================================================
+
+    function esResponsableProyecto(proyectoId) {
+
+      let proyecto =
+        proyectoActual(proyectoId).data;
+
+      return estaAutenticado()
+        && (
+          (
+            proyecto.get("responsableUid", "") != ""
+            &&
+            proyecto.get("responsableUid", "")
+              == request.auth.uid
+          )
+          ||
+          (
+            proyecto.get("responsableUid", "") == ""
+            &&
+            proyecto.creadoPorUid
+              == request.auth.uid
+          )
+        );
+    }
+
+
+    function uidEsResponsableProyecto(
+      proyectoId,
+      uid
+    ) {
+
+      let proyecto =
+        proyectoActual(proyectoId).data;
+
+      return
+        (
+          proyecto.get("responsableUid", "") != ""
+          &&
+          proyecto.get("responsableUid", "") == uid
+        )
+        ||
+        (
+          proyecto.get("responsableUid", "") == ""
+          &&
+          proyecto.creadoPorUid == uid
+        );
+    }
+
+
+    // =====================================================
+    // MIEMBROS
+    // =====================================================
+
+    function esMiembroProyecto(proyectoId) {
+
+      let proyecto =
+        proyectoActual(proyectoId).data;
+
+      return estaAutenticado()
+        && proyecto.miembrosUids is list
+        && request.auth.uid
+          in proyecto.miembrosUids;
+    }
+
+
+    // =====================================================
+    // RESPONSABLE VÁLIDO PARA TAREA
+    // =====================================================
+
+    function responsableTareaValidoDespues(
+      proyectoId,
+      uid,
+      nombre
+    ) {
+
+      return uid is string
+        && nombre is string
+        && (
+
+          // SIN ASIGNAR
+          (
+            uid == ""
+            &&
+            nombre == ""
+          )
+
+          ||
+
+          // RESPONSABLE GENERAL DEL PROYECTO
+          (
+            uid != ""
+            &&
+            uidEsResponsableProyecto(
+              proyectoId,
+              uid
+            )
+          )
+
+          ||
+
+          // USUARIO AUTORIZADO
+          (
+            uid != ""
+            &&
+            usuarioAsignable(
+              uid
+            )
+          )
+        );
+    }
+
+
+    function responsablesTareaValidos(uids, nombres, uid, nombre) {
+      return uids is list
+        && nombres is list
+        && uids.size() == nombres.size()
+        && uids.size() <= 5
+        && (
+          (
+            uids.size() == 0
+            && uid == ""
+            && nombre == ""
+          )
+          ||
+          (
+            uids.size() > 0
+            && uid == uids[0]
+            && nombre == nombres[0]
+            && usuarioAsignable(uids[0])
+            && nombres[0] is string
+            && (uids.size() < 2 || (usuarioAsignable(uids[1]) && nombres[1] is string))
+            && (uids.size() < 3 || (usuarioAsignable(uids[2]) && nombres[2] is string))
+            && (uids.size() < 4 || (usuarioAsignable(uids[3]) && nombres[3] is string))
+            && (uids.size() < 5 || (usuarioAsignable(uids[4]) && nombres[4] is string))
+          )
+        );
+    }
+
+
+    function eventoOutboxValido(eventId) {
+      let evento = request.resource.data;
+      return evento.keys().hasOnly([
+          "tipo",
+          "proyectoId",
+          "tareaId",
+          "solicitudUid",
+          "decision",
+          "actorUid",
+          "createdAt",
+          "status",
+          "assignmentVersion"
+        ])
+        && evento.keys().hasAll([
+          "tipo",
+          "proyectoId",
+          "actorUid",
+          "createdAt",
+          "status"
+        ])
+        && evento.proyectoId is string
+        && evento.proyectoId != ""
+        && evento.actorUid == request.auth.uid
+        && evento.createdAt is timestamp
+        && evento.status == "pending"
+        && (
+          (
+            evento.tipo == "task-created"
+            && evento.tareaId is string
+            && evento.assignmentVersion is string
+            && evento.assignmentVersion != ""
+            && (esGestorClub() || esResponsableProyecto(evento.proyectoId))
+            && !exists(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId))
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("notificationEventId", "") == eventId
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("assignmentVersion", "") == evento.assignmentVersion
+          )
+          ||
+          (
+            evento.tipo == "task-reassigned"
+            && evento.tareaId is string
+            && evento.assignmentVersion is string
+            && evento.assignmentVersion != ""
+            && (esGestorClub() || esResponsableProyecto(evento.proyectoId))
+            && exists(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId))
+            && get(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("assignmentVersion", "") != evento.assignmentVersion
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("notificationEventId", "") == eventId
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("assignmentVersion", "") == evento.assignmentVersion
+          )
+          ||
+          (
+            evento.tipo == "join-requested"
+            && evento.solicitudUid == request.auth.uid
+            && estaAutorizado()
+            && !esGestorClub()
+            && (
+              !exists(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid))
+              || get(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.estado == "rechazada"
+            )
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.estado == "pendiente"
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.get("notificationEventId", "") == eventId
+          )
+          ||
+          (
+            evento.tipo == "join-decision"
+            && evento.solicitudUid is string
+            && evento.decision in ["aceptada", "rechazada"]
+            && (esGestorClub() || esResponsableProyecto(evento.proyectoId))
+            && get(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.estado == "pendiente"
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.estado == evento.decision
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.get("notificationEventId", "") == eventId
+          )
+        );
+    }
+
+    // Admin reporting uses collection-group queries for project tasks.
+    match /{path=**}/tareas/{tareaId} {
+      allow read: if esAdministrador();
+    }
+
+    match /clubSettings/{settingId} {
+      allow get: if settingId == "branding";
+      allow list: if false;
+      allow create, update: if settingId == "branding"
+        && esAdministrador()
+        && request.resource.data.keys().hasOnly(["logoUrl", "logoPath", "updatedAt"])
+        && request.resource.data.logoUrl is string
+        && request.resource.data.logoUrl.size() <= 2048
+        && request.resource.data.logoPath is string
+        && request.resource.data.logoPath.matches('^club-assets/branding/logo-[0-9]+\\.webp$')
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if settingId == "branding" && esAdministrador();
+    }
+
+// =====================================================
+    // RESERVAS DE RECURSOS
+
+// =====================================================
+
+    match /reservas/{reservaId} {
+
+      allow create: if
+        estaAutenticado()
+        && (estaAutorizado() || esAdministrador())
+        && request.resource.data.keys().hasOnly([
+          "recursoNombre",
+          "recursoId",
+          "cantidadSolicitada",
+          "motivo",
+          "solicitanteUid",
+          "solicitanteNombre",
+          "estado",
+          "fechaReserva",
+          "fechaInicioUso",
+          "fechaDevolucion",
+          "fechaCreacion",
+          "aprobadoPorUid",
+          "aprobadoPorNombre",
+          "accionSolicitada",
+          "fechaDevolucionPropuesta",
+          "motivoSolicitud",
+          "estadoSolicitud",
+          "resueltaPorUid",
+          "resueltaPorNombre"
+        ])
+        && request.resource.data.keys().hasAll([
+          "recursoNombre",
+          "recursoId",
+          "cantidadSolicitada",
+          "motivo",
+          "solicitanteUid",
+          "solicitanteNombre",
+          "estado",
+          "fechaReserva",
+          "fechaInicioUso",
+          "fechaDevolucion",
+          "fechaCreacion"
+        ])
+        && request.resource.data.recursoNombre is string
+        && request.resource.data.recursoNombre.size() > 0
+        && request.resource.data.recursoId is string
+        && request.resource.data.recursoId.size() > 0
+        && request.resource.data.cantidadSolicitada is int
+        && request.resource.data.cantidadSolicitada > 0
+        && get(
+          /databases/$(database)/documents/inventario/$(request.resource.data.recursoId)
+        ).data.cantidad >= request.resource.data.cantidadSolicitada
+        && get(
+          /databases/$(database)/documents/inventario/$(request.resource.data.recursoId)
+        ).data.estado == "Disponible"
+        && request.resource.data.motivo is string
+        && request.resource.data.solicitanteUid == request.auth.uid
+        && request.resource.data.solicitanteNombre is string
+        && request.resource.data.estado == "Pendiente"
+        && request.resource.data.fechaReserva is timestamp
+        && request.resource.data.fechaInicioUso is timestamp
+        && request.resource.data.fechaDevolucion is timestamp
+        && request.resource.data.fechaReserva
+          == request.resource.data.fechaInicioUso
+        && request.resource.data.fechaDevolucion
+          >= request.resource.data.fechaInicioUso
+        && request.resource.data.fechaCreacion is timestamp;
+
+      allow read: if
+        estaAutenticado()
+        && (
+          esAdministrador()
+          || resource.data.solicitanteUid == request.auth.uid
+        );
+
+      allow update: if estaAutenticado() && (
+        (
+          esAdministrador()
+          && resource.data.estado == "Pendiente"
+          && request.resource.data.estado in ["Aprobada", "Rechazada"]
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "aprobadoPorUid", "aprobadoPorNombre"
+          ])
+          && (
+            request.resource.data.estado == "Rechazada"
+            || (
+              request.resource.data.aprobadoPorUid == request.auth.uid
+              && request.resource.data.aprobadoPorNombre is string
+            )
+          )
+        )
+        || (
+          resource.data.solicitanteUid == request.auth.uid
+          && resource.data.estado == "Aprobada"
+          && resource.data.get("estadoSolicitud", "") != "Pendiente"
+          && request.resource.data.estado == "Aprobada"
+          && request.resource.data.get("accionSolicitada", "") in ["Devolucion", "Prorroga"]
+          && request.resource.data.get("estadoSolicitud", "") == "Pendiente"
+          && request.resource.data.get("motivoSolicitud", "") is string
+          && (
+            request.resource.data.get("fechaDevolucionPropuesta", null) == null
+            || request.resource.data.get("fechaDevolucionPropuesta", null) is timestamp
+          )
+          && (
+            request.resource.data.accionSolicitada == "Devolucion"
+            || (
+              request.resource.data.accionSolicitada == "Prorroga"
+              && request.resource.data.fechaDevolucionPropuesta is timestamp
+              && request.resource.data.fechaDevolucionPropuesta > resource.data.fechaDevolucion
+            )
+          )
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "accionSolicitada", "fechaDevolucionPropuesta", "motivoSolicitud", "estadoSolicitud"
+          ])
+        )
+        || (
+          esAdministrador()
+          && resource.data.estado == "Aprobada"
+          && resource.data.get("estadoSolicitud", "") == "Pendiente"
+          && request.resource.data.estado == "Aprobada"
+          && request.resource.data.estadoSolicitud in ["Aprobada", "Rechazada"]
+          && request.resource.data.resueltaPorUid == request.auth.uid
+          && request.resource.data.resueltaPorNombre is string
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "fechaDevolucion", "estadoSolicitud", "resueltaPorUid", "resueltaPorNombre"
+          ])
+          && (
+            request.resource.data.estadoSolicitud == "Rechazada"
+            || (
+              resource.data.accionSolicitada == "Prorroga"
+              && request.resource.data.fechaDevolucion == resource.data.fechaDevolucionPropuesta
+            )
+          )
+        )
+        || (
+          resource.data.solicitanteUid == request.auth.uid
+          && resource.data.estado == "Pendiente"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado"])
+          && request.resource.data.estado == "Cancelada"
+        )
+      );
+
+      allow delete: if esAdministrador();
+    }
+
+    // =====================================================
+    // PRESTAMOS ARCHIVADOS
+
+// =====================================================
+
+    match /prestamosArchivados/{prestamoId} {
+      allow read: if estaAutenticado()
+        && (esAdministrador() || resource.data.solicitanteUid == request.auth.uid);
+      allow create: if esAdministrador()
+        && request.resource.data.keys().hasOnly([
+          "reservaId", "recursoId", "recursoNombre", "cantidadSolicitada", "motivo",
+          "solicitanteUid", "solicitanteNombre", "fechaInicioUso", "fechaDevolucion",
+          "aprobadoPorUid", "aprobadoPorNombre", "devueltoPorUid", "devueltoPorNombre",
+          "fechaDevolucionReal", "estado"
+        ])
+        && request.resource.data.keys().hasAll([
+          "reservaId", "recursoId", "recursoNombre", "cantidadSolicitada", "motivo",
+          "solicitanteUid", "solicitanteNombre", "fechaInicioUso", "fechaDevolucion",
+          "aprobadoPorUid", "aprobadoPorNombre", "devueltoPorUid", "devueltoPorNombre",
+          "fechaDevolucionReal", "estado"
+        ])
+        && request.resource.data.estado == "Devuelta"
+        && request.resource.data.devueltoPorUid == request.auth.uid
+        && request.resource.data.fechaDevolucionReal is timestamp;
+      allow update, delete: if false;
+    }
+
+// =====================================================
+    // INVENTARIO
+
+// =====================================================
+
+    match /inventario/{itemId} {
+
+      allow read: if estaAutorizado() || esAdministrador();
+
+      allow create: if
+        esAdministrador()
+        && request.resource.data.keys().hasOnly([
+          "nombre",
+          "descripcion",
+          "categoria",
+          "cantidad",
+          "ubicacion",
+          "estado",
+          "creadoPorUid",
+          "creadoPorNombre",
+          "fechaCreacion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "nombre",
+          "descripcion",
+          "categoria",
+          "cantidad",
+          "ubicacion",
+          "estado",
+          "creadoPorUid",
+          "creadoPorNombre",
+          "fechaCreacion"
+        ])
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() > 0
+        && request.resource.data.descripcion is string
+        && request.resource.data.categoria is string
+        && request.resource.data.cantidad is int
+        && request.resource.data.cantidad >= 0
+        && request.resource.data.ubicacion is string
+        && request.resource.data.estado in [
+          "Disponible",
+          "Prestado",
+          "Mantenimiento",
+          "Baja"
+        ]
+        && request.resource.data.creadoPorUid == request.auth.uid
+        && request.resource.data.creadoPorNombre is string
+        && request.resource.data.fechaCreacion is timestamp;
+
+      allow update: if
+        esAdministrador()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["estado", "cantidad"])
+        && request.resource.data.cantidad is int
+        && request.resource.data.cantidad >= 0
+        && request.resource.data.estado in [
+          "Disponible",
+          "Prestado",
+          "Mantenimiento",
+          "Baja"
+        ];
+
+      allow delete: if esAdministrador();
+    }
+
+// =====================================================
+    // AVISOS
+
+// =====================================================
+
+    match /avisos/{avisoId} {
+
+      allow read: if estaAutorizado() || esAdministrador();
+
+      allow create: if
+        esGestorClub()
+        && request.resource.data.keys().hasOnly([
+          "titulo",
+          "mensaje",
+          "prioridad",
+          "autorUid",
+          "autorNombre",
+          "fechaCreacion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "titulo",
+          "mensaje",
+          "prioridad",
+          "autorUid",
+          "autorNombre",
+          "fechaCreacion"
+        ])
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.mensaje is string
+        && request.resource.data.prioridad in [
+          "Importante",
+          "Normal",
+          "Baja"
+        ]
+        && request.resource.data.autorUid == request.auth.uid
+        && request.resource.data.autorNombre is string
+        && request.resource.data.fechaCreacion is timestamp;
+
+      allow update: if false;
+      allow delete: if esGestorClub();
+
+      match /reacciones/{userId} {
+        allow read: if
+          estaAutenticado()
+          && (estaAutorizado() || esAdministrador());
+
+        allow create, update: if
+          esPropietario(userId)
+          && (estaAutorizado() || esAdministrador())
+          && request.resource.data.keys().hasOnly([
+            "tipo",
+            "fechaActualizacion"
+          ])
+          && request.resource.data.keys().hasAll([
+            "tipo",
+            "fechaActualizacion"
+          ])
+          && request.resource.data.tipo in [
+            "me_gusta",
+            "me_encanta",
+            "celebrar",
+            "apoyar"
+          ]
+          && request.resource.data.fechaActualizacion is timestamp;
+
+        allow delete: if
+          esPropietario(userId)
+          && (estaAutorizado() || esAdministrador());
+      }
+    }
+
+
+    // Eventos validados y creados atómicamente con la acción de negocio.
+    // =====================================================
+    // OUTBOX DE NOTIFICACIONES
+
+// =====================================================
+
+    match /notificationOutbox/{eventId} {
+      allow create: if estaAutenticado() && eventoOutboxValido(eventId);
+      allow read, update, delete: if false;
+    }
+
+match /actividadesClub/{actividadId} {
+      allow read: if estaAutorizado() || esAdministrador();
+
+      allow create: if
+        esGestorClub()
+        && actividadClubValida(request.resource.data);
+
+      allow update: if
+        esGestorClub()
+        && actividadClubValida(request.resource.data)
+        && request.resource.data.creadoPorUid == resource.data.creadoPorUid
+        && request.resource.data.fechaCreacion == resource.data.fechaCreacion;
+
+      allow delete: if esGestorClub();
+    }
+
+// =====================================================
+    // ACTIVIDAD ADMINISTRATIVA
+// =====================================================
+
+    match /actividadAdmin/{eventoId} {
+      allow read: if esAdministrador();
+
+      allow create: if
+        esAdministrador()
+        && request.resource.data.keys().hasOnly([
+          "tipo",
+          "titulo",
+          "detalle",
+          "emisorUid",
+          "emisorNombre",
+          "entidadId",
+          "fechaCreacion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "tipo",
+          "titulo",
+          "detalle",
+          "emisorUid",
+          "emisorNombre",
+          "entidadId",
+          "fechaCreacion"
+        ])
+        && request.resource.data.tipo in [
+          "prestamo_aprobado",
+          "prestamo_rechazado",
+          "prestamo_devuelto",
+          "prestamo_eliminado",
+          "prestamo_prorroga_aprobada",
+          "prestamo_prorroga_rechazada",
+          "prestamo_devolucion_rechazada",
+          "usuario_autorizado",
+          "usuario_bloqueado",
+          "admin_promovido",
+          "usuario_eliminado"
+        ]
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.titulo.size() <= 120
+        && request.resource.data.detalle is string
+        && request.resource.data.detalle.size() <= 500
+        && request.resource.data.emisorUid == request.auth.uid
+        && request.resource.data.emisorNombre is string
+        && request.resource.data.emisorNombre.size() > 0
+        && request.resource.data.emisorNombre.size() <= 120
+        && request.resource.data.entidadId is string
+        && request.resource.data.entidadId.size() <= 200
+        && request.resource.data.fechaCreacion is timestamp;
+
+      allow update, delete: if false;
+    }
+
+match /cursos/{cursoId} {
+      allow read: if esAdministrador()
+        || (estaAutorizado() && resource.data.estado == "Publicado");
+
+      allow create: if
+        esAdministrador()
+        && cursoValido(request.resource.data)
+        && request.resource.data.estado == "Publicado"
+        && request.resource.data.creadoPorUid == request.auth.uid;
+
+      allow update: if
+        esAdministrador()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado"])
+        && request.resource.data.estado in ["Publicado", "Cerrado"]
+        && cursoValido(request.resource.data)
+        && request.resource.data.creadoPorUid == resource.data.creadoPorUid
+        && request.resource.data.fechaCreacion == resource.data.fechaCreacion;
+
+      allow delete: if false;
+
+      match /inscripciones/{uid} {
+        allow read: if esAdministrador()
+          || (esPropietario(uid) && estaAutorizado());
+
+        allow create: if
+          esPropietario(uid)
+          && estaAutorizado()
+          && get(/databases/$(database)/documents/cursos/$(cursoId)).data.estado == "Publicado"
+          && request.resource.data.keys().hasOnly([
+            "uid", "nombreCompleto", "carrera", "semestre", "fechaInscripcion"
+          ])
+          && request.resource.data.keys().hasAll([
+            "uid", "nombreCompleto", "carrera", "semestre", "fechaInscripcion"
+          ])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.nombreCompleto is string
+          && request.resource.data.nombreCompleto.size() > 0
+          && request.resource.data.nombreCompleto.size() <= 120
+          && request.resource.data.carrera is string
+          && request.resource.data.carrera.size() <= 100
+          && request.resource.data.semestre is string
+          && request.resource.data.semestre.size() <= 40
+          && request.resource.data.fechaInscripcion is timestamp;
+
+        allow update: if false;
+        allow delete: if esAdministrador()
+          || (esPropietario(uid) && estaAutorizado());
+      }
+    }
+
+// Sugerencias y reportes enviados desde la app.
+    match /sugerencias/{reporteId} {
+      allow create: if correoInstitucionalVerificado()
+        && request.resource.data.keys().hasOnly([
+          "uid", "nombre", "tipo", "titulo", "detalle", "estado",
+          "respuesta", "fechaCreacion", "fechaActualizacion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "uid", "nombre", "tipo", "titulo", "detalle", "estado",
+          "respuesta", "fechaCreacion", "fechaActualizacion"
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() <= 120
+        && request.resource.data.tipo in ["sugerencia", "error"]
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.titulo.size() <= 100
+        && request.resource.data.detalle is string
+        && request.resource.data.detalle.size() > 0
+        && request.resource.data.detalle.size() <= 2000
+        && request.resource.data.estado == "recibido"
+        && request.resource.data.respuesta == ""
+        && request.resource.data.fechaCreacion is timestamp
+        && request.resource.data.fechaActualizacion is timestamp;
+
+      allow read: if esGestorClub()
+        || (estaAutenticado() && resource.data.uid == request.auth.uid);
+
+      allow update: if esGestorClub()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "estado", "respuesta", "fechaActualizacion"
+        ])
+        && request.resource.data.estado in ["recibido", "en_revision", "resuelto"]
+        && request.resource.data.respuesta is string
+        && request.resource.data.respuesta.size() <= 1000
+        && request.resource.data.fechaActualizacion is timestamp;
+
+      allow delete: if esAdministrador();
+    }
+
+// =====================================================
+    // USUARIOS
+
+// =====================================================
+
+    match /usuarios/{userId} {
+
+
+      // ===================================================
+      // CREAR CUENTA
+      // ===================================================
+
+      allow create: if
+
+        esPropietario(userId)
+
+        && correoInstitucionalVerificado()
+
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "nombre",
+          "apellido",
+          "nombreCompleto",
+          "correoInstitucional",
+          "carrera",
+          "semestre",
+          "rol",
+          "autorizado",
+          "rostroRegistrado",
+          "fechaCreacion",
+          "fechaRegistro"
+        ])
+
+        && request.resource.data.keys().hasAll([
+          "uid",
+          "correoInstitucional",
+          "nombre",
+          "apellido",
+          "nombreCompleto",
+          "carrera",
+          "semestre",
+          "rol",
+          "autorizado",
+          "rostroRegistrado"
+        ])
+
+        && request.resource.data.uid
+          == request.auth.uid
+
+        && request.resource.data.correoInstitucional
+          == request.auth.token.email
+
+        && request.resource.data.nombre is string
+        && request.resource.data.apellido is string
+        && request.resource.data.nombreCompleto is string
+        && request.resource.data.carrera is string
+        && request.resource.data.carrera.size() > 0
+        && request.resource.data.carrera.size() <= 100
+        && request.resource.data.semestre is string
+        && request.resource.data.semestre.size() > 0
+        && request.resource.data.semestre.size() <= 40
+        && (
+          !request.resource.data.keys().hasAny(["fechaCreacion"])
+          || request.resource.data.fechaCreacion is timestamp
+        )
+        && (
+          !request.resource.data.keys().hasAny(["fechaRegistro"])
+          || request.resource.data.fechaRegistro is timestamp
+        )
+
+        && (
+          (esAdministradorInicial()
+            && request.resource.data.rol == "admin"
+            && request.resource.data.autorizado == true)
+          || (!esAdministradorInicial()
+            && request.resource.data.rol == "estudiante"
+            && request.resource.data.autorizado == false)
+        )
+
+        && request.resource.data.rostroRegistrado
+          == false;
+
+
+      // ===================================================
+      // LEER USUARIOS
+      //
+      // Necesario para los buscadores de responsables.
+      // ===================================================
+
+      allow read: if
+
+        estaAutenticado()
+
+        && (
+          esPropietario(userId)
+          ||
+          esAdministrador()
+          ||
+          estaAutorizado()
+        );
+
+
+      // ===================================================
+      // MODIFICAR USUARIOS
+      // ===================================================
+
+      allow update: if
+        (
+          esAdministrador()
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              "autorizado",
+              "rol",
+              "carrera",
+            "semestre",
+            "departamento"
+            ])
+          && request.resource.data.autorizado is bool
+          && request.resource.data.rol in ["estudiante", "moderador", "admin"]
+          && (!esPropietario(userId) || request.resource.data.rol == resource.data.rol)
+          && resource.data.correoInstitucional is string
+          && (
+            resource.data.correoInstitucional == "plataformapy.oficial@gmail.com"
+            || resource.data.correoInstitucional.matches('^[^@]+@__DOMINIO_INSTITUCIONAL__$')
+          )
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(["carrera"])
+            || (request.resource.data.carrera is string
+              && request.resource.data.carrera.size() <= 100)
+          )
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(["semestre"])
+            || (request.resource.data.semestre is string
+              && request.resource.data.semestre.size() <= 40)
+          )
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(["departamento"])
+            || !request.resource.data.keys().hasAny(["departamento"])
+            || request.resource.data.departamento is string
+          )
+        )
+        || (
+          esPropietario(userId)
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["carrera", "semestre", "nombre", "apellido", "nombreCompleto"])
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(["nombre", "apellido", "nombreCompleto"])
+            || (
+              request.resource.data.nombre is string
+              && request.resource.data.nombre.size() > 0
+              && request.resource.data.nombre.size() <= 60
+              && request.resource.data.apellido is string
+              && request.resource.data.apellido.size() > 0
+              && request.resource.data.apellido.size() <= 60
+              && request.resource.data.nombreCompleto is string
+              && request.resource.data.nombreCompleto == request.resource.data.nombre + " " + request.resource.data.apellido
+            )
+          )
+          && request.resource.data.carrera is string
+          && request.resource.data.carrera.size() > 0
+          && request.resource.data.carrera.size() <= 100
+          && request.resource.data.semestre is string
+          && request.resource.data.semestre.size() > 0
+          && request.resource.data.semestre.size() <= 40
+        );
+
+
+      // ===================================================
+      // ELIMINAR USUARIOS
+      // ===================================================
+
+      allow delete: if esAdministrador();
+
+      match /avisosOcultos/{avisoId} {
+        allow read, delete: if esPropietario(userId) || esAdministrador();
+        allow create: if
+          esPropietario(userId)
+          && request.resource.data.keys().hasOnly(["fechaOcultado"])
+          && request.resource.data.keys().hasAll(["fechaOcultado"])
+          && request.resource.data.fechaOcultado is timestamp;
+        allow update: if false;
+      }
+
+      match /notificaciones/{notificacionId} {
+        allow read: if esPropietario(userId) || esAdministrador();
+
+        allow create: if
+          (
+            esGestorClub()
+            || (
+              request.resource.data.get("tipo", "") == "proyecto_completado"
+              && request.resource.data.get("tareaId", "") == ""
+              && (esGestorClub() || esResponsableProyecto(request.resource.data.proyectoId))
+              && !exists(
+                /databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)/eventos/completado-v1
+              )
+              && getAfter(
+                /databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)/eventos/completado-v1
+              ).data.get("cerradoPorUid", "") == request.auth.uid
+              && (
+                userId in proyectoActual(request.resource.data.proyectoId)
+                  .data.get("miembrosUids", [])
+                || userId == proyectoActual(request.resource.data.proyectoId)
+                  .data.get("responsableUid", "")
+                || get(
+                  /databases/$(database)/documents/usuarios/$(userId)
+                ).data.rol == "admin"
+              )
+            )
+            || (
+              request.resource.data.get("tipo", "") == "proyecto"
+              && request.resource.data.get("tareaId", "") == ""
+              && (esGestorClub() || esResponsableProyecto(request.resource.data.proyectoId))
+              && userId in proyectoActual(request.resource.data.proyectoId)
+                .data.get("miembrosUids", [])
+            )
+            || (
+              (esGestorClub() || esResponsableProyecto(request.resource.data.proyectoId))
+              && request.resource.data.get("tareaId", "") is string
+              && request.resource.data.get("tareaId", "") != ""
+              && get(
+                /databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)/tareas/$(request.resource.data.tareaId)
+              ).data.get("responsableUid", "") == userId
+              || (
+                (esGestorClub() || esResponsableProyecto(request.resource.data.proyectoId))
+                && request.resource.data.get("tareaId", "") is string
+                && request.resource.data.get("tareaId", "") != ""
+                && userId in get(
+                  /databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)/tareas/$(request.resource.data.tareaId)
+                ).data.get("responsableUids", [])
+              )
+            )
+            || (
+              request.resource.data.get("tipo", "") == "prestamo"
+              && request.resource.data.get("proyectoId", "") == ""
+              && request.resource.data.get("reservaId", "") is string
+              && request.resource.data.reservaId != ""
+              && getAfter(
+                /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+              ).data.solicitanteUid == request.auth.uid
+              && getAfter(
+                /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+              ).data.estado == "Aprobada"
+              && getAfter(
+                /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+              ).data.estadoSolicitud == "Pendiente"
+              && (
+                getAfter(
+                  /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+                ).data.get("aprobadoPorUid", "") == userId
+                || (
+                  getAfter(
+                    /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+                  ).data.get("aprobadoPorUid", "") == ""
+                  && get(
+                    /databases/$(database)/documents/usuarios/$(userId)
+                  ).data.rol == "admin"
+                )
+              )
+            )
+          )
+          && request.resource.data.keys().hasOnly([
+            "proyectoId",
+            "tipo",
+            "titulo",
+            "mensaje",
+            "prioridad",
+            "emisorUid",
+            "fechaCreacion",
+            "leida",
+            "tareaId",
+            "reservaId"
+          ])
+          && request.resource.data.keys().hasAll([
+            "proyectoId",
+            "titulo",
+            "mensaje",
+            "prioridad",
+            "emisorUid",
+            "fechaCreacion",
+            "leida"
+          ])
+          && request.resource.data.proyectoId is string
+          && request.resource.data.titulo is string
+          && request.resource.data.mensaje is string
+          && request.resource.data.prioridad in ["Importante", "Normal", "Baja"]
+          && request.resource.data.emisorUid == request.auth.uid
+          && request.resource.data.fechaCreacion is timestamp
+          && request.resource.data.leida == false;
+
+        allow update: if
+          esPropietario(userId)
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["leida"])
+          && request.resource.data.leida == true;
+
+        allow delete: if esPropietario(userId) || esAdministrador();
+      }
+
+      match /fcmTokens/{installationId} {
+        allow read: if esAdministrador();
+        allow create, update: if
+          esPropietario(userId)
+          && request.resource.data.keys().hasOnly([
+            "token",
+            "platform",
+            "appVersion",
+            "createdAt",
+            "updatedAt"
+          ])
+          && request.resource.data.keys().hasAll([
+            "token",
+            "platform",
+            "appVersion",
+            "createdAt",
+            "updatedAt"
+          ])
+          && request.resource.data.token is string
+          && request.resource.data.token.size() >= 100
+          && request.resource.data.token.size() <= 4096
+          && request.resource.data.platform == "android"
+          && request.resource.data.appVersion is string
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if esPropietario(userId) || esAdministrador();
+      }
+
+      match /calendario/{entradaId} {
+        allow read: if esPropietario(userId);
+
+        allow create: if
+          esPropietario(userId)
+          && (estaAutorizado() || esAdministrador())
+          && entradaCalendarioPersonalValida(request.resource.data);
+
+        allow update: if
+          esPropietario(userId)
+          && (estaAutorizado() || esAdministrador())
+          && entradaCalendarioPersonalValida(request.resource.data)
+          && request.resource.data.fechaCreacion == resource.data.fechaCreacion;
+
+        allow delete: if esPropietario(userId);
+      }
+    }
+
+// =====================================================
+    // ACCESOS
+
+// =====================================================
+
+    match /accesos/{accesoId} {
+
+
+      allow create: if
+
+        (estaAutorizado() || esAdministrador())
+
+        && request.resource.data.uid
+          == request.auth.uid
+
+        && request.resource.data.tipo == "entrada";
+
+
+      allow read: if
+
+        estaAutenticado()
+
+        && (
+          resource.data.uid
+            == request.auth.uid
+
+          ||
+
+          esAdministrador()
+        );
+
+
+      allow update: if false;
+
+      allow delete: if esAdministrador();
+    }
+
+// =====================================================
+    // PRESENCIAS
+
+// =====================================================
+
+    match /presencias/{userId} {
+
+
+      allow read: if
+
+        esPropietario(userId)
+
+        ||
+
+        esAdministrador();
+
+
+      allow create, update: if
+
+        esPropietario(userId)
+
+        && estaAutorizado();
+
+
+      allow delete: if esAdministrador();
+    }
+
+// Reserved for a future physical door controller. Mobile clients must never
+// read device telemetry or create, modify, or consume hardware commands.
+match /puertas/{puertaId} {
+  allow read, write: if false;
+
+  match /{subcollection}/{documentId} {
+    allow read, write: if false;
+  }
+}
+
+// =====================================================
+    // PROYECTOS
+
+// =====================================================
+
+    match /proyectos/{proyectoId} {
+
+
+      // ===================================================
+      // LEER
+      // ===================================================
+
+      allow read: if
+
+        esGestorClub()
+
+        ||
+
+        estaAutorizado();
+
+
+
+      // ===================================================
+      // CREAR
+      // ===================================================
+
+      allow create: if
+
+        esGestorClub()
+
+        && request.resource.data.creadoPorUid
+          == request.auth.uid
+
+        && request.resource.data.estado
+          == "Activo"
+
+        && request.resource.data.miembrosUids
+          is list
+
+        && request.resource.data.miembrosUids.size()
+          == 0
+
+        && request.resource.data.departamentos is list
+
+        && request.resource.data.departamentos.size()
+          <= 3
+
+        && request.resource.data.departamentos.hasOnly([
+          "Electrónica",
+          "Mecánica",
+          "Programación"
+        ])
+
+        && request.resource.data.responsableUid
+          is string
+
+        && request.resource.data.responsableUid
+          != ""
+
+        && request.resource.data.responsableNombre
+          is string
+
+        && request.resource.data.responsableNombre
+          != ""
+
+        && usuarioAsignable(
+          request.resource.data.responsableUid
+        );
+
+
+
+      // ===================================================
+      // ACTUALIZAR PROYECTO
+      // ===================================================
+
+      allow update: if
+
+
+        // =================================================
+        // CASO 1
+        //
+        // Responsable del proyecto modifica miembros.
+        //
+        // Esto se usa al:
+        // - aceptar solicitud
+        // - asignar tarea a nuevo usuario
+        // =================================================
+
+        (
+          (esGestorClub() || esResponsableProyecto(
+            proyectoId
+          ))
+
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "miembrosUids"
+            ])
+
+          && request.resource.data.miembrosUids
+            is list
+        )
+
+
+        ||
+
+
+        // =================================================
+        // CASO 2
+        //
+        // El creador cambia el responsable general.
+        // =================================================
+
+        (
+          (esCreadorProyecto(proyectoId) || esGestorClub())
+
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "responsableUid",
+              "responsableNombre"
+            ])
+
+          && request.resource.data.responsableUid
+            is string
+
+          && request.resource.data.responsableUid
+            != ""
+
+          && request.resource.data.responsableNombre
+            is string
+
+          && request.resource.data.responsableNombre
+            != ""
+
+          && usuarioAsignable(
+            request.resource.data.responsableUid
+          )
+        );
+
+
+
+      // ===================================================
+      // ELIMINAR PROYECTO
+      // ===================================================
+
+      allow delete: if
+        esCreadorProyecto(proyectoId)
+        || esGestorClub();
+
+
+      match /eventos/{eventoId} {
+        allow read: if esGestorClub() || estaAutorizado();
+
+        allow create: if
+          eventoId == "completado-v1"
+          && (esGestorClub() || esResponsableProyecto(proyectoId))
+          && request.resource.data.keys().hasOnly([
+            "tipo",
+            "fechaCreacion",
+            "cerradoPorUid",
+            "cerradoPorNombre",
+            "cantidadTareas"
+          ])
+          && request.resource.data.keys().hasAll([
+            "tipo",
+            "fechaCreacion",
+            "cerradoPorUid",
+            "cerradoPorNombre",
+            "cantidadTareas"
+          ])
+          && request.resource.data.tipo == "proyecto_completado"
+          && request.resource.data.fechaCreacion is timestamp
+          && request.resource.data.cerradoPorUid == request.auth.uid
+          && request.resource.data.cerradoPorNombre is string
+          && request.resource.data.cantidadTareas is int
+          && request.resource.data.cantidadTareas > 0;
+
+        allow update: if false;
+        allow delete: if
+          (esCreadorProyecto(proyectoId) || esGestorClub())
+          && !existsAfter(
+            /databases/$(database)/documents/proyectos/$(proyectoId)
+          );
+      }
+
+
+
+      // ===================================================
+      // SOLICITUDES
+      // ===================================================
+
+      match /solicitudes/{solicitudUid} {
+
+
+        // =================================================
+        // LEER
+        // =================================================
+
+        allow read: if
+
+          estaAutenticado()
+
+          && (
+
+            request.auth.uid
+              == solicitudUid
+
+            ||
+
+          (esGestorClub() || esResponsableProyecto(
+            proyectoId
+          ))
+
+            ||
+
+            esGestorClub()
+
+            ||
+
+            (
+              estaAutorizado()
+
+              && resource.data.estado
+                == "aceptada"
+            )
+          );
+
+
+
+        // =================================================
+        // CREAR
+        // =================================================
+
+        allow create: if
+
+          estaAutorizado()
+
+          && !esGestorClub()
+
+          && solicitudUid
+            == request.auth.uid
+
+          && request.resource.data.uid
+            == request.auth.uid
+
+          && request.resource.data.estado
+            == "pendiente"
+
+          && (
+            !request.resource.data.keys().hasAny(["notificationEventId"])
+            || (
+              request.resource.data.notificationEventId is string
+              && existsAfter(
+                /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+              )
+            )
+          );
+
+
+
+        // =================================================
+        // ACTUALIZAR
+        // =================================================
+
+        allow update: if
+
+
+          // RESPONSABLE ACEPTA / RECHAZA
+
+          (
+            (esGestorClub() || esResponsableProyecto(
+              proyectoId
+            ))
+
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                "estado",
+                "notificationEventId"
+              ])
+
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(["notificationEventId"])
+              || (
+                request.resource.data.notificationEventId is string
+                && existsAfter(
+                  /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+                )
+              )
+            )
+
+            && (
+              request.resource.data.estado
+                == "aceptada"
+
+              ||
+
+              request.resource.data.estado
+                == "rechazada"
+            )
+          )
+
+
+          ||
+
+
+          // ESTUDIANTE VUELVE A SOLICITAR
+
+          (
+            estaAutorizado()
+
+            && !esGestorClub()
+
+            && solicitudUid
+              == request.auth.uid
+
+            && resource.data.uid
+              == request.auth.uid
+
+            && request.resource.data.uid
+              == request.auth.uid
+
+            && (
+              !request.resource.data.keys().hasAny(["notificationEventId"])
+              || (
+                request.resource.data.notificationEventId is string
+                && existsAfter(
+                  /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+                )
+              )
+            )
+
+            && resource.data.estado
+              == "rechazada"
+
+            && request.resource.data.estado
+              == "pendiente"
+          );
+
+
+
+        // =================================================
+        // ELIMINAR
+        // =================================================
+
+        allow delete: if
+          esCreadorProyecto(proyectoId)
+          || esResponsableProyecto(proyectoId)
+          || esGestorClub();
+      }
+
+
+
+      // ===================================================
+      // TAREAS
+      // ===================================================
+
+      match /tareas/{tareaId} {
+
+
+        // =================================================
+        // LEER
+        // =================================================
+
+        allow read: if
+
+          estaAutenticado()
+
+          && (
+            esGestorClub()
+            ||
+          (esGestorClub() || esResponsableProyecto(
+            proyectoId
+          ))
+
+            || resource.data.get("responsableUid", "") == request.auth.uid
+            || request.auth.uid in resource.data.get("responsableUids", [])
+
+            ||
+
+            esMiembroProyecto(
+              proyectoId
+            )
+          );
+
+
+
+        // =================================================
+        // CREAR TAREA
+        // =================================================
+
+        allow create: if
+
+          (esGestorClub() || esResponsableProyecto(
+            proyectoId
+          ))
+
+          && !exists(
+            /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
+          )
+
+          && request.resource.data.keys()
+            .hasAll([
+              "proyectoId",
+              "titulo",
+              "descripcion",
+              "responsableUid",
+              "responsableNombre",
+              "responsableUids",
+              "responsablesNombres",
+              "prioridad",
+              "fechaLimite",
+              "estado",
+              "fechaCreacion"
+            ])
+
+          && request.resource.data.keys()
+            .hasOnly([
+              "proyectoId",
+              "titulo",
+              "descripcion",
+              "responsableUid",
+              "responsableNombre",
+              "responsableUids",
+              "responsablesNombres",
+              "prioridad",
+              "fechaLimite",
+              "estado",
+              "fechaCreacion",
+              "notificationEventId",
+              "assignmentVersion"
+            ])
+
+          && request.resource.data.proyectoId
+            == proyectoId
+
+          && request.resource.data.titulo
+            is string
+
+          && request.resource.data.titulo
+            != ""
+
+          && request.resource.data.descripcion
+            is string
+
+          && request.resource.data.responsableUid
+            is string
+
+          && request.resource.data.responsableNombre
+            is string
+
+          && request.resource.data.prioridad
+            is string
+
+          && (
+            request.resource.data.fechaLimite == null
+            || request.resource.data.fechaLimite is timestamp
+          )
+
+          && responsablesTareaValidos(
+            request.resource.data.responsableUids,
+            request.resource.data.responsablesNombres,
+            request.resource.data.responsableUid,
+            request.resource.data.responsableNombre
+          )
+
+          && request.resource.data.estado
+            == "Pendiente"
+
+          && (
+            !request.resource.data.keys().hasAny(["notificationEventId", "assignmentVersion"])
+            || (
+              request.resource.data.notificationEventId is string
+              && request.resource.data.assignmentVersion is string
+              && existsAfter(
+                /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+              )
+            )
+          )
+
+          && responsableTareaValidoDespues(
+            proyectoId,
+            request.resource.data.responsableUid,
+            request.resource.data.responsableNombre
+          );
+
+
+
+        // =================================================
+        // ACTUALIZAR TAREA
+        // =================================================
+
+        allow update: if
+
+          !exists(
+            /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
+          )
+
+          && (
+
+
+          // =================================================
+          // CASO 1
+          //
+          // RESPONSABLE DEL PROYECTO
+          // CAMBIA RESPONSABLE DE LA TAREA
+          // =================================================
+
+          (
+            (esGestorClub() || esResponsableProyecto(
+              proyectoId
+            ))
+
+            && resource.data.estado
+              == "Pendiente"
+
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+              "responsableUid",
+              "responsableNombre",
+              "responsableUids",
+              "responsablesNombres",
+              "notificationEventId",
+              "assignmentVersion"
+              ])
+
+            && request.resource.data.responsableUid
+              is string
+
+            && request.resource.data.responsableNombre
+              is string
+
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(["notificationEventId", "assignmentVersion"])
+              || (
+                request.resource.data.notificationEventId is string
+                && request.resource.data.assignmentVersion is string
+                && request.resource.data.assignmentVersion != resource.data.get("assignmentVersion", "")
+                && existsAfter(
+                  /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+                )
+              )
+            )
+
+            && responsablesTareaValidos(
+              request.resource.data.responsableUids,
+              request.resource.data.responsablesNombres,
+              request.resource.data.responsableUid,
+              request.resource.data.responsableNombre
+            )
+          )
+
+
+          ||
+
+
+          // =================================================
+          // CASO 2
+          //
+          // RESPONSABLE DEL PROYECTO
+          // EDITA TÍTULO Y DESCRIPCIÓN
+          // =================================================
+
+          (
+            (esGestorClub() || esResponsableProyecto(
+              proyectoId
+            ))
+
+            && resource.data.estado
+              == "Pendiente"
+
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                "titulo",
+                "descripcion"
+              ])
+
+            && request.resource.data.titulo
+              is string
+
+            && request.resource.data.titulo
+              != ""
+
+            && request.resource.data.descripcion
+              is string
+          )
+
+
+          ||
+
+
+          // =================================================
+          // CASO 3
+          //
+          // PERSONA ASIGNADA MARCA COMO COMPLETADA
+          // =================================================
+
+          (
+            estaAutenticado()
+            && (
+              resource.data.get("responsableUid", "") == request.auth.uid
+              || request.auth.uid in resource.data.get("responsableUids", [])
+            )
+
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                "estado"
+              ])
+
+            && resource.data.estado
+              == "Pendiente"
+
+            && request.resource.data.estado
+              == "Completada"
+          )
+          );
+
+
+
+        // =================================================
+        // ELIMINAR TAREA
+        // =================================================
+
+        allow delete: if
+          esCreadorProyecto(proyectoId)
+          || esResponsableProyecto(proyectoId)
+          || esGestorClub()
+          || (
+            estaAutenticado()
+            && resource.data.estado == "Completada"
+            && (
+              resource.data.get("responsableUid", "") == request.auth.uid
+              || request.auth.uid in resource.data.get("responsableUids", [])
+            )
+            && exists(
+              /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
+            )
+          );
+      }
+
+    }
+  }
+}

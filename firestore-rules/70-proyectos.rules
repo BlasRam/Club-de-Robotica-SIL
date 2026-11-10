@@ -1,0 +1,649 @@
+// =====================================================
+    // PROYECTOS
+
+// =====================================================
+
+    match /proyectos/{proyectoId} {
+
+
+      // ===================================================
+      // LEER
+      // ===================================================
+
+      allow read: if
+
+        esGestorClub()
+
+        ||
+
+        estaAutorizado();
+
+
+
+      // ===================================================
+      // CREAR
+      // ===================================================
+
+      allow create: if
+
+        esGestorClub()
+
+        && request.resource.data.creadoPorUid
+          == request.auth.uid
+
+        && request.resource.data.estado
+          == "Activo"
+
+        && request.resource.data.miembrosUids
+          is list
+
+        && request.resource.data.miembrosUids.size()
+          == 0
+
+        && request.resource.data.departamentos is list
+
+        && request.resource.data.departamentos.size()
+          <= 3
+
+        && request.resource.data.departamentos.hasOnly([
+          "Electrónica",
+          "Mecánica",
+          "Programación"
+        ])
+
+        && request.resource.data.responsableUid
+          is string
+
+        && request.resource.data.responsableUid
+          != ""
+
+        && request.resource.data.responsableNombre
+          is string
+
+        && request.resource.data.responsableNombre
+          != ""
+
+        && usuarioAsignable(
+          request.resource.data.responsableUid
+        );
+
+
+
+      // ===================================================
+      // ACTUALIZAR PROYECTO
+      // ===================================================
+
+      allow update: if
+
+
+        // =================================================
+        // CASO 1
+        //
+        // Responsable del proyecto modifica miembros.
+        //
+        // Esto se usa al:
+        // - aceptar solicitud
+        // - asignar tarea a nuevo usuario
+        // =================================================
+
+        (
+          (esGestorClub() || esResponsableProyecto(
+            proyectoId
+          ))
+
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "miembrosUids"
+            ])
+
+          && request.resource.data.miembrosUids
+            is list
+        )
+
+
+        ||
+
+
+        // =================================================
+        // CASO 2
+        //
+        // El creador cambia el responsable general.
+        // =================================================
+
+        (
+          (esCreadorProyecto(proyectoId) || esGestorClub())
+
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "responsableUid",
+              "responsableNombre"
+            ])
+
+          && request.resource.data.responsableUid
+            is string
+
+          && request.resource.data.responsableUid
+            != ""
+
+          && request.resource.data.responsableNombre
+            is string
+
+          && request.resource.data.responsableNombre
+            != ""
+
+          && usuarioAsignable(
+            request.resource.data.responsableUid
+          )
+        );
+
+
+
+      // ===================================================
+      // ELIMINAR PROYECTO
+      // ===================================================
+
+      allow delete: if
+        esCreadorProyecto(proyectoId)
+        || esGestorClub();
+
+
+      match /eventos/{eventoId} {
+        allow read: if esGestorClub() || estaAutorizado();
+
+        allow create: if
+          eventoId == "completado-v1"
+          && (esGestorClub() || esResponsableProyecto(proyectoId))
+          && request.resource.data.keys().hasOnly([
+            "tipo",
+            "fechaCreacion",
+            "cerradoPorUid",
+            "cerradoPorNombre",
+            "cantidadTareas"
+          ])
+          && request.resource.data.keys().hasAll([
+            "tipo",
+            "fechaCreacion",
+            "cerradoPorUid",
+            "cerradoPorNombre",
+            "cantidadTareas"
+          ])
+          && request.resource.data.tipo == "proyecto_completado"
+          && request.resource.data.fechaCreacion is timestamp
+          && request.resource.data.cerradoPorUid == request.auth.uid
+          && request.resource.data.cerradoPorNombre is string
+          && request.resource.data.cantidadTareas is int
+          && request.resource.data.cantidadTareas > 0;
+
+        allow update: if false;
+        allow delete: if
+          (esCreadorProyecto(proyectoId) || esGestorClub())
+          && !existsAfter(
+            /databases/$(database)/documents/proyectos/$(proyectoId)
+          );
+      }
+
+
+
+      // ===================================================
+      // SOLICITUDES
+      // ===================================================
+
+      match /solicitudes/{solicitudUid} {
+
+
+        // =================================================
+        // LEER
+        // =================================================
+
+        allow read: if
+
+          estaAutenticado()
+
+          && (
+
+            request.auth.uid
+              == solicitudUid
+
+            ||
+
+          (esGestorClub() || esResponsableProyecto(
+            proyectoId
+          ))
+
+            ||
+
+            esGestorClub()
+
+            ||
+
+            (
+              estaAutorizado()
+
+              && resource.data.estado
+                == "aceptada"
+            )
+          );
+
+
+
+        // =================================================
+        // CREAR
+        // =================================================
+
+        allow create: if
+
+          estaAutorizado()
+
+          && !esGestorClub()
+
+          && solicitudUid
+            == request.auth.uid
+
+          && request.resource.data.uid
+            == request.auth.uid
+
+          && request.resource.data.estado
+            == "pendiente"
+
+          && (
+            !request.resource.data.keys().hasAny(["notificationEventId"])
+            || (
+              request.resource.data.notificationEventId is string
+              && existsAfter(
+                /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+              )
+            )
+          );
+
+
+
+        // =================================================
+        // ACTUALIZAR
+        // =================================================
+
+        allow update: if
+
+
+          // RESPONSABLE ACEPTA / RECHAZA
+
+          (
+            (esGestorClub() || esResponsableProyecto(
+              proyectoId
+            ))
+
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                "estado",
+                "notificationEventId"
+              ])
+
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(["notificationEventId"])
+              || (
+                request.resource.data.notificationEventId is string
+                && existsAfter(
+                  /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+                )
+              )
+            )
+
+            && (
+              request.resource.data.estado
+                == "aceptada"
+
+              ||
+
+              request.resource.data.estado
+                == "rechazada"
+            )
+          )
+
+
+          ||
+
+
+          // ESTUDIANTE VUELVE A SOLICITAR
+
+          (
+            estaAutorizado()
+
+            && !esGestorClub()
+
+            && solicitudUid
+              == request.auth.uid
+
+            && resource.data.uid
+              == request.auth.uid
+
+            && request.resource.data.uid
+              == request.auth.uid
+
+            && (
+              !request.resource.data.keys().hasAny(["notificationEventId"])
+              || (
+                request.resource.data.notificationEventId is string
+                && existsAfter(
+                  /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+                )
+              )
+            )
+
+            && resource.data.estado
+              == "rechazada"
+
+            && request.resource.data.estado
+              == "pendiente"
+          );
+
+
+
+        // =================================================
+        // ELIMINAR
+        // =================================================
+
+        allow delete: if
+          esCreadorProyecto(proyectoId)
+          || esResponsableProyecto(proyectoId)
+          || esGestorClub();
+      }
+
+
+
+      // ===================================================
+      // TAREAS
+      // ===================================================
+
+      match /tareas/{tareaId} {
+
+
+        // =================================================
+        // LEER
+        // =================================================
+
+        allow read: if
+
+          estaAutenticado()
+
+          && (
+            esGestorClub()
+            ||
+          (esGestorClub() || esResponsableProyecto(
+            proyectoId
+          ))
+
+            || resource.data.get("responsableUid", "") == request.auth.uid
+            || request.auth.uid in resource.data.get("responsableUids", [])
+
+            ||
+
+            esMiembroProyecto(
+              proyectoId
+            )
+          );
+
+
+
+        // =================================================
+        // CREAR TAREA
+        // =================================================
+
+        allow create: if
+
+          (esGestorClub() || esResponsableProyecto(
+            proyectoId
+          ))
+
+          && !exists(
+            /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
+          )
+
+          && request.resource.data.keys()
+            .hasAll([
+              "proyectoId",
+              "titulo",
+              "descripcion",
+              "responsableUid",
+              "responsableNombre",
+              "responsableUids",
+              "responsablesNombres",
+              "prioridad",
+              "fechaLimite",
+              "estado",
+              "fechaCreacion"
+            ])
+
+          && request.resource.data.keys()
+            .hasOnly([
+              "proyectoId",
+              "titulo",
+              "descripcion",
+              "responsableUid",
+              "responsableNombre",
+              "responsableUids",
+              "responsablesNombres",
+              "prioridad",
+              "fechaLimite",
+              "estado",
+              "fechaCreacion",
+              "notificationEventId",
+              "assignmentVersion"
+            ])
+
+          && request.resource.data.proyectoId
+            == proyectoId
+
+          && request.resource.data.titulo
+            is string
+
+          && request.resource.data.titulo
+            != ""
+
+          && request.resource.data.descripcion
+            is string
+
+          && request.resource.data.responsableUid
+            is string
+
+          && request.resource.data.responsableNombre
+            is string
+
+          && request.resource.data.prioridad
+            is string
+
+          && (
+            request.resource.data.fechaLimite == null
+            || request.resource.data.fechaLimite is timestamp
+          )
+
+          && responsablesTareaValidos(
+            request.resource.data.responsableUids,
+            request.resource.data.responsablesNombres,
+            request.resource.data.responsableUid,
+            request.resource.data.responsableNombre
+          )
+
+          && request.resource.data.estado
+            == "Pendiente"
+
+          && (
+            !request.resource.data.keys().hasAny(["notificationEventId", "assignmentVersion"])
+            || (
+              request.resource.data.notificationEventId is string
+              && request.resource.data.assignmentVersion is string
+              && existsAfter(
+                /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+              )
+            )
+          )
+
+          && responsableTareaValidoDespues(
+            proyectoId,
+            request.resource.data.responsableUid,
+            request.resource.data.responsableNombre
+          );
+
+
+
+        // =================================================
+        // ACTUALIZAR TAREA
+        // =================================================
+
+        allow update: if
+
+          !exists(
+            /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
+          )
+
+          && (
+
+
+          // =================================================
+          // CASO 1
+          //
+          // RESPONSABLE DEL PROYECTO
+          // CAMBIA RESPONSABLE DE LA TAREA
+          // =================================================
+
+          (
+            (esGestorClub() || esResponsableProyecto(
+              proyectoId
+            ))
+
+            && resource.data.estado
+              == "Pendiente"
+
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+              "responsableUid",
+              "responsableNombre",
+              "responsableUids",
+              "responsablesNombres",
+              "notificationEventId",
+              "assignmentVersion"
+              ])
+
+            && request.resource.data.responsableUid
+              is string
+
+            && request.resource.data.responsableNombre
+              is string
+
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(["notificationEventId", "assignmentVersion"])
+              || (
+                request.resource.data.notificationEventId is string
+                && request.resource.data.assignmentVersion is string
+                && request.resource.data.assignmentVersion != resource.data.get("assignmentVersion", "")
+                && existsAfter(
+                  /databases/$(database)/documents/notificationOutbox/$(request.resource.data.notificationEventId)
+                )
+              )
+            )
+
+            && responsablesTareaValidos(
+              request.resource.data.responsableUids,
+              request.resource.data.responsablesNombres,
+              request.resource.data.responsableUid,
+              request.resource.data.responsableNombre
+            )
+          )
+
+
+          ||
+
+
+          // =================================================
+          // CASO 2
+          //
+          // RESPONSABLE DEL PROYECTO
+          // EDITA TÍTULO Y DESCRIPCIÓN
+          // =================================================
+
+          (
+            (esGestorClub() || esResponsableProyecto(
+              proyectoId
+            ))
+
+            && resource.data.estado
+              == "Pendiente"
+
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                "titulo",
+                "descripcion"
+              ])
+
+            && request.resource.data.titulo
+              is string
+
+            && request.resource.data.titulo
+              != ""
+
+            && request.resource.data.descripcion
+              is string
+          )
+
+
+          ||
+
+
+          // =================================================
+          // CASO 3
+          //
+          // PERSONA ASIGNADA MARCA COMO COMPLETADA
+          // =================================================
+
+          (
+            estaAutenticado()
+            && (
+              resource.data.get("responsableUid", "") == request.auth.uid
+              || request.auth.uid in resource.data.get("responsableUids", [])
+            )
+
+            && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                "estado"
+              ])
+
+            && resource.data.estado
+              == "Pendiente"
+
+            && request.resource.data.estado
+              == "Completada"
+          )
+          );
+
+
+
+        // =================================================
+        // ELIMINAR TAREA
+        // =================================================
+
+        allow delete: if
+          esCreadorProyecto(proyectoId)
+          || esResponsableProyecto(proyectoId)
+          || esGestorClub()
+          || (
+            estaAutenticado()
+            && resource.data.estado == "Completada"
+            && (
+              resource.data.get("responsableUid", "") == request.auth.uid
+              || request.auth.uid in resource.data.get("responsableUids", [])
+            )
+            && exists(
+              /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
+            )
+          );
+      }

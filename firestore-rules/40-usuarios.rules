@@ -1,0 +1,348 @@
+// =====================================================
+    // USUARIOS
+
+// =====================================================
+
+    match /usuarios/{userId} {
+
+
+      // ===================================================
+      // CREAR CUENTA
+      // ===================================================
+
+      allow create: if
+
+        esPropietario(userId)
+
+        && correoInstitucionalVerificado()
+
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "nombre",
+          "apellido",
+          "nombreCompleto",
+          "correoInstitucional",
+          "carrera",
+          "semestre",
+          "rol",
+          "autorizado",
+          "rostroRegistrado",
+          "fechaCreacion",
+          "fechaRegistro"
+        ])
+
+        && request.resource.data.keys().hasAll([
+          "uid",
+          "correoInstitucional",
+          "nombre",
+          "apellido",
+          "nombreCompleto",
+          "carrera",
+          "semestre",
+          "rol",
+          "autorizado",
+          "rostroRegistrado"
+        ])
+
+        && request.resource.data.uid
+          == request.auth.uid
+
+        && request.resource.data.correoInstitucional
+          == request.auth.token.email
+
+        && request.resource.data.nombre is string
+        && request.resource.data.apellido is string
+        && request.resource.data.nombreCompleto is string
+        && request.resource.data.carrera is string
+        && request.resource.data.carrera.size() > 0
+        && request.resource.data.carrera.size() <= 100
+        && request.resource.data.semestre is string
+        && request.resource.data.semestre.size() > 0
+        && request.resource.data.semestre.size() <= 40
+        && (
+          !request.resource.data.keys().hasAny(["fechaCreacion"])
+          || request.resource.data.fechaCreacion is timestamp
+        )
+        && (
+          !request.resource.data.keys().hasAny(["fechaRegistro"])
+          || request.resource.data.fechaRegistro is timestamp
+        )
+
+        && (
+          (esAdministradorInicial()
+            && request.resource.data.rol == "admin"
+            && request.resource.data.autorizado == true)
+          || (!esAdministradorInicial()
+            && request.resource.data.rol == "estudiante"
+            && request.resource.data.autorizado == false)
+        )
+
+        && request.resource.data.rostroRegistrado
+          == false;
+
+
+      // ===================================================
+      // LEER USUARIOS
+      //
+      // Necesario para los buscadores de responsables.
+      // ===================================================
+
+      allow read: if
+
+        estaAutenticado()
+
+        && (
+          esPropietario(userId)
+          ||
+          esAdministrador()
+          ||
+          estaAutorizado()
+        );
+
+
+      // ===================================================
+      // MODIFICAR USUARIOS
+      // ===================================================
+
+      allow update: if
+        (
+          esAdministrador()
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly([
+              "autorizado",
+              "rol",
+              "carrera",
+            "semestre",
+            "departamento"
+            ])
+          && request.resource.data.autorizado is bool
+          && request.resource.data.rol in ["estudiante", "moderador", "admin"]
+          && (!esPropietario(userId) || request.resource.data.rol == resource.data.rol)
+          && resource.data.correoInstitucional is string
+          && (
+            resource.data.correoInstitucional == "plataformapy.oficial@gmail.com"
+            || resource.data.correoInstitucional.matches('^[^@]+@__DOMINIO_INSTITUCIONAL__$')
+          )
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(["carrera"])
+            || (request.resource.data.carrera is string
+              && request.resource.data.carrera.size() <= 100)
+          )
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(["semestre"])
+            || (request.resource.data.semestre is string
+              && request.resource.data.semestre.size() <= 40)
+          )
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(["departamento"])
+            || !request.resource.data.keys().hasAny(["departamento"])
+            || request.resource.data.departamento is string
+          )
+        )
+        || (
+          esPropietario(userId)
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["carrera", "semestre", "nombre", "apellido", "nombreCompleto"])
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(["nombre", "apellido", "nombreCompleto"])
+            || (
+              request.resource.data.nombre is string
+              && request.resource.data.nombre.size() > 0
+              && request.resource.data.nombre.size() <= 60
+              && request.resource.data.apellido is string
+              && request.resource.data.apellido.size() > 0
+              && request.resource.data.apellido.size() <= 60
+              && request.resource.data.nombreCompleto is string
+              && request.resource.data.nombreCompleto == request.resource.data.nombre + " " + request.resource.data.apellido
+            )
+          )
+          && request.resource.data.carrera is string
+          && request.resource.data.carrera.size() > 0
+          && request.resource.data.carrera.size() <= 100
+          && request.resource.data.semestre is string
+          && request.resource.data.semestre.size() > 0
+          && request.resource.data.semestre.size() <= 40
+        );
+
+
+      // ===================================================
+      // ELIMINAR USUARIOS
+      // ===================================================
+
+      allow delete: if esAdministrador();
+
+      match /avisosOcultos/{avisoId} {
+        allow read, delete: if esPropietario(userId) || esAdministrador();
+        allow create: if
+          esPropietario(userId)
+          && request.resource.data.keys().hasOnly(["fechaOcultado"])
+          && request.resource.data.keys().hasAll(["fechaOcultado"])
+          && request.resource.data.fechaOcultado is timestamp;
+        allow update: if false;
+      }
+
+      match /notificaciones/{notificacionId} {
+        allow read: if esPropietario(userId) || esAdministrador();
+
+        allow create: if
+          (
+            esGestorClub()
+            || (
+              request.resource.data.get("tipo", "") == "proyecto_completado"
+              && request.resource.data.get("tareaId", "") == ""
+              && (esGestorClub() || esResponsableProyecto(request.resource.data.proyectoId))
+              && !exists(
+                /databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)/eventos/completado-v1
+              )
+              && getAfter(
+                /databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)/eventos/completado-v1
+              ).data.get("cerradoPorUid", "") == request.auth.uid
+              && (
+                userId in proyectoActual(request.resource.data.proyectoId)
+                  .data.get("miembrosUids", [])
+                || userId == proyectoActual(request.resource.data.proyectoId)
+                  .data.get("responsableUid", "")
+                || get(
+                  /databases/$(database)/documents/usuarios/$(userId)
+                ).data.rol == "admin"
+              )
+            )
+            || (
+              request.resource.data.get("tipo", "") == "proyecto"
+              && request.resource.data.get("tareaId", "") == ""
+              && (esGestorClub() || esResponsableProyecto(request.resource.data.proyectoId))
+              && userId in proyectoActual(request.resource.data.proyectoId)
+                .data.get("miembrosUids", [])
+            )
+            || (
+              (esGestorClub() || esResponsableProyecto(request.resource.data.proyectoId))
+              && request.resource.data.get("tareaId", "") is string
+              && request.resource.data.get("tareaId", "") != ""
+              && get(
+                /databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)/tareas/$(request.resource.data.tareaId)
+              ).data.get("responsableUid", "") == userId
+              || (
+                (esGestorClub() || esResponsableProyecto(request.resource.data.proyectoId))
+                && request.resource.data.get("tareaId", "") is string
+                && request.resource.data.get("tareaId", "") != ""
+                && userId in get(
+                  /databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)/tareas/$(request.resource.data.tareaId)
+                ).data.get("responsableUids", [])
+              )
+            )
+            || (
+              request.resource.data.get("tipo", "") == "prestamo"
+              && request.resource.data.get("proyectoId", "") == ""
+              && request.resource.data.get("reservaId", "") is string
+              && request.resource.data.reservaId != ""
+              && getAfter(
+                /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+              ).data.solicitanteUid == request.auth.uid
+              && getAfter(
+                /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+              ).data.estado == "Aprobada"
+              && getAfter(
+                /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+              ).data.estadoSolicitud == "Pendiente"
+              && (
+                getAfter(
+                  /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+                ).data.get("aprobadoPorUid", "") == userId
+                || (
+                  getAfter(
+                    /databases/$(database)/documents/reservas/$(request.resource.data.reservaId)
+                  ).data.get("aprobadoPorUid", "") == ""
+                  && get(
+                    /databases/$(database)/documents/usuarios/$(userId)
+                  ).data.rol == "admin"
+                )
+              )
+            )
+          )
+          && request.resource.data.keys().hasOnly([
+            "proyectoId",
+            "tipo",
+            "titulo",
+            "mensaje",
+            "prioridad",
+            "emisorUid",
+            "fechaCreacion",
+            "leida",
+            "tareaId",
+            "reservaId"
+          ])
+          && request.resource.data.keys().hasAll([
+            "proyectoId",
+            "titulo",
+            "mensaje",
+            "prioridad",
+            "emisorUid",
+            "fechaCreacion",
+            "leida"
+          ])
+          && request.resource.data.proyectoId is string
+          && request.resource.data.titulo is string
+          && request.resource.data.mensaje is string
+          && request.resource.data.prioridad in ["Importante", "Normal", "Baja"]
+          && request.resource.data.emisorUid == request.auth.uid
+          && request.resource.data.fechaCreacion is timestamp
+          && request.resource.data.leida == false;
+
+        allow update: if
+          esPropietario(userId)
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(["leida"])
+          && request.resource.data.leida == true;
+
+        allow delete: if esPropietario(userId) || esAdministrador();
+      }
+
+      match /fcmTokens/{installationId} {
+        allow read: if esAdministrador();
+        allow create, update: if
+          esPropietario(userId)
+          && request.resource.data.keys().hasOnly([
+            "token",
+            "platform",
+            "appVersion",
+            "createdAt",
+            "updatedAt"
+          ])
+          && request.resource.data.keys().hasAll([
+            "token",
+            "platform",
+            "appVersion",
+            "createdAt",
+            "updatedAt"
+          ])
+          && request.resource.data.token is string
+          && request.resource.data.token.size() >= 100
+          && request.resource.data.token.size() <= 4096
+          && request.resource.data.platform == "android"
+          && request.resource.data.appVersion is string
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if esPropietario(userId) || esAdministrador();
+      }
+
+      match /calendario/{entradaId} {
+        allow read: if esPropietario(userId);
+
+        allow create: if
+          esPropietario(userId)
+          && (estaAutorizado() || esAdministrador())
+          && entradaCalendarioPersonalValida(request.resource.data);
+
+        allow update: if
+          esPropietario(userId)
+          && (estaAutorizado() || esAdministrador())
+          && entradaCalendarioPersonalValida(request.resource.data)
+          && request.resource.data.fechaCreacion == resource.data.fechaCreacion;
+
+        allow delete: if esPropietario(userId);
+      }
+    }

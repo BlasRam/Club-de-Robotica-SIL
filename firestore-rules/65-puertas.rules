@@ -1,0 +1,9 @@
+// Reserved for a future physical door controller. Mobile clients must never
+// read device telemetry or create, modify, or consume hardware commands.
+match /puertas/{puertaId} {
+  allow read, write: if false;
+
+  match /{subcollection}/{documentId} {
+    allow read, write: if false;
+  }
+}

@@ -1,0 +1,26 @@
+// =====================================================
+    // PRESENCIAS
+
+// =====================================================
+
+    match /presencias/{userId} {
+
+
+      allow read: if
+
+        esPropietario(userId)
+
+        ||
+
+        esAdministrador();
+
+
+      allow create, update: if
+
+        esPropietario(userId)
+
+        && estaAutorizado();
+
+
+      allow delete: if esAdministrador();
+    }

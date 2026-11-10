@@ -1,0 +1,76 @@
+// =====================================================
+    // AVISOS
+
+// =====================================================
+
+    match /avisos/{avisoId} {
+
+      allow read: if estaAutorizado() || esAdministrador();
+
+      allow create: if
+        esGestorClub()
+        && request.resource.data.keys().hasOnly([
+          "titulo",
+          "mensaje",
+          "prioridad",
+          "autorUid",
+          "autorNombre",
+          "fechaCreacion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "titulo",
+          "mensaje",
+          "prioridad",
+          "autorUid",
+          "autorNombre",
+          "fechaCreacion"
+        ])
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.mensaje is string
+        && request.resource.data.prioridad in [
+          "Importante",
+          "Normal",
+          "Baja"
+        ]
+        && request.resource.data.autorUid == request.auth.uid
+        && request.resource.data.autorNombre is string
+        && request.resource.data.fechaCreacion is timestamp;
+
+      allow update: if false;
+      allow delete: if esGestorClub();
+
+      match /reacciones/{userId} {
+        allow read: if
+          estaAutenticado()
+          && (estaAutorizado() || esAdministrador());
+
+        allow create, update: if
+          esPropietario(userId)
+          && (estaAutorizado() || esAdministrador())
+          && request.resource.data.keys().hasOnly([
+            "tipo",
+            "fechaActualizacion"
+          ])
+          && request.resource.data.keys().hasAll([
+            "tipo",
+            "fechaActualizacion"
+          ])
+          && request.resource.data.tipo in [
+            "me_gusta",
+            "me_encanta",
+            "celebrar",
+            "apoyar"
+          ]
+          && request.resource.data.fechaActualizacion is timestamp;
+
+        allow delete: if
+          esPropietario(userId)
+          && (estaAutorizado() || esAdministrador());
+      }
+    }
+
+
+    // Eventos validados y creados atómicamente con la acción de negocio.
+    // =====================================================
+    // OUTBOX DE NOTIFICACIONES

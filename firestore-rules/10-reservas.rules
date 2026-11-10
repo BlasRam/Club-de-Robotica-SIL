@@ -1,0 +1,148 @@
+// =====================================================
+    // RESERVAS DE RECURSOS
+
+// =====================================================
+
+    match /reservas/{reservaId} {
+
+      allow create: if
+        estaAutenticado()
+        && (estaAutorizado() || esAdministrador())
+        && request.resource.data.keys().hasOnly([
+          "recursoNombre",
+          "recursoId",
+          "cantidadSolicitada",
+          "motivo",
+          "solicitanteUid",
+          "solicitanteNombre",
+          "estado",
+          "fechaReserva",
+          "fechaInicioUso",
+          "fechaDevolucion",
+          "fechaCreacion",
+          "aprobadoPorUid",
+          "aprobadoPorNombre",
+          "accionSolicitada",
+          "fechaDevolucionPropuesta",
+          "motivoSolicitud",
+          "estadoSolicitud",
+          "resueltaPorUid",
+          "resueltaPorNombre"
+        ])
+        && request.resource.data.keys().hasAll([
+          "recursoNombre",
+          "recursoId",
+          "cantidadSolicitada",
+          "motivo",
+          "solicitanteUid",
+          "solicitanteNombre",
+          "estado",
+          "fechaReserva",
+          "fechaInicioUso",
+          "fechaDevolucion",
+          "fechaCreacion"
+        ])
+        && request.resource.data.recursoNombre is string
+        && request.resource.data.recursoNombre.size() > 0
+        && request.resource.data.recursoId is string
+        && request.resource.data.recursoId.size() > 0
+        && request.resource.data.cantidadSolicitada is int
+        && request.resource.data.cantidadSolicitada > 0
+        && get(
+          /databases/$(database)/documents/inventario/$(request.resource.data.recursoId)
+        ).data.cantidad >= request.resource.data.cantidadSolicitada
+        && get(
+          /databases/$(database)/documents/inventario/$(request.resource.data.recursoId)
+        ).data.estado == "Disponible"
+        && request.resource.data.motivo is string
+        && request.resource.data.solicitanteUid == request.auth.uid
+        && request.resource.data.solicitanteNombre is string
+        && request.resource.data.estado == "Pendiente"
+        && request.resource.data.fechaReserva is timestamp
+        && request.resource.data.fechaInicioUso is timestamp
+        && request.resource.data.fechaDevolucion is timestamp
+        && request.resource.data.fechaReserva
+          == request.resource.data.fechaInicioUso
+        && request.resource.data.fechaDevolucion
+          >= request.resource.data.fechaInicioUso
+        && request.resource.data.fechaCreacion is timestamp;
+
+      allow read: if
+        estaAutenticado()
+        && (
+          esAdministrador()
+          || resource.data.solicitanteUid == request.auth.uid
+        );
+
+      allow update: if estaAutenticado() && (
+        (
+          esAdministrador()
+          && resource.data.estado == "Pendiente"
+          && request.resource.data.estado in ["Aprobada", "Rechazada"]
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "aprobadoPorUid", "aprobadoPorNombre"
+          ])
+          && (
+            request.resource.data.estado == "Rechazada"
+            || (
+              request.resource.data.aprobadoPorUid == request.auth.uid
+              && request.resource.data.aprobadoPorNombre is string
+            )
+          )
+        )
+        || (
+          resource.data.solicitanteUid == request.auth.uid
+          && resource.data.estado == "Aprobada"
+          && resource.data.get("estadoSolicitud", "") != "Pendiente"
+          && request.resource.data.estado == "Aprobada"
+          && request.resource.data.get("accionSolicitada", "") in ["Devolucion", "Prorroga"]
+          && request.resource.data.get("estadoSolicitud", "") == "Pendiente"
+          && request.resource.data.get("motivoSolicitud", "") is string
+          && (
+            request.resource.data.get("fechaDevolucionPropuesta", null) == null
+            || request.resource.data.get("fechaDevolucionPropuesta", null) is timestamp
+          )
+          && (
+            request.resource.data.accionSolicitada == "Devolucion"
+            || (
+              request.resource.data.accionSolicitada == "Prorroga"
+              && request.resource.data.fechaDevolucionPropuesta is timestamp
+              && request.resource.data.fechaDevolucionPropuesta > resource.data.fechaDevolucion
+            )
+          )
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "accionSolicitada", "fechaDevolucionPropuesta", "motivoSolicitud", "estadoSolicitud"
+          ])
+        )
+        || (
+          esAdministrador()
+          && resource.data.estado == "Aprobada"
+          && resource.data.get("estadoSolicitud", "") == "Pendiente"
+          && request.resource.data.estado == "Aprobada"
+          && request.resource.data.estadoSolicitud in ["Aprobada", "Rechazada"]
+          && request.resource.data.resueltaPorUid == request.auth.uid
+          && request.resource.data.resueltaPorNombre is string
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "fechaDevolucion", "estadoSolicitud", "resueltaPorUid", "resueltaPorNombre"
+          ])
+          && (
+            request.resource.data.estadoSolicitud == "Rechazada"
+            || (
+              resource.data.accionSolicitada == "Prorroga"
+              && request.resource.data.fechaDevolucion == resource.data.fechaDevolucionPropuesta
+            )
+          )
+        )
+        || (
+          resource.data.solicitanteUid == request.auth.uid
+          && resource.data.estado == "Pendiente"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado"])
+          && request.resource.data.estado == "Cancelada"
+        )
+      );
+
+      allow delete: if esAdministrador();
+    }
+
+    // =====================================================
+    // PRESTAMOS ARCHIVADOS

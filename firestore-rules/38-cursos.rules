@@ -1,0 +1,49 @@
+    match /cursos/{cursoId} {
+      allow read: if esAdministrador()
+        || (estaAutorizado() && resource.data.estado == "Publicado");
+
+      allow create: if
+        esAdministrador()
+        && cursoValido(request.resource.data)
+        && request.resource.data.estado == "Publicado"
+        && request.resource.data.creadoPorUid == request.auth.uid;
+
+      allow update: if
+        esAdministrador()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado"])
+        && request.resource.data.estado in ["Publicado", "Cerrado"]
+        && cursoValido(request.resource.data)
+        && request.resource.data.creadoPorUid == resource.data.creadoPorUid
+        && request.resource.data.fechaCreacion == resource.data.fechaCreacion;
+
+      allow delete: if false;
+
+      match /inscripciones/{uid} {
+        allow read: if esAdministrador()
+          || (esPropietario(uid) && estaAutorizado());
+
+        allow create: if
+          esPropietario(uid)
+          && estaAutorizado()
+          && get(/databases/$(database)/documents/cursos/$(cursoId)).data.estado == "Publicado"
+          && request.resource.data.keys().hasOnly([
+            "uid", "nombreCompleto", "carrera", "semestre", "fechaInscripcion"
+          ])
+          && request.resource.data.keys().hasAll([
+            "uid", "nombreCompleto", "carrera", "semestre", "fechaInscripcion"
+          ])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.nombreCompleto is string
+          && request.resource.data.nombreCompleto.size() > 0
+          && request.resource.data.nombreCompleto.size() <= 120
+          && request.resource.data.carrera is string
+          && request.resource.data.carrera.size() <= 100
+          && request.resource.data.semestre is string
+          && request.resource.data.semestre.size() <= 40
+          && request.resource.data.fechaInscripcion is timestamp;
+
+        allow update: if false;
+        allow delete: if esAdministrador()
+          || (esPropietario(uid) && estaAutorizado());
+      }
+    }

@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Club de Robótica San Ignacio de Loyola",
+  "short_name": "Robótica SIL",
+  "description": "Gestión del Club de Robótica San Ignacio de Loyola",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b3763",
+  "icons": [
+    {
+      "src": "/icons/sil-school-logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

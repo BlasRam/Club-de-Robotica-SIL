@@ -1,0 +1,468 @@
+rules_version = '2';
+
+service cloud.firestore {
+
+  match /databases/{database}/documents {
+
+    // =====================================================
+    // FUNCIONES GENERALES
+    // =====================================================
+
+    function estaAutenticado() {
+      return request.auth != null;
+    }
+
+
+    function usuarioActual() {
+      return get(
+        /databases/$(database)/documents/usuarios/$(request.auth.uid)
+      );
+    }
+
+
+    function esPropietario(userId) {
+      return estaAutenticado()
+        && request.auth.uid == userId;
+    }
+
+
+    function entradaCalendarioPersonalValida(data) {
+      return
+        (
+          data.get("tipo", "") == "clase"
+          && data.keys().hasOnly([
+            "tipo", "materia", "diasSemana", "horaInicio", "horaFin",
+            "aula", "desde", "hasta", "fechaCreacion"
+          ])
+          && data.keys().hasAll([
+            "tipo", "materia", "diasSemana", "horaInicio", "horaFin",
+            "aula", "desde", "hasta", "fechaCreacion"
+          ])
+          && data.materia is string
+          && data.materia.size() > 0
+          && data.materia.size() <= 80
+          && data.diasSemana is list
+          && data.diasSemana.size() > 0
+          && data.diasSemana.size() <= 7
+          && data.diasSemana.hasOnly([1, 2, 3, 4, 5, 6, 7])
+          && data.horaInicio is string
+          && data.horaInicio.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+          && data.horaFin is string
+          && data.horaFin.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+          && data.horaFin > data.horaInicio
+          && data.aula is string
+          && data.aula.size() <= 60
+          && data.desde is timestamp
+          && data.hasta is timestamp
+          && data.hasta >= data.desde
+          && data.fechaCreacion is timestamp
+        )
+        ||
+        (
+          data.get("tipo", "") == "examen"
+          && data.keys().hasOnly([
+            "tipo", "titulo", "materia", "fechaHora", "lugar", "notas", "fechaCreacion"
+          ])
+          && data.keys().hasAll([
+            "tipo", "titulo", "materia", "fechaHora", "lugar", "notas", "fechaCreacion"
+          ])
+          && data.titulo is string
+          && data.titulo.size() > 0
+          && data.titulo.size() <= 100
+          && data.materia is string
+          && data.materia.size() > 0
+          && data.materia.size() <= 80
+          && data.fechaHora is timestamp
+          && data.lugar is string
+          && data.lugar.size() <= 100
+          && data.notas is string
+          && data.notas.size() <= 300
+          && data.fechaCreacion is timestamp
+        );
+    }
+
+
+    function actividadClubValida(data) {
+      return data.keys().hasOnly([
+          "titulo", "categoria", "descripcion", "fechaInicio", "fechaFin",
+          "lugar", "creadoPorUid", "creadoPorNombre", "fechaCreacion"
+        ])
+        && data.keys().hasAll([
+          "titulo", "categoria", "descripcion", "fechaInicio", "fechaFin",
+          "lugar", "creadoPorUid", "creadoPorNombre", "fechaCreacion"
+        ])
+        && data.titulo is string
+        && data.titulo.size() > 0
+        && data.titulo.size() <= 100
+        && data.categoria in ["Reunión", "Taller", "Evento", "Entrega", "Otro"]
+        && data.descripcion is string
+        && data.descripcion.size() <= 500
+        && data.fechaInicio is timestamp
+        && data.fechaFin is timestamp
+        && data.fechaFin >= data.fechaInicio
+        && data.lugar is string
+        && data.lugar.size() > 0
+        && data.lugar.size() <= 100
+        && data.creadoPorUid == request.auth.uid
+        && data.creadoPorNombre is string
+        && data.creadoPorNombre.size() > 0
+        && data.creadoPorNombre.size() <= 120
+        && data.fechaCreacion is timestamp;
+    }
+
+
+    function cursoValido(data) {
+      return data.keys().hasOnly([
+          "titulo", "descripcion", "instructor", "fechaInicio", "fechaFin",
+          "horario", "modalidad", "lugar", "estado", "creadoPorUid",
+          "creadoPorNombre", "fechaCreacion"
+        ])
+        && data.keys().hasAll([
+          "titulo", "descripcion", "instructor", "fechaInicio", "fechaFin",
+          "horario", "modalidad", "lugar", "estado", "creadoPorUid",
+          "creadoPorNombre", "fechaCreacion"
+        ])
+        && data.titulo is string
+        && data.titulo.size() > 0
+        && data.titulo.size() <= 100
+        && data.descripcion is string
+        && data.descripcion.size() <= 1000
+        && data.instructor is string
+        && data.instructor.size() > 0
+        && data.instructor.size() <= 100
+        && data.fechaInicio is timestamp
+        && data.fechaFin is timestamp
+        && data.fechaFin >= data.fechaInicio
+        && data.horario is string
+        && data.horario.size() > 0
+        && data.horario.size() <= 120
+        && data.modalidad in ["Presencial", "Virtual", "Híbrido"]
+        && data.lugar is string
+        && data.lugar.size() <= 120
+        && data.estado in ["Publicado", "Cerrado"]
+        && data.creadoPorUid is string
+        && data.creadoPorNombre is string
+        && data.creadoPorNombre.size() > 0
+        && data.creadoPorNombre.size() <= 120
+        && data.fechaCreacion is timestamp;
+    }
+
+
+    function esAdministradorInicial() {
+      return estaAutenticado()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == "plataformapy.oficial@gmail.com";
+    }
+
+
+    function correoInstitucionalVerificado() {
+      return estaAutenticado()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && (
+          request.auth.token.email == "plataformapy.oficial@gmail.com"
+          || request.auth.token.email.matches('^[^@]+@__DOMINIO_INSTITUCIONAL__$')
+        );
+    }
+
+
+    function esAdministrador() {
+      return correoInstitucionalVerificado()
+        && usuarioActual().data.rol == "admin";
+    }
+
+
+    function esModerador() {
+      return correoInstitucionalVerificado()
+        && usuarioActual().data.rol == "moderador"
+        && usuarioActual().data.autorizado == true;
+    }
+
+
+    function esGestorClub() {
+      return esAdministrador() || esModerador();
+    }
+
+
+    function estaAutorizado() {
+      return correoInstitucionalVerificado()
+        && usuarioActual().data.autorizado == true;
+    }
+
+
+    // =====================================================
+    // USUARIO VÁLIDO PARA RESPONSABILIDADES
+    // =====================================================
+
+    function usuarioAsignable(uid) {
+
+      let usuario = get(
+        /databases/$(database)/documents/usuarios/$(uid)
+      ).data;
+
+      return uid is string
+        && uid != ""
+        && (
+          usuario.rol == "admin"
+          ||
+          usuario.autorizado == true
+        );
+    }
+
+
+    // =====================================================
+    // PROYECTOS
+    // =====================================================
+
+    function proyectoActual(proyectoId) {
+      return get(
+        /databases/$(database)/documents/proyectos/$(proyectoId)
+      );
+    }
+
+
+    function esCreadorProyecto(proyectoId) {
+
+      return estaAutenticado()
+        && proyectoActual(proyectoId)
+          .data
+          .creadoPorUid == request.auth.uid;
+    }
+
+
+    // =====================================================
+    // RESPONSABLE DEL PROYECTO
+    //
+    // Compatible con proyectos viejos:
+    // si responsableUid no existe, usa creadoPorUid.
+    // =====================================================
+
+    function esResponsableProyecto(proyectoId) {
+
+      let proyecto =
+        proyectoActual(proyectoId).data;
+
+      return estaAutenticado()
+        && (
+          (
+            proyecto.get("responsableUid", "") != ""
+            &&
+            proyecto.get("responsableUid", "")
+              == request.auth.uid
+          )
+          ||
+          (
+            proyecto.get("responsableUid", "") == ""
+            &&
+            proyecto.creadoPorUid
+              == request.auth.uid
+          )
+        );
+    }
+
+
+    function uidEsResponsableProyecto(
+      proyectoId,
+      uid
+    ) {
+
+      let proyecto =
+        proyectoActual(proyectoId).data;
+
+      return
+        (
+          proyecto.get("responsableUid", "") != ""
+          &&
+          proyecto.get("responsableUid", "") == uid
+        )
+        ||
+        (
+          proyecto.get("responsableUid", "") == ""
+          &&
+          proyecto.creadoPorUid == uid
+        );
+    }
+
+
+    // =====================================================
+    // MIEMBROS
+    // =====================================================
+
+    function esMiembroProyecto(proyectoId) {
+
+      let proyecto =
+        proyectoActual(proyectoId).data;
+
+      return estaAutenticado()
+        && proyecto.miembrosUids is list
+        && request.auth.uid
+          in proyecto.miembrosUids;
+    }
+
+
+    // =====================================================
+    // RESPONSABLE VÁLIDO PARA TAREA
+    // =====================================================
+
+    function responsableTareaValidoDespues(
+      proyectoId,
+      uid,
+      nombre
+    ) {
+
+      return uid is string
+        && nombre is string
+        && (
+
+          // SIN ASIGNAR
+          (
+            uid == ""
+            &&
+            nombre == ""
+          )
+
+          ||
+
+          // RESPONSABLE GENERAL DEL PROYECTO
+          (
+            uid != ""
+            &&
+            uidEsResponsableProyecto(
+              proyectoId,
+              uid
+            )
+          )
+
+          ||
+
+          // USUARIO AUTORIZADO
+          (
+            uid != ""
+            &&
+            usuarioAsignable(
+              uid
+            )
+          )
+        );
+    }
+
+
+    function responsablesTareaValidos(uids, nombres, uid, nombre) {
+      return uids is list
+        && nombres is list
+        && uids.size() == nombres.size()
+        && uids.size() <= 5
+        && (
+          (
+            uids.size() == 0
+            && uid == ""
+            && nombre == ""
+          )
+          ||
+          (
+            uids.size() > 0
+            && uid == uids[0]
+            && nombre == nombres[0]
+            && usuarioAsignable(uids[0])
+            && nombres[0] is string
+            && (uids.size() < 2 || (usuarioAsignable(uids[1]) && nombres[1] is string))
+            && (uids.size() < 3 || (usuarioAsignable(uids[2]) && nombres[2] is string))
+            && (uids.size() < 4 || (usuarioAsignable(uids[3]) && nombres[3] is string))
+            && (uids.size() < 5 || (usuarioAsignable(uids[4]) && nombres[4] is string))
+          )
+        );
+    }
+
+
+    function eventoOutboxValido(eventId) {
+      let evento = request.resource.data;
+      return evento.keys().hasOnly([
+          "tipo",
+          "proyectoId",
+          "tareaId",
+          "solicitudUid",
+          "decision",
+          "actorUid",
+          "createdAt",
+          "status",
+          "assignmentVersion"
+        ])
+        && evento.keys().hasAll([
+          "tipo",
+          "proyectoId",
+          "actorUid",
+          "createdAt",
+          "status"
+        ])
+        && evento.proyectoId is string
+        && evento.proyectoId != ""
+        && evento.actorUid == request.auth.uid
+        && evento.createdAt is timestamp
+        && evento.status == "pending"
+        && (
+          (
+            evento.tipo == "task-created"
+            && evento.tareaId is string
+            && evento.assignmentVersion is string
+            && evento.assignmentVersion != ""
+            && (esGestorClub() || esResponsableProyecto(evento.proyectoId))
+            && !exists(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId))
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("notificationEventId", "") == eventId
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("assignmentVersion", "") == evento.assignmentVersion
+          )
+          ||
+          (
+            evento.tipo == "task-reassigned"
+            && evento.tareaId is string
+            && evento.assignmentVersion is string
+            && evento.assignmentVersion != ""
+            && (esGestorClub() || esResponsableProyecto(evento.proyectoId))
+            && exists(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId))
+            && get(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("assignmentVersion", "") != evento.assignmentVersion
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("notificationEventId", "") == eventId
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/tareas/$(evento.tareaId)).data.get("assignmentVersion", "") == evento.assignmentVersion
+          )
+          ||
+          (
+            evento.tipo == "join-requested"
+            && evento.solicitudUid == request.auth.uid
+            && estaAutorizado()
+            && !esGestorClub()
+            && (
+              !exists(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid))
+              || get(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.estado == "rechazada"
+            )
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.estado == "pendiente"
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.get("notificationEventId", "") == eventId
+          )
+          ||
+          (
+            evento.tipo == "join-decision"
+            && evento.solicitudUid is string
+            && evento.decision in ["aceptada", "rechazada"]
+            && (esGestorClub() || esResponsableProyecto(evento.proyectoId))
+            && get(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.estado == "pendiente"
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.estado == evento.decision
+            && getAfter(/databases/$(database)/documents/proyectos/$(evento.proyectoId)/solicitudes/$(evento.solicitudUid)).data.get("notificationEventId", "") == eventId
+          )
+        );
+    }
+
+    // Admin reporting uses collection-group queries for project tasks.
+    match /{path=**}/tareas/{tareaId} {
+      allow read: if esAdministrador();
+    }
+
+    match /clubSettings/{settingId} {
+      allow get: if settingId == "branding";
+      allow list: if false;
+      allow create, update: if settingId == "branding"
+        && esAdministrador()
+        && request.resource.data.keys().hasOnly(["logoUrl", "logoPath", "updatedAt"])
+        && request.resource.data.logoUrl is string
+        && request.resource.data.logoUrl.size() <= 2048
+        && request.resource.data.logoPath is string
+        && request.resource.data.logoPath.matches('^club-assets/branding/logo-[0-9]+\\.webp$')
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if settingId == "branding" && esAdministrador();
+    }

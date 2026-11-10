@@ -1,0 +1,57 @@
+.access-lock-panel {
+  min-height: 270px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 26px 20px;
+  border-left: 1px solid var(--line) !important;
+  text-align: center;
+}
+.access-lock-panel-copy { min-width: 0; }
+.access-lock-panel-copy .status-label { margin: 0; color: var(--muted); }
+.access-lock-panel-copy h2 { margin: 5px 0 0; font: 700 17px/1.3 Manrope, Arial, sans-serif; }
+.access-lock-panel-copy p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.access-lock-button {
+  display: grid;
+  width: 112px;
+  height: 112px;
+  flex: 0 0 112px;
+  place-items: center;
+  border: 8px solid #c7cdd3;
+  border-radius: 50%;
+  background: #e9edf0;
+  color: #777f88;
+  box-shadow: inset 0 0 0 2px #fff, 0 3px 9px #252b3520;
+  transition: color .18s, background .18s, border-color .18s, transform .18s, box-shadow .18s;
+}
+.access-lock-button svg { width: 43px; height: 43px; }
+.access-lock-button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px #252b3518; }
+.access-lock-button:focus-visible { outline: 3px solid #6887c8; outline-offset: 3px; }
+.access-lock-button.state-waiting {
+  border-color: #e4ca86;
+  background: #fff2ce;
+  color: #976709;
+  animation: access-lock-pulse 1s ease-in-out infinite alternate;
+}
+.access-lock-button.state-released {
+  border-color: #78c09a;
+  background: #dcf3e6;
+  color: #14784f;
+  box-shadow: inset 0 0 0 2px #fff, 0 0 0 5px #18815d17;
+}
+.access-lock-button.state-failed {
+  border-color: #e6aab3;
+  background: #fde9ec;
+  color: #ad2034;
+}
+@keyframes access-lock-pulse { to { box-shadow: 0 0 0 5px #bd84161a; } }
+html[data-theme="dark"] .access-lock-button { border-color: #4c515a; background: #30343b; color: #c3c7ce; box-shadow: none; }
+html[data-theme="dark"] .access-lock-button.state-waiting { border-color: #826b37; background: #393222; color: #f0c967; }
+html[data-theme="dark"] .access-lock-button.state-released { border-color: #3e805d; background: #1f3d2e; color: #69d6a8; box-shadow: 0 0 0 4px #49ad7d18; }
+html[data-theme="dark"] .access-lock-button.state-failed { border-color: #85424d; background: #44262c; color: #ff9ba8; }
+@media (max-width: 680px) {
+  .access-lock-panel { min-height: 245px; align-items: center; flex-wrap: nowrap; gap: 17px; }
+  .access-lock-button { width: 100px; height: 100px; flex-basis: 100px; margin: 0; }
+  .access-lock-button svg { width: 40px; height: 40px; }
+}

@@ -1,0 +1,55 @@
+// =====================================================
+    // ACTIVIDAD ADMINISTRATIVA
+// =====================================================
+
+    match /actividadAdmin/{eventoId} {
+      allow read: if esAdministrador();
+
+      allow create: if
+        esAdministrador()
+        && request.resource.data.keys().hasOnly([
+          "tipo",
+          "titulo",
+          "detalle",
+          "emisorUid",
+          "emisorNombre",
+          "entidadId",
+          "fechaCreacion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "tipo",
+          "titulo",
+          "detalle",
+          "emisorUid",
+          "emisorNombre",
+          "entidadId",
+          "fechaCreacion"
+        ])
+        && request.resource.data.tipo in [
+          "prestamo_aprobado",
+          "prestamo_rechazado",
+          "prestamo_devuelto",
+          "prestamo_eliminado",
+          "prestamo_prorroga_aprobada",
+          "prestamo_prorroga_rechazada",
+          "prestamo_devolucion_rechazada",
+          "usuario_autorizado",
+          "usuario_bloqueado",
+          "admin_promovido",
+          "usuario_eliminado"
+        ]
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.titulo.size() <= 120
+        && request.resource.data.detalle is string
+        && request.resource.data.detalle.size() <= 500
+        && request.resource.data.emisorUid == request.auth.uid
+        && request.resource.data.emisorNombre is string
+        && request.resource.data.emisorNombre.size() > 0
+        && request.resource.data.emisorNombre.size() <= 120
+        && request.resource.data.entidadId is string
+        && request.resource.data.entidadId.size() <= 200
+        && request.resource.data.fechaCreacion is timestamp;
+
+      allow update, delete: if false;
+    }

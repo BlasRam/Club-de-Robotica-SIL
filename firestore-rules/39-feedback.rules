@@ -1,0 +1,40 @@
+    // Sugerencias y reportes enviados desde la app.
+    match /sugerencias/{reporteId} {
+      allow create: if correoInstitucionalVerificado()
+        && request.resource.data.keys().hasOnly([
+          "uid", "nombre", "tipo", "titulo", "detalle", "estado",
+          "respuesta", "fechaCreacion", "fechaActualizacion"
+        ])
+        && request.resource.data.keys().hasAll([
+          "uid", "nombre", "tipo", "titulo", "detalle", "estado",
+          "respuesta", "fechaCreacion", "fechaActualizacion"
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() <= 120
+        && request.resource.data.tipo in ["sugerencia", "error"]
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.titulo.size() <= 100
+        && request.resource.data.detalle is string
+        && request.resource.data.detalle.size() > 0
+        && request.resource.data.detalle.size() <= 2000
+        && request.resource.data.estado == "recibido"
+        && request.resource.data.respuesta == ""
+        && request.resource.data.fechaCreacion is timestamp
+        && request.resource.data.fechaActualizacion is timestamp;
+
+      allow read: if esGestorClub()
+        || (estaAutenticado() && resource.data.uid == request.auth.uid);
+
+      allow update: if esGestorClub()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "estado", "respuesta", "fechaActualizacion"
+        ])
+        && request.resource.data.estado in ["recibido", "en_revision", "resuelto"]
+        && request.resource.data.respuesta is string
+        && request.resource.data.respuesta.size() <= 1000
+        && request.resource.data.fechaActualizacion is timestamp;
+
+      allow delete: if esAdministrador();
+    }

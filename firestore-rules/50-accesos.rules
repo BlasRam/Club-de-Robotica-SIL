@@ -1,0 +1,36 @@
+// =====================================================
+    // ACCESOS
+
+// =====================================================
+
+    match /accesos/{accesoId} {
+
+
+      allow create: if
+
+        (estaAutorizado() || esAdministrador())
+
+        && request.resource.data.uid
+          == request.auth.uid
+
+        && request.resource.data.tipo == "entrada";
+
+
+      allow read: if
+
+        estaAutenticado()
+
+        && (
+          resource.data.uid
+            == request.auth.uid
+
+          ||
+
+          esAdministrador()
+        );
+
+
+      allow update: if false;
+
+      allow delete: if esAdministrador();
+    }

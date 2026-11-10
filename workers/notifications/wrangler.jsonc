@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "club-notifications",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-05",
+  "preview_urls": false,
+  "durable_objects": {
+    "bindings": [
+      { "name": "DOOR_DEVICE_HUB", "class_name": "DoorDeviceHub" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DoorDeviceHub"] }
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false
+    }
+  },
+  "vars": {
+    "FIREBASE_PROJECT_ID": "club-de-robotica-sil",
+    "INSTITUTIONAL_EMAIL_DOMAIN": "",
+    "BOOTSTRAP_ADMIN_EMAIL": "plataformapy.oficial@gmail.com",
+    "DOOR_CONTROL_ENABLED": "false",
+    "DOOR_ENTRY_TEST_ENABLED": "true",
+    "DOOR_ID": "club-main",
+    "DOOR_DEVICE_ID": "club-door-01"
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  }
+}
+

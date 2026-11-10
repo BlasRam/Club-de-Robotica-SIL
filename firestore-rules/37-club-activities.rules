@@ -1,0 +1,15 @@
+    match /actividadesClub/{actividadId} {
+      allow read: if estaAutorizado() || esAdministrador();
+
+      allow create: if
+        esGestorClub()
+        && actividadClubValida(request.resource.data);
+
+      allow update: if
+        esGestorClub()
+        && actividadClubValida(request.resource.data)
+        && request.resource.data.creadoPorUid == resource.data.creadoPorUid
+        && request.resource.data.fechaCreacion == resource.data.fechaCreacion;
+
+      allow delete: if esGestorClub();
+    }

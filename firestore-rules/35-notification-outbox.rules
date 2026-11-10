@@ -1,0 +1,6 @@
+// =====================================================
+
+    match /notificationOutbox/{eventId} {
+      allow create: if estaAutenticado() && eventoOutboxValido(eventId);
+      allow read, update, delete: if false;
+    }
