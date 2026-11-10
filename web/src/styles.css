@@ -335,3 +335,19 @@ html:not([data-theme="dark"]) .profile-mini small,html:not([data-theme="dark"]) 
 html:not([data-theme="dark"]) .menu-open .sidebar{box-shadow:14px 0 35px #17325226}
 html[data-theme="dark"] .nav-link.active{background:var(--school-gold);color:var(--school-blue)}
 html[data-theme="dark"] .nav-link.active svg{color:var(--school-blue)}
+
+/* Correct selectors for the actual sidebar markup, including the mobile drawer. */
+html[data-theme="light"] .sidebar{background:#f4f7fb;color:#173252;border-right:1px solid #dce4ec}
+html[data-theme="light"] .nav-caption{color:#60758c}
+html[data-theme="light"] .nav-item{color:#29435f}
+html[data-theme="light"] .nav-item:hover{background:#e6eef7;color:var(--school-blue)}
+html[data-theme="light"] .nav-item.active{background:var(--school-blue);color:#fff}
+html[data-theme="light"] .nav-item.active svg{color:var(--school-gold)}
+html[data-theme="light"] .brand,html[data-theme="light"] .brand small{color:#173252}
+html[data-theme="light"] .account-chip{border-color:#d6e0ea}
+html[data-theme="light"] .account-copy small,html[data-theme="light"] .logout{color:#526b84}
+.app-update-banner{position:fixed;z-index:40;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(560px,calc(100vw - 24px));display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #c8d7e7;border-top:3px solid var(--school-gold);border-radius:10px;background:var(--paper);color:var(--ink);box-shadow:0 12px 36px #10243a2b}
+.app-update-banner span{flex:1;font-weight:700;font-size:14px}.app-update-banner .primary-button{white-space:nowrap}
+html[data-theme="dark"] .app-update-banner{border-color:var(--line);background:#202329}
+@media(min-width:681px){.app-update-banner{bottom:20px}}
+@media(max-width:420px){.app-update-banner{flex-wrap:wrap}.app-update-banner span{flex-basis:calc(100% - 48px)}.app-update-banner .primary-button{flex:1}}
