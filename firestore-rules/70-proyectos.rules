@@ -183,7 +183,10 @@
           && request.resource.data.creadoPorUid == request.auth.uid
           && request.resource.data.creadoPorNombre is string
           && request.resource.data.creadoPorNombre.size() <= 120
-          && request.resource.data.fechaCreacion is timestamp;
+          && request.resource.data.fechaCreacion is timestamp
+          && (!request.resource.data.keys().hasAny(["fotoPath"])
+            || (request.resource.data.fotoPath is string
+              && request.resource.data.fotoPath.matches("proyectos/" + proyectoId + "/evidencias/[A-Za-z0-9_-]+")));
 
         allow update, delete: if false;
       }
