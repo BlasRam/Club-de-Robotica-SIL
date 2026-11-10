@@ -3013,6 +3013,7 @@ async function submitProjectStage(form: HTMLFormElement): Promise<void> {
   const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
   setBusy(button, true, "Guardando etapa");
   let uploadedPath = "";
+  let photoWarning = false;
   try {
     const data = new FormData(form);
     const title = String(data.get("titulo") || "").trim();
@@ -3021,8 +3022,13 @@ async function submitProjectStage(form: HTMLFormElement): Promise<void> {
     if (!title || !evidence) throw new Error("Completa la etapa y su evidencia.");
     if (image && (!/^image\/(jpeg|png|webp)$/.test(image.type) || image.size > 4 * 1024 * 1024)) throw new Error("La foto debe ser JPG, PNG o WebP y pesar hasta 4 MB.");
     if (image) {
-      uploadedPath = `proyectos/${projectId}/evidencias/${state.user.uid}-${Date.now()}`;
-      await uploadBytes(ref(storage, uploadedPath), image, { contentType: image.type });
+      const candidatePath = `proyectos/${projectId}/evidencias/${state.user.uid}-${Date.now()}`;
+      try {
+        await uploadBytes(ref(storage, candidatePath), image, { contentType: image.type });
+        uploadedPath = candidatePath;
+      } catch {
+        photoWarning = true;
+      }
     }
     await addDoc(collection(db, "proyectos", projectId, "etapas"), {
       titulo: title,
@@ -3032,7 +3038,7 @@ async function submitProjectStage(form: HTMLFormElement): Promise<void> {
       fechaCreacion: serverTimestamp(),
       ...(uploadedPath ? { fotoPath: uploadedPath } : {}),
     });
-    notify("Etapa registrada.");
+    notify(photoWarning ? "Etapa registrada. La foto no se guardó; habilita Firebase Storage para adjuntar imágenes." : "Etapa registrada.", photoWarning ? "error" : "ok");
     closeDialog();
     await showProject(projectId);
   } catch (error) {

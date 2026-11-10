@@ -55,4 +55,10 @@ jobs:
       - name: Deploy Hosting and Firestore rules
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-        run: npx firebase-tools deploy --project club-de-robotica-sil --only hosting,firestore:rules,storage --non-interactive
+        run: npx firebase-tools deploy --project club-de-robotica-sil --only hosting,firestore:rules --non-interactive
+
+      - name: Deploy Storage rules (requires Storage API enabled)
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: npx firebase-tools deploy --project club-de-robotica-sil --only storage --non-interactive
