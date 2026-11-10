@@ -1,4 +1,5 @@
 name: Deploy PWA and Firestore rules
+run-name: Publish ${{ github.ref_name }} @ ${{ github.sha }}
 
 on:
   push:
