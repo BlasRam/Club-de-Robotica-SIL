@@ -184,6 +184,7 @@ type AppState = {
   desktopPreview: boolean;
   studentPreview: boolean;
   menuOpen: boolean;
+  updateAvailable: boolean;
   sidebarCollapsed: boolean;
   theme: "system" | "light" | "dark";
   reduceMotion: boolean;
@@ -207,6 +208,7 @@ const state: AppState = {
   desktopPreview: localStorage.getItem("cdr-admin-desktop-preview") === "true",
   studentPreview: false,
   menuOpen: false,
+  updateAvailable: false,
   sidebarCollapsed: false,
   theme: ["system", "light", "dark"].includes(localStorage.getItem("cdr-theme") || "")
     ? localStorage.getItem("cdr-theme") as "system" | "light" | "dark"
@@ -610,18 +612,45 @@ window.addEventListener("beforeinstallprompt", (event) => {
 if ("serviceWorker" in navigator && window.isSecureContext) {
   let controllerReady = Boolean(navigator.serviceWorker.controller);
   let reloadingForUpdate = false;
+  let waitingServiceWorker: ServiceWorker | null = null;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!controllerReady) {
       controllerReady = true;
       return;
     }
-    if (reloadingForUpdate) return;
-    reloadingForUpdate = true;
+    if (!reloadingForUpdate) return;
+    reloadingForUpdate = false;
     window.location.reload();
+  });
+
+  const offerUpdate = (worker: ServiceWorker) => {
+    waitingServiceWorker = worker;
+    state.updateAvailable = true;
+    render();
+  };
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const action = target.closest<HTMLElement>("[data-action]")?.dataset.action;
+    if (action === "apply-app-update" && waitingServiceWorker) {
+      reloadingForUpdate = true;
+      waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
+    } else if (action === "dismiss-app-update") {
+      state.updateAvailable = false;
+      render();
+    }
   });
 
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register("/service-worker.js", { updateViaCache: "none" }).then((registration) => {
+      if (registration.waiting && navigator.serviceWorker.controller) offerUpdate(registration.waiting);
+      registration.addEventListener("updatefound", () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener("statechange", () => {
+          if (installing.state === "installed" && navigator.serviceWorker.controller) offerUpdate(installing);
+        });
+      });
       const checkForUpdate = () => registration.update().catch(() => undefined);
       void checkForUpdate();
       document.addEventListener("visibilitychange", () => {
@@ -691,6 +720,7 @@ function appShell(content: string): string {
         </header>
         <main id="page-content" class="page-content">${content}</main>
       </div>
+      ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><span>Hay una actualización disponible.</span><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
       <nav class="mobile-nav" aria-label="Navegación móvil">
         ${items.filter((item) => ["inicio", "tareas", "acceso", "proyectos", "avisos"].includes(item.id)).map((item) => `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}">${icon(item.id, 19)}<span>${item.label}</span></button>`).join("")}
       </nav>
