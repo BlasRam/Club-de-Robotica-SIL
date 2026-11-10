@@ -321,3 +321,17 @@ html[data-theme="dark"] .feedback-card{background:#202329;border-color:var(--lin
 .teacher-quick-panel{border-color:#d8e4f0;background:linear-gradient(135deg,#edf4fb,#fff 80%);border-top:3px solid var(--school-gold)}
 .notice-important{border-left-color:var(--school-red)}
 @media(prefers-color-scheme:dark){html[data-theme="dark"] .teacher-quick-panel{background:linear-gradient(135deg,#1d2d40,#202329);border-color:#3b5068}}
+
+/* El menú acompaña el modo claro; el azul del escudo queda como acento. */
+html:not([data-theme="dark"]) .sidebar{background:#f4f7fb;color:#173252;border-right:1px solid #dce4ec}
+html:not([data-theme="dark"]) .side-brand{border-bottom:2px solid var(--school-gold)}
+html:not([data-theme="dark"]) .side-brand small,html:not([data-theme="dark"]) .side-label{color:#60758c}
+html:not([data-theme="dark"]) .nav-link{color:#29435f}
+html:not([data-theme="dark"]) .nav-link:hover{background:#e6eef7;color:var(--school-blue)}
+html:not([data-theme="dark"]) .nav-link.active{background:var(--school-blue);color:#fff}
+html:not([data-theme="dark"]) .nav-link.active svg{color:var(--school-gold)}
+html:not([data-theme="dark"]) .nav-divider,html:not([data-theme="dark"]) .profile-mini{border-color:#d6e0ea;background:transparent}
+html:not([data-theme="dark"]) .profile-mini small,html:not([data-theme="dark"]) .logout{color:#526b84}
+html:not([data-theme="dark"]) .menu-open .sidebar{box-shadow:14px 0 35px #17325226}
+html[data-theme="dark"] .nav-link.active{background:var(--school-gold);color:var(--school-blue)}
+html[data-theme="dark"] .nav-link.active svg{color:var(--school-blue)}
