@@ -303,3 +303,21 @@ html[data-theme="dark"] .feedback-card{background:#202329;border-color:var(--lin
 .home-task-item strong{font-size:14px}.home-task-item small{grid-column:2;color:var(--muted);font-size:12px}
 .notice-important{border-left:4px solid #a8182e;background:#fff9fa}.notice-important .priority-label{font-weight:800;color:#8d1428}
 @media(max-width:680px){.teacher-quick-panel{padding:14px}.teacher-quick-links{grid-template-columns:1fr}.teacher-quick-links button{justify-content:flex-start;min-height:50px}.home-task-item{min-height:52px}.mobile-nav-item{min-height:48px;font-size:10px}}
+
+/* Paleta institucional San Ignacio de Loyola: azul del escudo, dorado y rojo. */
+:root{--ink:#17263a;--muted:#68788b;--line:#dce4ec;--paper:#fff;--red:#07519a;--red-dark:#05376f;--pink:#eaf2fb;--school-blue:#05376f;--school-gold:#fabb11;--school-red:#c92530}
+.sidebar{background:var(--school-blue)}
+.side-brand{border-bottom:2px solid var(--school-gold)}
+.side-brand small{color:#d4e2f0}
+.nav-item.active{background:var(--school-gold);color:var(--school-blue)}
+.nav-item.active svg{color:var(--school-blue)}
+.auth-brand-panel{background:linear-gradient(145deg,#05376f 0%,#07519a 74%,#0c5c9e 100%)}
+.auth-brand-content .eyebrow{color:var(--school-gold)}
+.auth-panel-foot{border-top:2px solid var(--school-gold);padding-top:12px}
+.mobile-nav{border-top:3px solid var(--school-gold)}
+.mobile-nav-item.active{background:#eaf2fb;color:var(--school-blue);box-shadow:inset 0 -3px 0 var(--school-gold)}
+.primary-button{background:var(--school-blue);border-color:var(--school-blue)}
+.primary-button:hover{background:#07519a;border-color:#07519a}
+.teacher-quick-panel{border-color:#d8e4f0;background:linear-gradient(135deg,#edf4fb,#fff 80%);border-top:3px solid var(--school-gold)}
+.notice-important{border-left-color:var(--school-red)}
+@media(prefers-color-scheme:dark){html[data-theme="dark"] .teacher-quick-panel{background:linear-gradient(135deg,#1d2d40,#202329);border-color:#3b5068}}
