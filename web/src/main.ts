@@ -175,12 +175,14 @@ type Profile = {
 };
 
 type Page = "inicio" | "proyectos" | "muestra" | "cursos" | "tareas" | "acceso" | "avisos" | "sugerencias" | "prestamos" | "inventario" | "estudiantes" | "perfil" | "configuracion" | "calendario";
+type TaskFilter = "all" | "pending" | "overdue" | "week" | "undated" | "completed";
 type PreviewLoan = { item: string; quantity: number; purpose: string; start: string; due: string; status: string; requestStatus?: string; requestType?: string; proposedDue?: string };
 type StudentSandbox = { inside: boolean; entryAt: Date | null; taskDone: boolean; joinRequested: boolean; reactions: Record<string, string>; courseEnrollments: string[]; loans: PreviewLoan[] };
 type AppState = {
   user: User | null;
   profile: Profile | null;
   page: Page;
+  taskFilter: TaskFilter;
   authMode: "login" | "register";
   authMessage: string;
   loading: boolean;
@@ -205,6 +207,7 @@ const state: AppState = {
   user: null,
   profile: null,
   page: "inicio",
+  taskFilter: "all",
   authMode: "login",
   authMessage: "",
   loading: true,
@@ -321,7 +324,8 @@ let exitTimer = 0;
 history.replaceState({ cdrBase: true, cdrPage: state.page }, "", location.href);
 history.pushState({ cdrBackGuard: true }, "", location.href);
 
-function navigatePage(page: Page): void {
+function navigatePage(page: Page, taskFilter?: TaskFilter): void {
+  const samePage = state.page === page;
   if (state.page !== page) {
     pageTrail.push(page);
     history.pushState({ cdrPage: page }, "", location.href);
@@ -329,6 +333,7 @@ function navigatePage(page: Page): void {
   exitArmed = false;
   window.clearTimeout(exitTimer);
   state.page = page;
+  state.taskFilter = page === "tareas" ? taskFilter ?? (samePage ? state.taskFilter : "all") : "all";
   state.menuOpen = false;
   render();
 }
@@ -1014,7 +1019,7 @@ function renderSandboxShortcuts(): string {
 }
 
 function renderStudentShortcuts(pendingTasks?: number, pendingLoans?: number): string {
-  return `<section class="student-overview-links"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="student-shortcut-rail" role="group" aria-label="Accesos rápidos del estudiante"><button class="student-shortcut tasks" data-page="tareas" aria-label="Mis tareas"><span class="quick-icon coral">${icon("tareas", 22)}</span><strong>Mis tareas</strong>${pendingTasks !== undefined ? `<small>${pendingTasks ? `${pendingTasks} pendientes` : "Al día"}</small>` : ""}</button><button class="student-shortcut loans" data-page="prestamos" aria-label="Mis préstamos"><span class="quick-icon green">${icon("prestamos", 22)}</span><strong>Mis préstamos</strong>${pendingLoans !== undefined ? `<small>${pendingLoans ? `${pendingLoans} solicitudes` : "Sin solicitudes"}</small>` : ""}</button><button class="student-shortcut projects" data-page="proyectos" aria-label="Proyectos"><span class="quick-icon blue">${icon("proyectos", 22)}</span><strong>Proyectos</strong></button><button class="student-shortcut courses" data-page="cursos" aria-label="Cursos"><span class="quick-icon amber">${icon("cursos", 22)}</span><strong>Cursos</strong></button></div></section>`;
+  return `<section class="student-overview-links"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="student-shortcut-rail" role="group" aria-label="Accesos rápidos del estudiante"><button class="student-shortcut tasks" data-page="tareas" data-task-filter="pending" aria-label="Mis tareas"><span class="quick-icon coral">${icon("tareas", 22)}</span><strong>Mis tareas</strong>${pendingTasks !== undefined ? `<small>${pendingTasks ? `${pendingTasks} pendientes` : "Al día"}</small>` : ""}</button><button class="student-shortcut loans" data-page="prestamos" aria-label="Mis préstamos"><span class="quick-icon green">${icon("prestamos", 22)}</span><strong>Mis préstamos</strong>${pendingLoans !== undefined ? `<small>${pendingLoans ? `${pendingLoans} solicitudes` : "Sin solicitudes"}</small>` : ""}</button><button class="student-shortcut projects" data-page="proyectos" aria-label="Proyectos"><span class="quick-icon blue">${icon("proyectos", 22)}</span><strong>Proyectos</strong></button><button class="student-shortcut courses" data-page="cursos" aria-label="Cursos"><span class="quick-icon amber">${icon("cursos", 22)}</span><strong>Cursos</strong></button></div></section>`;
 }
 
 function renderStudentHomeModules(inside: boolean, pendingTasks: number, pendingLoans: number): string {
@@ -1093,9 +1098,9 @@ async function renderHome(): Promise<string> {
     : null;
   const pendingLoans = loans.docs.filter((loan) => loan.get("estado") === "Pendiente").length;
   return `${pageHeading(`Hola, ${esc(greeting)}`, teacher ? "Panel docente · equipos, actividades y revisiones." : "Panel del estudiante · tareas, proyectos y actividad del club.")}
-    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a los equipos, orienta proyectos y revisa los avances del club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas">${icon("tareas", 20)} Actividades</button><button data-page="calendario">${icon("calendario", 20)} Calendario</button><button data-page="muestra">${icon("muestra", 20)} ${canReviewShowcase() ? `Revisiones (${pendingShowcase?.size ?? 0})` : "Muestra"}</button></div></section>${teacherProjects}` : ""}
+    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a los equipos, orienta proyectos y revisa los avances del club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas" data-task-filter="pending">${icon("tareas", 20)} Actividades pendientes</button><button data-page="calendario">${icon("calendario", 20)} Calendario</button><button data-page="muestra">${icon("muestra", 20)} ${canReviewShowcase() ? `Revisiones (${pendingShowcase?.size ?? 0})` : "Muestra"}</button></div></section>${teacherProjects}` : ""}
     ${!teacher ? renderStudentHomeModules(inside, tasks.size, pendingLoans) : ""}
-    ${nextTasks.length ? `<section class="unframed-section"><div class="section-heading"><h2>${teacher ? "Actividades próximas" : "Mis tareas pendientes"}</h2><button class="text-button" data-page="tareas">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => `<button class="home-task-item" data-page="tareas"><span class="state-pill warning">Pendiente</span><strong>${esc(item.get("titulo") || "Tarea")}</strong>${item.get("fechaLimite") ? `<small>Entrega: ${dateText(item.get("fechaLimite"))}</small>` : ""}</button>`).join("")}</div></section>` : ""}
+    ${nextTasks.length ? `<section class="unframed-section"><div class="section-heading"><h2>${teacher ? "Actividades próximas" : "Mis tareas pendientes"}</h2><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => `<button class="home-task-item" data-page="tareas" data-task-filter="pending"><span class="state-pill warning">Pendiente</span><strong>${esc(item.get("titulo") || "Tarea")}</strong>${item.get("fechaLimite") ? `<small>Entrega: ${dateText(item.get("fechaLimite"))}</small>` : ""}</button>`).join("")}</div></section>` : ""}
     ${calendar}
     <section class="unframed-section"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${importantNotices.length ? `<div class="notice-list">${importantNotices.map((item) => noticeCard(item.id, item.data, false)).join("")}</div>` : emptyInline("No hay avisos publicados.")}</section>`;
 }
@@ -1170,8 +1175,15 @@ async function renderProjects(): Promise<string> {
       const canDeleteProject = canManageClub();
       const projectContext = summary?.latestStage || summary?.nextDue || summary?.overdue
         ? `<div class="project-card-context">${summary.latestStage ? `<span><small>Última fase</small><strong>${esc(summary.latestStage)}</strong></span>` : ""}${summary.overdue ? `<span class="attention"><small>Atención</small><strong>${summary.overdue} tarea${summary.overdue === 1 ? "" : "s"} atrasada${summary.overdue === 1 ? "" : "s"}</strong></span>` : summary.nextDue ? `<span><small>Próxima entrega</small><strong>${esc(summary.nextTask || "Tarea")} · ${dateText(summary.nextDue)}</strong></span>` : ""}</div>` : "";
-      return `<article class="project-card"><div class="project-card-top"><span class="project-mark">${icon("proyectos", 21)}</span><span class="state-pill ${project.estado === "Activo" ? "success" : "muted"}">${esc(project.estado || "Activo")}</span></div><p class="project-area">${esc((project.departamentos || []).join(" · ") || "Club de Robótica")}</p><h2>${esc(project.nombre || project.titulo || "Proyecto")}</h2><p class="project-description">${esc(project.objetivo || project.descripcion || "Sin objetivo registrado")}</p><div class="project-progress"><div><span>Progreso</span><strong>${summary ? `${percent}%` : "—"}</strong></div><progress max="100" value="${summary ? percent : 0}" aria-label="Progreso del proyecto"></progress><small>${summary ? `${summary.done} de ${summary.total} tareas completadas` : "Visible para miembros del proyecto"}</small></div>${projectContext}<div class="project-meta"><span>${icon("people", 15)} ${(project.miembrosUids || []).length} miembros</span><span>Responsable: ${esc(project.responsableNombre || "Sin asignar")}</span></div><div class="project-card-bottom"><button class="text-button" data-action="project-detail" data-id="${esc(project.id)}">Abrir proyecto ${icon("ir", 14)}</button>${canEditResponsible ? `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(project.id)}" aria-label="Asignar responsable">${icon("people", 15)} Responsable</button>` : ""}${canDeleteProject ? `<button class="icon-button danger-icon" data-action="delete-project" data-id="${esc(project.id)}" aria-label="Eliminar proyecto" title="Eliminar proyecto">${icon("eliminar", 16)}</button>` : ""}${requestAction}</div></article>`;
+      return `<article class="project-card"><div class="project-card-top"><span class="project-mark">${icon("proyectos", 21)}</span><span class="state-pill ${project.estado === "Activo" ? "success" : "muted"}">${esc(project.estado || "Activo")}</span></div><p class="project-area">${esc((project.departamentos || []).join(" · ") || "Club de Robótica")}</p><h2>${esc(project.nombre || project.titulo || "Proyecto")}</h2><p class="project-description">${esc(project.objetivo || project.descripcion || "Sin objetivo registrado")}</p><div class="project-progress"><div><span>Progreso</span><strong>${summary ? `${percent}%` : "—"}</strong></div><progress max="100" value="${summary ? percent : 0}" aria-label="Progreso del proyecto"></progress><small>${summary ? `${summary.done} de ${summary.total} tareas completadas` : "Visible para miembros del proyecto"}</small></div>${summary?.latestStage ? renderProjectMilestones(summary.latestStage) : ""}${projectContext}<div class="project-meta"><span>${icon("people", 15)} ${(project.miembrosUids || []).length} miembros</span><span>Responsable: ${esc(project.responsableNombre || "Sin asignar")}</span></div><div class="project-card-bottom"><button class="text-button" data-action="project-detail" data-id="${esc(project.id)}">Abrir proyecto ${icon("ir", 14)}</button>${canEditResponsible ? `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(project.id)}" aria-label="Asignar responsable">${icon("people", 15)} Responsable</button>` : ""}${canDeleteProject ? `<button class="icon-button danger-icon" data-action="delete-project" data-id="${esc(project.id)}" aria-label="Eliminar proyecto" title="Eliminar proyecto">${icon("eliminar", 16)}</button>` : ""}${requestAction}</div></article>`;
     }).join("")}</div>` : emptyPanel("Aún no hay proyectos", "Cuando se creen proyectos, aparecerán aquí.")}`;
+}
+
+function renderProjectMilestones(currentStage: string): string {
+  const phases = ["Investigación", "Diseño", "Construcción", "Pruebas", "Presentación"];
+  const active = phases.findIndex((phase) => phase.toLocaleLowerCase("es") === currentStage.toLocaleLowerCase("es"));
+  if (active < 0) return `<div class="project-milestone-custom"><span>Etapa actual</span><strong>${esc(currentStage)}</strong></div>`;
+  return `<ol class="project-milestones" aria-label="Etapas del proyecto">${phases.map((phase, index) => `<li class="${index < active ? "complete" : index === active ? "current" : "upcoming"}" ${index === active ? 'aria-current="step"' : ""}><span class="milestone-dot" aria-hidden="true">${index < active ? icon("listo", 11) : ""}</span><small>${phase}</small></li>`).join("")}</ol>`;
 }
 
 async function renderShowcase(): Promise<string> {
@@ -1212,7 +1224,7 @@ async function renderTeacherProjectDashboard(): Promise<string> {
   }));
   const overdueTotal = overview.reduce((sum, project) => sum + project.overdue, 0);
   const staleTotal = overview.filter((project) => project.stale).length;
-  return `<section class="teacher-project-dashboard"><div class="section-heading"><div><h2>Seguimiento de equipos</h2><p>Proyectos en los que participas como responsable o integrante.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div><div class="teacher-project-metrics"><div><strong>${overview.length}</strong><span>Equipos</span></div><div class="${overdueTotal ? "attention" : ""}"><strong>${overdueTotal}</strong><span>Tareas atrasadas</span></div><div class="${staleTotal ? "attention" : ""}"><strong>${staleTotal}</strong><span>Sin avances en 14 días</span></div></div>${overview.length ? `<div class="teacher-project-list">${overview.map((item) => `<button class="teacher-project-item" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.data.nombre || "Proyecto")}</strong><small>${item.latest ? `Último avance: ${dateText(item.latest)}` : "Todavía no hay etapas registradas"}</small></span><span class="teacher-project-badges">${item.overdue ? `<i class="state-pill warning">${item.overdue} atrasadas</i>` : `<i class="state-pill success">Al día</i>`}${item.stale ? `<i class="state-pill muted">Revisar avance</i>` : ""}</span></button>`).join("")}</div>` : emptyInline("Aún no acompañas un proyecto. Pide que te asignen como responsable o integrante para ver su seguimiento aquí.")}</section>`;
+  return `<section class="teacher-project-dashboard"><div class="section-heading"><div><h2>Seguimiento de equipos</h2><p>Proyectos en los que participas como responsable o integrante.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div><div class="teacher-project-metrics"><div><strong>${overview.length}</strong><span>Equipos</span></div><button type="button" class="${overdueTotal ? "attention" : ""}" data-page="tareas" data-task-filter="overdue"><strong>${overdueTotal}</strong><span>Tareas atrasadas</span></button><div class="${staleTotal ? "attention" : ""}"><strong>${staleTotal}</strong><span>Sin avances en 14 días</span></div></div>${overview.length ? `<div class="teacher-project-list">${overview.map((item) => `<button class="teacher-project-item" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.data.nombre || "Proyecto")}</strong><small>${item.latest ? `Último avance: ${dateText(item.latest)}` : "Todavía no hay etapas registradas"}</small></span><span class="teacher-project-badges">${item.overdue ? `<i class="state-pill warning">${item.overdue} atrasadas</i>` : `<i class="state-pill success">Al día</i>`}${item.stale ? `<i class="state-pill muted">Revisar avance</i>` : ""}</span></button>`).join("")}</div>` : emptyInline("Aún no acompañas un proyecto. Pide que te asignen como responsable o integrante para ver su seguimiento aquí.")}</section>`;
 }
 
 async function renderCourses(): Promise<string> {
@@ -1282,6 +1294,13 @@ function pendingNotice(): string {
   return `${pageHeading("Acceso pendiente", "Esta sección se habilita cuando el administrador autorice tu perfil.")}<section class="pending-banner">${icon("alerta", 22)}<div><strong>Cuenta en revisión</strong><p>Tu perfil está creado. Un administrador debe habilitar el acceso al espacio de trabajo.</p></div></section>`;
 }
 
+function taskDueDate(task: Record<string, any>): Date | null {
+  const value = task.fechaLimite;
+  if (value instanceof Date) return value;
+  const parsed = value?.toDate?.();
+  return parsed instanceof Date ? parsed : null;
+}
+
 async function renderTasks(): Promise<string> {
   if (!isAuthorized()) return pendingNotice();
   const snapshots = await Promise.all([
@@ -1305,15 +1324,51 @@ async function renderTasks(): Promise<string> {
   tasks.sort((a, b) => (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0));
   const pending = tasks.filter((task) => task.estado !== "Completada");
   const done = tasks.filter((task) => task.estado === "Completada");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(today);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const overdue = pending.filter((task) => { const due = taskDueDate(task); return due && due < today; });
+  const dueThisWeek = pending.filter((task) => { const due = taskDueDate(task); return due && due >= today && due <= weekEnd; });
+  const undated = pending.filter((task) => !taskDueDate(task));
+  const filters: Array<{ id: TaskFilter; label: string; count: number }> = [
+    { id: "all", label: "Todas", count: tasks.length },
+    { id: "pending", label: "Pendientes", count: pending.length },
+    { id: "overdue", label: "Atrasadas", count: overdue.length },
+    { id: "week", label: "Próximos 7 días", count: dueThisWeek.length },
+    { id: "undated", label: "Sin fecha", count: undated.length },
+    { id: "completed", label: "Completadas", count: done.length },
+  ];
+  const filterTask = (task: Record<string, any>): boolean => {
+    if (state.taskFilter === "pending") return task.estado !== "Completada";
+    if (state.taskFilter === "completed") return task.estado === "Completada";
+    if (task.estado === "Completada") return state.taskFilter === "all";
+    const due = taskDueDate(task);
+    if (state.taskFilter === "overdue") return Boolean(due && due < today);
+    if (state.taskFilter === "week") return Boolean(due && due >= today && due <= weekEnd);
+    if (state.taskFilter === "undated") return !due;
+    return true;
+  };
+  const visibleTasks = tasks.filter(filterTask).sort((a, b) => {
+    if (a.estado === "Completada" || b.estado === "Completada") return (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0);
+    return (taskDueDate(a)?.getTime() ?? Number.MAX_SAFE_INTEGER) - (taskDueDate(b)?.getTime() ?? Number.MAX_SAFE_INTEGER);
+  });
+  const activeFilter = filters.find((item) => item.id === state.taskFilter)?.label || "Todas";
   return `${pageHeading("Tareas", "Seguimiento de tus responsabilidades.", `<button class="icon-button" data-action="refresh" title="Actualizar" aria-label="Actualizar">${icon("actualizar")}</button>`)}
-    ${tasks.length ? `<div class="task-summary"><div><strong>${pending.length}</strong><span>Pendientes</span></div><div><strong>${done.length}</strong><span>Completadas</span></div></div><div class="task-list">${tasks.map((task) => taskCard(task)).join("")}</div>` : emptyPanel("No hay tareas asignadas", "Las tareas asignadas a tu cuenta aparecerán aquí.")}`;
+    ${tasks.length ? `<nav class="task-priority-filters" aria-label="Filtrar tareas">${filters.map((filter) => `<button type="button" class="task-filter ${state.taskFilter === filter.id ? "active" : ""} ${filter.id === "overdue" && filter.count ? "attention" : ""}" data-page="tareas" data-task-filter="${filter.id}" aria-pressed="${state.taskFilter === filter.id}"><span>${filter.label}</span><strong>${filter.count}</strong></button>`).join("")}</nav>${visibleTasks.length ? `<div class="task-list">${visibleTasks.map((task) => taskCard(task)).join("")}</div>` : emptyInline(`No hay tareas en “${activeFilter.toLowerCase()}”.`)}` : emptyPanel("No hay tareas asignadas", "Las tareas asignadas a tu cuenta aparecerán aquí.")}`;
 }
 
 function taskCard(task: Record<string, any>): string {
   const projectId = String(task.path).split("/")[1];
   const completed = task.estado === "Completada";
   const isAssignee = task.responsableUid === state.user?.uid || (task.responsableUids || []).includes(state.user?.uid);
-  return `<article class="task-row"><span class="task-check ${completed ? "done" : ""}">${completed ? icon("listo", 17) : ""}</span><div class="task-info"><span class="task-project">${esc(projectId)}</span><h3>${esc(task.titulo || "Tarea")}</h3><p>${esc(task.descripcion || "Sin descripción")}</p><div class="task-meta"><span class="state-pill ${completed ? "success" : "warning"}">${esc(task.estado || "Pendiente")}</span>${task.fechaLimite ? `<span>${icon("fecha", 14)} ${dateText(task.fechaLimite)}</span>` : ""}</div></div>${!completed && isAssignee ? `<button class="secondary-button compact" data-action="complete-task" data-path="${esc(task.path)}">Marcar completada</button>` : ""}</article>`;
+  const due = taskDueDate(task);
+  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(startToday); tomorrow.setDate(tomorrow.getDate() + 1);
+  const weekEnd = new Date(startToday); weekEnd.setDate(weekEnd.getDate() + 7);
+  const dueLabel = completed ? "Completada" : !due ? "Sin fecha" : due < startToday ? "Atrasada" : due < tomorrow ? "Vence hoy" : due <= weekEnd ? "Esta semana" : "Próxima";
+  const dueTone = completed ? "success" : !due ? "muted" : due < startToday ? "danger" : due <= weekEnd ? "warning" : "muted";
+  return `<article class="task-row ${dueTone === "danger" ? "task-overdue" : ""}"><span class="task-check ${completed ? "done" : ""}">${completed ? icon("listo", 17) : ""}</span><div class="task-info"><span class="task-project">${esc(projectId)}</span><h3>${esc(task.titulo || "Tarea")}</h3><p>${esc(task.descripcion || "Sin descripción")}</p><div class="task-meta"><span class="state-pill ${dueTone}">${dueLabel}</span>${due ? `<span>${icon("fecha", 14)} ${dateText(due)}</span>` : ""}</div></div>${!completed && isAssignee ? `<button class="secondary-button compact" data-action="complete-task" data-path="${esc(task.path)}">Marcar completada</button>` : ""}</article>`;
 }
 
 async function renderAccess(): Promise<string> {
@@ -1768,7 +1823,7 @@ root.addEventListener("click", (event) => {
   const page = button.dataset.page as Page | undefined;
   if (page) {
     event.preventDefault();
-    navigatePage(page);
+    navigatePage(page, button.dataset.taskFilter as TaskFilter | undefined);
     return;
   }
   const action = button.dataset.action;

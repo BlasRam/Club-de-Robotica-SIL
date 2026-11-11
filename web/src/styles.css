@@ -433,3 +433,34 @@ html[data-theme="light"] .nav-symbol.tareas,html[data-theme="light"] .nav-symbol
 html[data-theme="light"] .nav-symbol.acceso,html[data-theme="light"] .nav-symbol.prestamos{--symbol-color:#167a59}
 .nav-item.active .nav-symbol{background:#ffffff25}
 @media(prefers-reduced-motion:reduce){.nav-symbol{transition:none}.nav-item:hover .nav-symbol{transform:none}}
+
+/* Actionable task priorities and readable project milestones. */
+.task-priority-filters{display:grid;grid-template-columns:repeat(6,minmax(105px,1fr));gap:8px;margin:12px 0 18px}
+.teacher-project-metrics>button{display:grid;gap:3px;padding:11px;border:0;border-radius:6px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.teacher-project-metrics>button:hover{outline:1px solid var(--school-blue)}
+.task-filter{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;min-height:44px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);text-align:left}
+.task-filter span{font-size:11px;font-weight:700;line-height:1.25}
+.task-filter strong{display:grid;place-items:center;min-width:23px;height:23px;padding:0 5px;border-radius:99px;background:var(--surface);color:var(--muted);font-size:11px}
+.task-filter:hover{border-color:var(--school-blue)}
+.task-filter.active{border-color:var(--school-blue);background:var(--school-blue);color:#fff}
+.task-filter.active strong{background:#ffffff24;color:#fff}
+.task-filter.attention:not(.active){border-color:#d78969;color:#9c361e}
+html[data-theme="dark"] .task-filter.attention:not(.active){border-color:#7b503e;color:#ffb58e}
+.task-row.task-overdue{border-left:3px solid #b64628;padding-left:10px;background:color-mix(in srgb,#b64628 4%,var(--paper))}
+html[data-theme="dark"] .task-row.task-overdue{background:color-mix(in srgb,#b64628 9%,var(--paper))}
+.project-milestones{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));list-style:none;margin:0 0 14px;padding:4px 0 0;overflow:hidden}
+.project-milestones li{position:relative;display:grid;justify-items:center;gap:6px;min-width:0;text-align:center}
+.project-milestones li:not(:last-child)::after{content:"";position:absolute;top:8px;left:calc(50% + 11px);right:calc(-50% + 11px);height:2px;background:var(--line)}
+.project-milestones li.complete::after{background:var(--school-blue)}
+.milestone-dot{position:relative;z-index:1;display:grid;place-items:center;width:18px;height:18px;border:2px solid var(--line);border-radius:50%;background:var(--paper);color:#fff}
+.project-milestones .complete .milestone-dot{border-color:var(--school-blue);background:var(--school-blue)}
+.project-milestones .current .milestone-dot{border:4px solid var(--school-gold);background:var(--school-blue);box-shadow:0 0 0 3px color-mix(in srgb,var(--school-gold) 20%,transparent)}
+.project-milestones small{color:var(--muted);font-size:9px;line-height:1.2;overflow-wrap:anywhere}
+.project-milestones .current small{color:var(--school-blue);font-weight:800}
+html[data-theme="dark"] .project-milestones .current small{color:var(--school-gold)}
+.project-milestone-custom{display:flex;align-items:center;gap:7px;margin:0 0 14px;padding:8px 10px;border-left:3px solid var(--school-gold);border-radius:5px;background:var(--surface);font-size:10px}
+.project-milestone-custom span{color:var(--muted)}
+@media(min-width:1000px){.page-content>*{min-width:0}.task-row{align-items:center;gap:16px;padding:18px 10px}.task-info>p{max-width:75ch}.task-priority-filters{max-width:1100px}.project-card-bottom{gap:9px}}
+@media(max-width:800px){.task-priority-filters{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:520px){.task-priority-filters{display:flex;overflow-x:auto;gap:7px;padding:2px 1px 8px;scrollbar-width:thin;overscroll-behavior-x:contain}.task-filter{flex:none;min-height:42px}.task-row.task-overdue{padding-left:8px}.project-milestones{margin-bottom:12px}.project-milestones small{font-size:8px}}
+@media(min-width:1500px){.app-shell:not(.desktop-preview) .project-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
