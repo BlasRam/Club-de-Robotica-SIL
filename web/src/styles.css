@@ -247,6 +247,7 @@ html[data-theme="dark"] .quick-icon.amber,html[data-theme="dark"] .course-mark{b
 .student-shortcut.courses{background:#fff6e8;border-color:#f0e3c9}
 .student-shortcut .quick-icon{flex:none;width:30px;height:30px}
 .student-shortcut strong{font-size:12px;line-height:1.25;overflow-wrap:anywhere}
+.student-shortcut small{color:var(--muted);font-size:10px;font-weight:700}
 .student-shortcut:focus-visible{outline:2px solid var(--red);outline-offset:2px}
 html[data-theme="dark"] .student-shortcut.tasks{background:#39252b;border-color:#543139}
 html[data-theme="dark"] .student-shortcut.loans{background:#20372e;border-color:#315344}
