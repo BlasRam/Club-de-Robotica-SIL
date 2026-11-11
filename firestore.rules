@@ -906,7 +906,15 @@ match /cursos/{cursoId} {
           && request.resource.data.semestre.size() <= 40
           && request.resource.data.fechaInscripcion is timestamp;
 
-        allow update: if false;
+        allow update: if
+          esPropietario(uid)
+          && estaAutorizado()
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "completado", "fechaCompletado"
+          ])
+          && request.resource.data.completado == true
+          && request.resource.data.fechaCompletado is timestamp;
         allow delete: if esAdministrador()
           || (esPropietario(uid) && estaAutorizado());
       }
@@ -1549,6 +1557,59 @@ match /puertas/{puertaId} {
         esCreadorProyecto(proyectoId)
         || esGestorClub();
 
+      // Registro de acuerdos del equipo. Solo el equipo puede leerlo y agregar entradas inmutables.
+      match /decisiones/{decisionId} {
+        allow read: if estaAutorizado() && (esGestorClub() || esResponsableProyecto(proyectoId) || esMiembroProyecto(proyectoId));
+        allow create: if estaAutorizado()
+          && (esGestorClub() || esResponsableProyecto(proyectoId) || esMiembroProyecto(proyectoId))
+          && request.resource.data.keys().hasOnly(["titulo", "detalle", "creadoPorUid", "creadoPorNombre", "fechaCreacion"])
+          && request.resource.data.keys().hasAll(["titulo", "detalle", "creadoPorUid", "creadoPorNombre", "fechaCreacion"])
+          && request.resource.data.titulo is string
+          && request.resource.data.titulo.size() > 0
+          && request.resource.data.titulo.size() <= 100
+          && request.resource.data.detalle is string
+          && request.resource.data.detalle.size() > 0
+          && request.resource.data.detalle.size() <= 1200
+          && request.resource.data.creadoPorUid == request.auth.uid
+          && request.resource.data.creadoPorNombre is string
+          && request.resource.data.creadoPorNombre.size() <= 120
+          && request.resource.data.fechaCreacion is timestamp;
+        allow update, delete: if false;
+      }
+
+      // Solicitudes de materiales hechas por integrantes y resueltas por responsables/docentes.
+      match /solicitudesMateriales/{solicitudId} {
+        allow read: if estaAutorizado() && (esGestorClub() || esResponsableProyecto(proyectoId) || esMiembroProyecto(proyectoId));
+        allow create: if estaAutorizado()
+          && !esGestorClub()
+          && (esResponsableProyecto(proyectoId) || esMiembroProyecto(proyectoId))
+          && request.resource.data.keys().hasOnly(["material", "cantidad", "justificacion", "estado", "solicitanteUid", "solicitanteNombre", "fechaCreacion"])
+          && request.resource.data.keys().hasAll(["material", "cantidad", "justificacion", "estado", "solicitanteUid", "solicitanteNombre", "fechaCreacion"])
+          && request.resource.data.material is string
+          && request.resource.data.material.size() > 0
+          && request.resource.data.material.size() <= 100
+          && request.resource.data.cantidad is int
+          && request.resource.data.cantidad > 0
+          && request.resource.data.cantidad <= 100
+          && request.resource.data.justificacion is string
+          && request.resource.data.justificacion.size() <= 500
+          && request.resource.data.estado == "Pendiente"
+          && request.resource.data.solicitanteUid == request.auth.uid
+          && request.resource.data.solicitanteNombre is string
+          && request.resource.data.solicitanteNombre.size() <= 120
+          && request.resource.data.fechaCreacion is timestamp;
+        allow update: if estaAutorizado()
+          && (esGestorClub() || esResponsableProyecto(proyectoId))
+          && resource.data.estado == "Pendiente"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado", "respuesta", "resueltoPorUid", "fechaResolucion"])
+          && request.resource.data.estado in ["Aprobada", "Rechazada"]
+          && request.resource.data.respuesta is string
+          && request.resource.data.respuesta.size() <= 500
+          && request.resource.data.resueltoPorUid == request.auth.uid
+          && request.resource.data.fechaResolucion is timestamp;
+        allow delete: if false;
+      }
+
 
       // Bitácora de etapas y evidencias escritas del proyecto.
       match /etapas/{etapaId} {
@@ -2071,11 +2132,12 @@ match /puertas/{puertaId} {
                 "estado"
               ])
 
-            && resource.data.estado
-              == "Pendiente"
-
-            && request.resource.data.estado
-              == "Completada"
+            && (
+              (resource.data.estado == "Pendiente"
+                && request.resource.data.estado in ["En progreso", "Completada"])
+              || (resource.data.estado == "En progreso"
+                && request.resource.data.estado == "Completada")
+            )
           )
           );
 

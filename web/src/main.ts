@@ -186,6 +186,8 @@ type AppState = {
   profile: Profile | null;
   page: Page;
   taskFilter: TaskFilter;
+  taskView: "list" | "board";
+  projectArchiveView: boolean;
   taskSearch: string;
   courseFocusId: string;
   noticeFilter: NoticeFilter;
@@ -218,6 +220,8 @@ const state: AppState = {
   profile: null,
   page: "inicio",
   taskFilter: "all",
+  taskView: "list",
+  projectArchiveView: false,
   taskSearch: "",
   courseFocusId: "",
   noticeFilter: "all",
@@ -1112,6 +1116,7 @@ async function pageContent(page: Page): Promise<string> {
 
 function renderSettings(): string {
   const profile = state.profile!;
+  const noticePrefs = readNotificationPreferences();
   return `${pageHeading("Configuración", "Preferencias de tu cuenta y del club.")}
     <div class="settings-grid">
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("configuracion", 18)}</span><div><h2>Apariencia</h2><p>Personaliza cómo se muestra Robótica SIL en este dispositivo.</p></div></div>
@@ -1125,6 +1130,8 @@ function renderSettings(): string {
       </section>
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("campana", 18)}</span><div><h2>Notificaciones</h2><p>${state.unreadNotifications ? `${state.unreadNotifications} sin leer` : "No tienes notificaciones sin leer."}</p></div></div>
         <button class="secondary-button" data-page="avisos">${icon("campana", 16)} Abrir bandeja</button>
+        <p class="settings-note">Elige qué categorías mostrar en la bandeja de este dispositivo.</p>
+        ${[["task", "Tareas"], ["project", "Proyectos"], ["loan", "Préstamos"], ["club", "Avisos del club"]].map(([key, label]) => `<label class="settings-toggle"><span><strong>${label}</strong></span><input type="checkbox" data-setting="notification-pref" data-pref="${key}" ${noticePrefs[key] !== false ? "checked" : ""} /></label>`).join("")}
       </section>
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("inicio", 18)}</span><div><h2>Guía de inicio</h2><p>Vuelve a consultar las recomendaciones para tu perfil.</p></div></div>
         <button class="secondary-button" data-action="show-onboarding">${icon("ir", 16)} Ver guía</button>
@@ -1136,6 +1143,14 @@ function renderSettings(): string {
       </section>
       <div class="settings-about">${CLUB_SHORT_NAME} · Preferencias guardadas en este dispositivo.</div>
     </div>`;
+}
+
+function readNotificationPreferences(): Record<string, boolean> {
+  const defaults: Record<string, boolean> = { task: true, project: true, loan: true, club: true, other: true };
+  if (!state.user) return defaults;
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem(`cdr-notification-prefs:${state.user.uid}`) || "{}") };
+  } catch { return defaults; }
 }
 
 function renderProfile(): string {
@@ -1281,6 +1296,8 @@ async function renderHome(): Promise<string> {
   for (const task of [...(assignedByOwner?.docs ?? []), ...(assignedByList?.docs ?? [])]) {
     if (task.get("estado") !== "Completada") tasks.set(task.ref.path, task);
   }
+  const dueTodayStart = new Date(); dueTodayStart.setHours(0, 0, 0, 0);
+  const overdueHomeTasks = [...tasks.values()].filter((task) => task.get("fechaLimite")?.toDate?.() instanceof Date && task.get("fechaLimite").toDate() < dueTodayStart);
   const nextTasks = [...tasks.values()].sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER)).slice(0, 3);
   const importantNotices = notices.docs.map((item) => ({ id: item.id, data: item.data() })).sort((a, b) => Number(b.data.prioridad === "Importante") - Number(a.data.prioridad === "Importante") || (b.data.fechaCreacion?.toMillis?.() ?? 0) - (a.data.fechaCreacion?.toMillis?.() ?? 0)).slice(0, 3);
   const teacher = state.profile?.tipoUsuario === "docente";
@@ -1292,6 +1309,7 @@ async function renderHome(): Promise<string> {
   return `${pageHeading(`Hola, ${esc(greeting)}`, teacher ? "Panel docente · equipos, actividades y revisiones." : "Panel del estudiante · tareas, proyectos y actividad del club.")}
     ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a los equipos, orienta proyectos y revisa los avances del club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas" data-task-filter="pending">${icon("tareas", 20)} Actividades pendientes</button><button data-page="calendario">${icon("calendario", 20)} Calendario</button><button data-page="muestra">${icon("muestra", 20)} ${canReviewShowcase() ? `Revisiones (${pendingShowcase?.size ?? 0})` : "Muestra"}</button></div></section>${teacherProjects}` : ""}
     ${!teacher ? renderStudentHomeModules(inside, tasks.size, pendingLoans) : ""}
+    ${overdueHomeTasks.length ? `<div class="notice-box warning home-overdue-alert"><strong>Hay ${overdueHomeTasks.length} tarea${overdueHomeTasks.length === 1 ? " atrasada" : "s atrasadas"}.</strong><span>Revísalas y acuerda con tu equipo un nuevo plan.</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver tareas atrasadas</button></div>` : ""}
     ${nextTasks.length ? `<section class="unframed-section"><div class="section-heading"><h2>${teacher ? "Actividades próximas" : "Mis tareas pendientes"}</h2><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => `<button class="home-task-item" data-page="tareas" data-task-filter="pending"><span class="state-pill warning">Pendiente</span><strong>${esc(item.get("titulo") || "Tarea")}</strong>${item.get("fechaLimite") ? `<small>Entrega: ${dateText(item.get("fechaLimite"))}</small>` : ""}</button>`).join("")}</div></section>` : ""}
     ${calendar}
     <section class="unframed-section"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${importantNotices.length ? `<div class="notice-list">${importantNotices.map((item) => noticeCard(item.id, item.data, false)).join("")}</div>` : emptyInline("No hay avisos publicados.")}</section>`;
@@ -1320,6 +1338,11 @@ async function renderProjects(): Promise<string> {
   const snapshot = await getDocs(query(collection(db, "proyectos"), limit(60)));
   const projects: Array<{ id: string } & DocumentData> = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
   projects.sort((a, b) => (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0));
+  const archived = new Map<string, boolean>();
+  await Promise.all(projects.map(async (project) => {
+    archived.set(project.id, (await getDoc(doc(db, "proyectos", project.id, "eventos", "completado-v1")).catch(() => null))?.exists() === true);
+  }));
+  const visibleProjects = projects.filter((project) => archived.get(project.id) === state.projectArchiveView);
   const progress = new Map<string, { total: number; done: number; overdue: number; nextTask?: string; nextDue?: Date; latestStage?: string }>();
   const requestStatus = new Map<string, string>();
   await Promise.all(projects.slice(0, 30).map(async (project) => {
@@ -1353,8 +1376,8 @@ async function renderProjects(): Promise<string> {
       } catch { /* Users can only read their own request. */ }
     }
   }));
-  return `${pageHeading("Proyectos", "Equipos, responsables y áreas de trabajo.", canManageClub() ? `<button class="primary-button compact" data-action="new-project">${icon("sumar")} Nuevo proyecto</button>` : "")}
-    ${projects.length ? `<div class="project-grid">${projects.map((project) => {
+  return `${pageHeading("Proyectos", "Equipos, responsables y áreas de trabajo.", `<div class="project-heading-actions"><button class="secondary-button compact" data-action="toggle-project-archive">${state.projectArchiveView ? "Ver activos" : "Ver archivados"}</button>${canManageClub() && !state.projectArchiveView ? `<button class="primary-button compact" data-action="new-project">${icon("sumar")} Nuevo proyecto</button>` : ""}</div>`)}
+    ${visibleProjects.length ? `<div class="project-grid">${visibleProjects.map((project) => {
       const summary = progress.get(project.id);
       const percent = summary?.total ? Math.round((summary.done / summary.total) * 100) : 0;
       const requestState = requestStatus.get(project.id);
@@ -1368,7 +1391,7 @@ async function renderProjects(): Promise<string> {
       const projectContext = summary?.latestStage || summary?.nextDue || summary?.overdue
         ? `<div class="project-card-context">${summary.latestStage ? `<span><small>Última fase</small><strong>${esc(summary.latestStage)}</strong></span>` : ""}${summary.overdue ? `<span class="attention"><small>Atención</small><strong>${summary.overdue} tarea${summary.overdue === 1 ? "" : "s"} atrasada${summary.overdue === 1 ? "" : "s"}</strong></span>` : summary.nextDue ? `<span><small>Próxima entrega</small><strong>${esc(summary.nextTask || "Tarea")} · ${dateText(summary.nextDue)}</strong></span>` : ""}</div>` : "";
       return `<article class="project-card"><div class="project-card-top"><span class="project-mark">${icon("proyectos", 21)}</span><span class="state-pill ${project.estado === "Activo" ? "success" : "muted"}">${esc(project.estado || "Activo")}</span></div><p class="project-area">${esc((project.departamentos || []).join(" · ") || "Club de Robótica")}</p><h2>${esc(project.nombre || project.titulo || "Proyecto")}</h2><p class="project-description">${esc(project.objetivo || project.descripcion || "Sin objetivo registrado")}</p><div class="project-progress"><div><span>Progreso</span><strong>${summary ? `${percent}%` : "—"}</strong></div><progress max="100" value="${summary ? percent : 0}" aria-label="Progreso del proyecto"></progress><small>${summary ? `${summary.done} de ${summary.total} tareas completadas` : "Visible para miembros del proyecto"}</small></div>${summary?.latestStage ? renderProjectMilestones(summary.latestStage) : ""}${projectContext}<div class="project-meta"><span>${icon("people", 15)} ${(project.miembrosUids || []).length} miembros</span><span>Responsable: ${esc(project.responsableNombre || "Sin asignar")}</span></div><div class="project-card-bottom"><button class="text-button" data-action="project-detail" data-id="${esc(project.id)}">Abrir proyecto ${icon("ir", 14)}</button>${canEditResponsible ? `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(project.id)}" aria-label="Asignar responsable">${icon("people", 15)} Responsable</button>` : ""}${canDeleteProject ? `<button class="icon-button danger-icon" data-action="delete-project" data-id="${esc(project.id)}" aria-label="Eliminar proyecto" title="Eliminar proyecto">${icon("eliminar", 16)}</button>` : ""}${requestAction}</div></article>`;
-    }).join("")}</div>` : emptyPanel("Aún no hay proyectos", "Cuando se creen proyectos, aparecerán aquí.")}`;
+    }).join("")}</div>` : emptyPanel(state.projectArchiveView ? "No hay proyectos archivados" : "Aún no hay proyectos activos", state.projectArchiveView ? "Los proyectos aparecerán aquí cuando se confirmen como completados." : "Cuando se creen proyectos, aparecerán aquí.")}`;
 }
 
 function renderProjectMilestones(currentStage: string): string {
@@ -1412,11 +1435,13 @@ async function renderTeacherProjectDashboard(): Promise<string> {
     const overdue = pendingTasks.filter((task) => task.get("fechaLimite")?.toDate && task.get("fechaLimite").toDate() < today).length;
     const latest = latestStage?.docs[0]?.get("fechaCreacion")?.toDate?.() ?? project.get("fechaCreacion")?.toDate?.() ?? null;
     const stale = !latest || Date.now() - latest.getTime() > 14 * 24 * 60 * 60 * 1000;
-    return { id: project.id, data: project.data(), tasks: pendingTasks.length, overdue, stale, latest };
+    const stage = latestStage?.docs[0]?.data();
+    return { id: project.id, data: project.data(), tasks: pendingTasks.length, overdue, stale, latest, stage };
   }));
   const overdueTotal = overview.reduce((sum, project) => sum + project.overdue, 0);
   const staleTotal = overview.filter((project) => project.stale).length;
-  return `<section class="teacher-project-dashboard"><div class="section-heading"><div><h2>Seguimiento de equipos</h2><p>Proyectos en los que participas como responsable o integrante.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div><div class="teacher-project-metrics"><div><strong>${overview.length}</strong><span>Equipos</span></div><button type="button" class="${overdueTotal ? "attention" : ""}" data-page="tareas" data-task-filter="overdue"><strong>${overdueTotal}</strong><span>Tareas atrasadas</span></button><div class="${staleTotal ? "attention" : ""}"><strong>${staleTotal}</strong><span>Sin avances en 14 días</span></div></div>${overview.length ? `<div class="teacher-project-list">${overview.map((item) => `<button class="teacher-project-item" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.data.nombre || "Proyecto")}</strong><small>${item.latest ? `Último avance: ${dateText(item.latest)}` : "Todavía no hay etapas registradas"}</small></span><span class="teacher-project-badges">${item.overdue ? `<i class="state-pill warning">${item.overdue} atrasadas</i>` : `<i class="state-pill success">Al día</i>`}${item.stale ? `<i class="state-pill muted">Revisar avance</i>` : ""}</span></button>`).join("")}</div>` : emptyInline("Aún no acompañas un proyecto. Pide que te asignen como responsable o integrante para ver su seguimiento aquí.")}</section>`;
+  const recentActivity = overview.filter((item) => item.stage).sort((a, b) => (b.stage.fechaCreacion?.toMillis?.() ?? 0) - (a.stage.fechaCreacion?.toMillis?.() ?? 0)).slice(0, 5);
+  return `<section class="teacher-project-dashboard"><div class="section-heading"><div><h2>Seguimiento de equipos</h2><p>Proyectos en los que participas como responsable o integrante.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div><div class="teacher-project-metrics"><div><strong>${overview.length}</strong><span>Equipos</span></div><button type="button" class="${overdueTotal ? "attention" : ""}" data-page="tareas" data-task-filter="overdue"><strong>${overdueTotal}</strong><span>Tareas atrasadas</span></button><div class="${staleTotal ? "attention" : ""}"><strong>${staleTotal}</strong><span>Sin avances en 14 días</span></div></div>${overview.length ? `<div class="teacher-project-list">${overview.map((item) => `<button class="teacher-project-item" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.data.nombre || "Proyecto")}</strong><small>${item.latest ? `Último avance: ${dateText(item.latest)}` : "Todavía no hay etapas registradas"}</small></span><span class="teacher-project-badges">${item.overdue ? `<i class="state-pill warning">${item.overdue} atrasadas</i>` : `<i class="state-pill success">Al día</i>`}${item.stale ? `<i class="state-pill muted">Revisar avance</i>` : ""}</span></button>`).join("")}</div>` : emptyInline("Aún no acompañas un proyecto. Pide que te asignen como responsable o integrante para ver su seguimiento aquí.")}${recentActivity.length ? `<div class="teacher-recent-activity"><h3>Actividad reciente de tus equipos</h3>${recentActivity.map((item) => `<button class="teacher-activity-entry" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.stage.fase || item.stage.titulo || "Avance")}</strong><small>${esc(item.data.nombre || "Proyecto")} · ${dateText(item.stage.fechaCreacion, true)}</small></span><span>${esc(String(item.stage.evidencia || "" ).slice(0, 150))}</span></button>`).join("")}</div>` : ""}</section>`;
 }
 
 async function renderCourses(): Promise<string> {
@@ -1426,11 +1451,11 @@ async function renderCourses(): Promise<string> {
     : await getDocs(query(collection(db, "cursos"), where("estado", "==", "Publicado"), limit(100)));
   const courses = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
   courses.sort((a, b) => (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0));
-  const registrations = new Map<string, boolean>();
+  const registrations = new Map<string, DocumentData | null>();
   if (!isAdminInterface()) {
     await Promise.all(courses.map(async (course) => {
       const registration = await getDoc(doc(db, "cursos", course.id, "inscripciones", state.user!.uid));
-      registrations.set(course.id, registration.exists());
+      registrations.set(course.id, registration.exists() ? registration.data() : null);
     }));
   }
   const action = isAdminInterface() && !isStudentPreview()
@@ -1438,15 +1463,17 @@ async function renderCourses(): Promise<string> {
     : "";
   return `${pageHeading("Cursos", isAdminInterface() ? "Publica y administra la oferta de formación del club." : "Explora los cursos del club e inscríbete.", action)}
     ${courses.length ? `<div class="course-grid">${courses.map((course) => {
-      const enrolled = registrations.get(course.id) === true;
+      const registration = registrations.get(course.id) || null;
+      const enrolled = registration !== null;
+      const completed = registration?.completado === true;
       const closed = course.estado !== "Publicado";
       const courseAction = isAdminInterface()
         ? !isStudentPreview() ? `<div class="course-admin-actions"><button class="secondary-button compact" data-action="course-registrations" data-id="${esc(course.id)}">Ver inscritos</button><button class="secondary-button compact" data-action="toggle-course-state" data-id="${esc(course.id)}" data-state="${closed ? "Publicado" : "Cerrado"}">${closed ? "Volver a publicar" : "Cerrar inscripciones"}</button></div>` : `<span class="state-pill muted">Solo lectura</span>`
         : enrolled
-          ? `<button class="secondary-button compact" data-action="leave-course" data-id="${esc(course.id)}">Cancelar inscripción</button>`
+          ? `<div class="course-personal-progress"><span class="state-pill ${completed ? "success" : "warning"}">${completed ? "Completado por mí" : "Inscrito · pendiente"}</span>${completed ? "" : `<button class="secondary-button compact" data-action="complete-course" data-id="${esc(course.id)}">Marcar completado</button>`}<button class="text-button" data-action="leave-course" data-id="${esc(course.id)}">Cancelar inscripción</button></div>`
           : `<button class="primary-button compact" data-action="enroll-course" data-id="${esc(course.id)}">Inscribirme</button>`;
       const dates = `${dateText(course.fechaInicio)}${course.fechaFin ? ` - ${dateText(course.fechaFin)}` : ""}`;
-      return `<article class="course-card" data-course-id="${esc(course.id)}"><div class="course-card-top"><span class="course-mark">${icon("cursos", 20)}</span><span class="state-pill ${closed ? "muted" : "success"}">${closed ? "Inscripciones cerradas" : "Inscripción abierta"}</span></div><h2>${esc(course.titulo || "Curso")}</h2><p class="course-description">${esc(course.descripcion || "Sin descripción")}</p><div class="course-details"><span><strong>Docente</strong>${esc(course.instructor || "Equipo Robótica SIL")}</span><span><strong>Fecha</strong>${dates}</span><span><strong>Horario</strong>${esc(course.horario || "A confirmar")}</span><span><strong>Modalidad</strong>${esc(course.modalidad || "Presencial")}${course.lugar ? ` · ${esc(course.lugar)}` : ""}</span></div><div class="course-card-bottom">${courseAction}</div></article>`;
+      return `<article class="course-card" data-course-id="${esc(course.id)}"><div class="course-card-top"><span class="course-mark">${icon("cursos", 20)}</span><span class="state-pill ${completed ? "success" : enrolled ? "warning" : closed ? "muted" : "success"}">${completed ? "Completado" : enrolled ? "En curso" : closed ? "Inscripciones cerradas" : "Inscripción abierta"}</span></div><h2>${esc(course.titulo || "Curso")}</h2><p class="course-description">${esc(course.descripcion || "Sin descripción")}</p><div class="course-details"><span><strong>Docente</strong>${esc(course.instructor || "Equipo Robótica SIL")}</span><span><strong>Fecha</strong>${dates}</span><span><strong>Horario</strong>${esc(course.horario || "A confirmar")}</span><span><strong>Modalidad</strong>${esc(course.modalidad || "Presencial")}${course.lugar ? ` · ${esc(course.lugar)}` : ""}</span></div><div class="course-card-bottom">${courseAction}</div></article>`;
     }).join("")}</div>` : emptyPanel(isAdminInterface() ? "Aún no hay cursos publicados" : "No hay cursos con inscripción abierta", isAdminInterface() ? "Publica el primer curso del club." : "Los cursos disponibles aparecerán aquí cuando el administrador los publique.")}`;
 }
 
@@ -1549,8 +1576,20 @@ async function renderTasks(): Promise<string> {
     return (taskDueDate(a)?.getTime() ?? Number.MAX_SAFE_INTEGER) - (taskDueDate(b)?.getTime() ?? Number.MAX_SAFE_INTEGER);
   });
   const activeFilter = filters.find((item) => item.id === state.taskFilter)?.label || "Todas";
-  return `${pageHeading("Tareas", "Seguimiento de tus responsabilidades.", `<button class="icon-button" data-action="refresh" title="Actualizar" aria-label="Actualizar">${icon("actualizar")}</button>`)}
-    ${tasks.length ? `<label class="task-list-search">${icon("buscar", 17)}<input type="search" data-task-search-input value="${esc(state.taskSearch)}" placeholder="Buscar en mis tareas" aria-label="Buscar entre mis tareas" />${state.taskSearch ? `<button type="button" class="text-button" data-action="clear-task-search">Limpiar</button>` : ""}</label><nav class="task-priority-filters" aria-label="Filtrar tareas">${filters.map((filter) => `<button type="button" class="task-filter ${state.taskFilter === filter.id ? "active" : ""} ${filter.id === "overdue" && filter.count ? "attention" : ""}" data-page="tareas" data-task-filter="${filter.id}" aria-pressed="${state.taskFilter === filter.id}"><span>${filter.label}</span><strong>${filter.count}</strong></button>`).join("")}</nav>${visibleTasks.length ? `<div class="task-list">${visibleTasks.map((task) => taskCard(task)).join("")}</div><p class="task-search-empty" data-task-search-empty hidden>No hay tareas que coincidan con la búsqueda.</p>` : emptyInline(state.taskSearch ? `No encontramos tareas para “${esc(state.taskSearch)}”.` : `No hay tareas en “${activeFilter.toLowerCase()}”.`)}` : emptyPanel("No hay tareas asignadas", "Las tareas asignadas a tu cuenta aparecerán aquí.")}`;
+  const taskBoard = [
+    { status: "Pendiente", title: "Por hacer" },
+    { status: "En progreso", title: "En curso" },
+    { status: "Completada", title: "Completadas" },
+  ];
+  const overdueBanner = overdue.length ? `<div class="notice-box warning task-due-alert"><strong>${overdue.length} tarea${overdue.length === 1 ? " atrasada" : "s atrasadas"}</strong><span>Revisa las fechas y prioriza qué terminar primero.</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver tareas atrasadas</button></div>` : "";
+  const viewButton = `<button class="secondary-button compact" data-action="toggle-task-view">${state.taskView === "board" ? "Ver lista" : "Ver tablero"}</button>`;
+  const taskContent = !visibleTasks.length
+    ? emptyInline(state.taskSearch ? `No encontramos tareas para “${esc(state.taskSearch)}”.` : `No hay tareas en “${activeFilter.toLowerCase()}”.`)
+    : state.taskView === "board"
+      ? `<div class="task-board">${taskBoard.map((lane) => { const laneTasks = visibleTasks.filter((task) => task.estado === lane.status); return `<section class="task-board-lane"><div class="task-board-heading"><h2>${lane.title}</h2><span class="section-count">${laneTasks.length}</span></div>${laneTasks.length ? laneTasks.map((task) => taskCard(task)).join("") : `<p class="empty-inline">Sin tareas</p>`}</section>`; }).join("")}</div>`
+      : `<div class="task-list">${visibleTasks.map((task) => taskCard(task)).join("")}</div>`;
+  return `${pageHeading("Tareas", "Seguimiento de tus responsabilidades.", `<div class="task-heading-actions">${viewButton}<button class="icon-button" data-action="refresh" title="Actualizar" aria-label="Actualizar">${icon("actualizar")}</button></div>`)}
+    ${overdueBanner}${tasks.length ? `<label class="task-list-search">${icon("buscar", 17)}<input type="search" data-task-search-input value="${esc(state.taskSearch)}" placeholder="Buscar en mis tareas" aria-label="Buscar entre mis tareas" />${state.taskSearch ? `<button type="button" class="text-button" data-action="clear-task-search">Limpiar</button>` : ""}</label><nav class="task-priority-filters" aria-label="Filtrar tareas">${filters.map((filter) => `<button type="button" class="task-filter ${state.taskFilter === filter.id ? "active" : ""} ${filter.id === "overdue" && filter.count ? "attention" : ""}" data-page="tareas" data-task-filter="${filter.id}" aria-pressed="${state.taskFilter === filter.id}"><span>${filter.label}</span><strong>${filter.count}</strong></button>`).join("")}</nav>${taskContent}<p class="task-search-empty" data-task-search-empty hidden>No hay tareas que coincidan con la búsqueda.</p>` : emptyPanel("No hay tareas asignadas", "Las tareas asignadas a tu cuenta aparecerán aquí.")}`;
 }
 
 function taskCard(task: Record<string, any>): string {
@@ -1561,9 +1600,11 @@ function taskCard(task: Record<string, any>): string {
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
   const tomorrow = new Date(startToday); tomorrow.setDate(tomorrow.getDate() + 1);
   const weekEnd = new Date(startToday); weekEnd.setDate(weekEnd.getDate() + 7);
-  const dueLabel = completed ? "Completada" : !due ? "Sin fecha" : due < startToday ? "Atrasada" : due < tomorrow ? "Vence hoy" : due <= weekEnd ? "Esta semana" : "Próxima";
-  const dueTone = completed ? "success" : !due ? "muted" : due < startToday ? "danger" : due <= weekEnd ? "warning" : "muted";
-  return `<article class="task-row ${dueTone === "danger" ? "task-overdue" : ""}" data-task-search-text="${esc(normalizeSearchText([task.titulo, task.descripcion, projectId].join(" ")))}"><span class="task-check ${completed ? "done" : ""}">${completed ? icon("listo", 17) : ""}</span><div class="task-info"><span class="task-project">${esc(projectId)}</span><h3>${esc(task.titulo || "Tarea")}</h3><p>${esc(task.descripcion || "Sin descripción")}</p><div class="task-meta"><span class="state-pill ${dueTone}">${dueLabel}</span>${due ? `<span>${icon("fecha", 14)} ${dateText(due)}</span>` : ""}</div></div>${!completed && isAssignee ? `<button class="secondary-button compact" data-action="complete-task" data-path="${esc(task.path)}">Marcar completada</button>` : ""}</article>`;
+  const inProgress = task.estado === "En progreso";
+  const dueLabel = completed ? "Completada" : inProgress ? "En progreso" : !due ? "Sin fecha" : due < startToday ? "Atrasada" : due < tomorrow ? "Vence hoy" : due <= weekEnd ? "Esta semana" : "Próxima";
+  const dueTone = completed ? "success" : inProgress ? "info" : !due ? "muted" : due < startToday ? "danger" : due <= weekEnd ? "warning" : "muted";
+  const actions = !completed && isAssignee ? inProgress ? `<button class="secondary-button compact" data-action="complete-task" data-path="${esc(task.path)}">Marcar completada</button>` : `<button class="secondary-button compact" data-action="start-task" data-path="${esc(task.path)}">Empezar</button>` : "";
+  return `<article class="task-row ${dueTone === "danger" ? "task-overdue" : ""}" data-task-search-text="${esc(normalizeSearchText([task.titulo, task.descripcion, projectId].join(" ")))}"><span class="task-check ${completed ? "done" : ""}">${completed ? icon("listo", 17) : ""}</span><div class="task-info"><span class="task-project">${esc(projectId)}</span><h3>${esc(task.titulo || "Tarea")}</h3><p>${esc(task.descripcion || "Sin descripción")}</p><div class="task-meta"><span class="state-pill ${dueTone}">${dueLabel}</span>${due ? `<span>${icon("fecha", 14)} ${dateText(due)}</span>` : ""}</div></div>${actions}</article>`;
 }
 
 async function renderAccess(): Promise<string> {
@@ -1609,8 +1650,13 @@ async function renderAccess(): Promise<string> {
 async function renderNotices(): Promise<string> {
   const snapshot = await getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(40)));
   const userNotices = state.user ? await getDocs(query(collection(db, "usuarios", state.user.uid, "notificaciones"), orderBy("fechaCreacion", "desc"), limit(15))).catch(() => null) : null;
-  const personal = userNotices?.docs.map((item) => ({ id: item.id, ...item.data(), personal: true })) ?? [];
-  const global = snapshot.docs.map((item) => ({ id: item.id, ...item.data(), personal: false }));
+  const preferences = readNotificationPreferences();
+  const personal = userNotices?.docs.map((item) => ({ id: item.id, ...item.data(), personal: true })).filter((item) => {
+    const type = String(item.tipo || "");
+    const category = type.includes("tarea") || type.startsWith("task") ? "task" : type.includes("prestamo") ? "loan" : type.includes("proyecto") || type.includes("project") || type.includes("join") ? "project" : "other";
+    return preferences[category] !== false;
+  }) ?? [];
+  const global = preferences.club === false ? [] : snapshot.docs.map((item) => ({ id: item.id, ...item.data(), personal: false }));
   const unreadCount = personal.filter((item) => item.leida !== true).length;
   const personalToShow = state.noticeFilter === "unread" ? personal.filter((item) => item.leida !== true) : state.noticeFilter === "club" ? [] : personal;
   const globalToShow = state.noticeFilter === "unread" ? [] : global;
@@ -2170,10 +2216,20 @@ root.addEventListener("click", (event) => {
     void registerAdminEntry(button as HTMLButtonElement);
   } else if (action === "complete-task") {
     void completeTask(button.dataset.path!, button as HTMLButtonElement);
+  } else if (action === "start-task") {
+    void changeTaskStatus(button.dataset.path!, "En progreso", button as HTMLButtonElement);
+  } else if (action === "toggle-task-view") {
+    state.taskView = state.taskView === "list" ? "board" : "list";
+    void loadPage();
+  } else if (action === "toggle-project-archive") {
+    state.projectArchiveView = !state.projectArchiveView;
+    void loadPage();
   } else if (action === "join-project") {
     void joinProject(button.dataset.id!, button as HTMLButtonElement);
   } else if (action === "enroll-course") {
     void enrollCourse(button.dataset.id!, button as HTMLButtonElement);
+  } else if (action === "complete-course") {
+    void completeCourse(button.dataset.id!, button as HTMLButtonElement);
   } else if (action === "leave-course") {
     void leaveCourse(button.dataset.id!, button as HTMLButtonElement);
   } else if (action === "toggle-course-state" && isAdminInterface()) {
@@ -2229,6 +2285,8 @@ root.addEventListener("click", (event) => {
     openDialog("course-dialog");
   } else if (action === "project-detail") {
     void showProject(button.dataset.id!);
+  } else if (action === "resolve-material-request") {
+    void resolveMaterialRequest(button);
   } else if (action === "review-showcase") {
     void resolveShowcaseReview(button as HTMLButtonElement);
   } else if (action === "edit-project-responsible" && !isStudentPreview()) {
@@ -2264,6 +2322,8 @@ document.addEventListener("submit", (event) => {
   else if (type === "project-stage") void submitProjectStage(form);
   else if (type === "course") void submitCourse(form);
   else if (type === "project-task") void submitProjectTask(form);
+  else if (type === "project-decision") void submitProjectDecision(form);
+  else if (type === "material-request") void submitMaterialRequest(form);
   else if (type === "task-assignment") void submitTaskAssignment(form);
   else if (type === "project-responsible") void submitProjectResponsible(form);
 });
@@ -2452,6 +2512,10 @@ document.addEventListener("change", (event) => {
     state.largeText = target.checked;
     localStorage.setItem("cdr-large-text", String(state.largeText));
     applyAppearance();
+  } else if (target.dataset.setting === "notification-pref" && target instanceof HTMLInputElement && target.dataset.pref && state.user) {
+    const prefs = readNotificationPreferences();
+    prefs[target.dataset.pref] = target.checked;
+    localStorage.setItem(`cdr-notification-prefs:${state.user.uid}`, JSON.stringify(prefs));
   }
 });
 
@@ -2708,6 +2772,18 @@ async function completeTask(path: string, button: HTMLButtonElement, afterComple
   }
 }
 
+async function changeTaskStatus(path: string, status: "En progreso", button: HTMLButtonElement): Promise<void> {
+  setBusy(button, true, "Actualizando");
+  try {
+    await updateDoc(doc(db, path), { estado: status });
+    notify("Tarea movida a En curso.");
+    await loadPage();
+  } catch (error) {
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudo actualizar la tarea."), "error");
+  }
+}
+
 async function joinProject(projectId: string, button: HTMLButtonElement): Promise<void> {
   if (!state.user || !state.profile || !isAuthorized() || isAdmin()) return;
   setBusy(button, true);
@@ -2793,6 +2869,22 @@ async function leaveCourse(courseId: string, button: HTMLButtonElement): Promise
   } catch (error) {
     setBusy(button, false);
     notify(errorMessage(error, "No se pudo cancelar la inscripción."), "error");
+  }
+}
+
+async function completeCourse(courseId: string, button: HTMLButtonElement): Promise<void> {
+  if (!state.user || !isAuthorized() || isAdminInterface()) return;
+  setBusy(button, true, "Guardando");
+  try {
+    await updateDoc(doc(db, "cursos", courseId, "inscripciones", state.user.uid), {
+      completado: true,
+      fechaCompletado: serverTimestamp(),
+    });
+    notify("Curso marcado como completado. ¡Buen trabajo!");
+    await loadPage();
+  } catch (error) {
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudo guardar el progreso del curso."), "error");
   }
 }
 
@@ -3609,6 +3701,64 @@ async function submitProjectStage(form: HTMLFormElement): Promise<void> {
   }
 }
 
+async function submitProjectDecision(form: HTMLFormElement): Promise<void> {
+  const projectId = form.dataset.project;
+  if (!projectId || !state.user || isStudentPreview()) return;
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const data = new FormData(form);
+  const titulo = String(data.get("titulo") || "").trim();
+  const detalle = String(data.get("detalle") || "").trim();
+  if (!titulo || !detalle) return notify("Completa el acuerdo y su detalle.", "error");
+  setBusy(button, true, "Guardando");
+  try {
+    await addDoc(collection(db, "proyectos", projectId, "decisiones"), { titulo, detalle, creadoPorUid: state.user.uid, creadoPorNombre: fullName(), fechaCreacion: serverTimestamp() });
+    notify("Acuerdo registrado en la bitácora del equipo.");
+    form.closest("dialog")?.close();
+    await showProject(projectId);
+  } catch (error) {
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudo registrar el acuerdo."), "error");
+  }
+}
+
+async function submitMaterialRequest(form: HTMLFormElement): Promise<void> {
+  const projectId = form.dataset.project;
+  if (!projectId || !state.user || isStudentPreview()) return;
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const data = new FormData(form);
+  const material = String(data.get("material") || "").trim();
+  const cantidad = Number(data.get("cantidad"));
+  if (!material || !Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100) return notify("Revisa el material y la cantidad solicitada.", "error");
+  setBusy(button, true, "Enviando");
+  try {
+    await addDoc(collection(db, "proyectos", projectId, "solicitudesMateriales"), { material, cantidad, justificacion: String(data.get("justificacion") || "").trim(), estado: "Pendiente", solicitanteUid: state.user.uid, solicitanteNombre: fullName(), fechaCreacion: serverTimestamp() });
+    notify("Solicitud enviada al responsable del proyecto.");
+    form.closest("dialog")?.close();
+    await showProject(projectId);
+  } catch (error) {
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudo enviar la solicitud."), "error");
+  }
+}
+
+async function resolveMaterialRequest(button: HTMLElement): Promise<void> {
+  const projectId = button.dataset.project;
+  const requestId = button.dataset.request;
+  const decision = button.dataset.decision;
+  if (!projectId || !requestId || !state.user || !["Aprobada", "Rechazada"].includes(decision || "")) return;
+  const element = button as HTMLButtonElement;
+  setBusy(element, true, "Guardando");
+  try {
+    await updateDoc(doc(db, "proyectos", projectId, "solicitudesMateriales", requestId), { estado: decision, respuesta: decision === "Aprobada" ? "Solicitud aprobada; coordina la entrega con el responsable." : "Solicitud rechazada; consulta alternativas con el responsable.", resueltoPorUid: state.user.uid, fechaResolucion: serverTimestamp() });
+    notify(decision === "Aprobada" ? "Solicitud aprobada." : "Solicitud rechazada.");
+    element.closest("dialog")?.close();
+    await showProject(projectId);
+  } catch (error) {
+    setBusy(element, false);
+    notify(errorMessage(error, "No se pudo resolver la solicitud."), "error");
+  }
+}
+
 async function submitTaskAssignment(form: HTMLFormElement): Promise<void> {
   const projectId = form.dataset.project;
   const taskId = form.dataset.task;
@@ -3799,11 +3949,28 @@ async function showProject(id: string): Promise<void> {
       : showcase?.estado === "rechazada"
         ? `<div class="notice-box warning project-showcase-status">Se solicitaron ajustes${showcase.comentarioRevision ? `: ${esc(showcase.comentarioRevision)}` : "."}</div>${canRequestShowcase ? `<button class="secondary-button compact" data-action="request-project-showcase" data-id="${esc(id)}">Volver a solicitar publicación</button>` : ""}`
         : canRequestShowcase ? `<button class="secondary-button compact project-showcase-request" data-action="request-project-showcase" data-id="${esc(id)}">Solicitar publicación en la muestra</button>` : "";
+  let decisionLog: QueryDocumentSnapshot<DocumentData>[] = [];
+  let materialRequests: QueryDocumentSnapshot<DocumentData>[] = [];
+  if (joined || lead || canManageClub()) {
+    [decisionLog, materialRequests] = await Promise.all([
+      getDocs(query(collection(db, "proyectos", id, "decisiones"), orderBy("fechaCreacion", "desc"), limit(20))).then((result) => result.docs).catch(() => []),
+      getDocs(query(collection(db, "proyectos", id, "solicitudesMateriales"), orderBy("fechaCreacion", "desc"), limit(30))).then((result) => result.docs).catch(() => []),
+    ]);
+  }
   const dialog = document.createElement("dialog");
   dialog.className = "detail-dialog";
   const taskObjects = tasks.map((task) => ({ id: task.id, path: task.ref.path, ...task.data() }));
   const joinStatus = !joined && !lead && !canManageClub() ? ownRequestState === "pendiente" ? `<div class="notice-box info">Tu solicitud está pendiente de revisión.</div>` : ownRequestState === "rechazada" ? `<div class="notice-box danger">La solicitud fue rechazada. Puedes volver a enviarla.</div><button class="primary-button" data-action="join-project" data-id="${esc(id)}">Volver a solicitar</button>` : ownRequestState === "aceptada" ? `<div class="notice-box info">Tu solicitud fue aceptada.</div>` : `<button class="primary-button" data-action="join-project" data-id="${esc(id)}">Solicitar ingreso</button>` : "";
   dialog.innerHTML = `<div class="dialog-head"><span class="project-mark">${icon("proyectos", 22)}</span><button class="secondary-button compact" data-action="print-project-summary">Imprimir ficha</button><button class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="eyebrow">FICHA DEL PROYECTO</p><h2>${esc(data.nombre || data.titulo || "Proyecto")}</h2><section class="project-objective"><h3>Objetivo</h3><p>${esc(data.objetivo || data.descripcion || "Sin objetivo registrado")}</p>${data.materiales ? `<small><strong>Materiales previstos:</strong> ${esc(data.materiales)}</small>` : ""}</section><div class="project-meta"><span>Responsable: ${esc(data.responsableNombre || "Sin asignar")}</span><span>${memberProfiles.filter(Boolean).length} miembros</span></div>${showcaseBlock}${memberProfiles.filter(Boolean).length ? `<section class="project-members"><h3>Integrantes</h3><p>${memberProfiles.filter(Boolean).map(esc).join(" · ")}</p></section>` : ""}<section class="project-progress project-detail-progress"><div><span>Avance del proyecto</span><strong>${tasks.length ? `${percent}%` : "Sin tareas"}</strong></div><progress max="100" value="${percent}" aria-label="Progreso del proyecto"></progress><small>${done} de ${tasks.length} tareas completadas</small></section>${canManage && !completionEvent?.exists() ? `<div class="project-toolbar"><button class="primary-button compact" data-action="new-project-task" data-id="${esc(id)}">${icon("sumar")} Nueva tarea</button><button class="secondary-button compact" data-action="new-project-stage" data-id="${esc(id)}">Registrar etapa</button>${tasks.length > 0 && done === tasks.length ? `<button class="secondary-button compact" data-action="finish-project" data-id="${esc(id)}">Confirmar cierre y avisar</button>` : ""}</div>` : completionEvent?.exists() ? `<div class="notice-box info">Proyecto completado al 100%. Se notificó a los miembros y administradores.</div>` : ""}<section class="project-logbook"><h3>Etapas y evidencias</h3>${stages.length ? `<div class="project-stage-list">${stages.map((stage) => { const photo = stagePhotoUrls.get(stage.id); return `<article class="project-stage"><div><strong>${esc(stage.get("fase") || stage.get("titulo") || "Etapa")}</strong><time>${stage.get("fechaObjetivo") ? `Prevista: ${dateText(stage.get("fechaObjetivo"))}` : dateText(stage.get("fechaCreacion"))}</time></div><p>${esc(stage.get("evidencia") || "Sin detalle")}</p>${photo ? `<img class="project-stage-photo" src="${esc(photo)}" alt="Foto de evidencia: ${esc(stage.get("titulo") || "etapa del proyecto")}" loading="lazy" />` : ""}</article>`; }).join("")}</div>` : `<p class="empty-inline">El equipo todavía no registró etapas.</p>`}</section>${requests.length ? `<section class="project-requests"><div class="section-heading"><h3>Solicitudes pendientes</h3><span class="section-count">${requests.length}</span></div>${requests.map((request) => `<article class="request-row"><div><strong>${esc(request.get("nombreCompleto") || "Estudiante")}</strong><small>${esc(request.get("carrera") || "")} · ${esc(request.get("semestre") || "")}</small></div><div class="request-actions"><button class="secondary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="rechazada">Rechazar</button><button class="primary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="aceptada">Aceptar</button></div></article>`).join("")}</section>` : ""}${tasks.length ? `<h3>Tareas del proyecto</h3><div class="dialog-task-list">${taskObjects.map((task) => projectTaskRow(task, id, canManage, Boolean(completionEvent?.exists()))).join("")}</div>` : `<p class="empty-inline">Todavía no hay tareas en este proyecto.</p>`}${joinStatus}`;
+  if (joined || lead || canManageClub()) dialog.insertAdjacentHTML("beforeend", `
+    <section class="project-tools-section"><div class="section-heading"><div><h3>Decisiones del equipo</h3><p>Acuerdos y cambios que conviene dejar registrados.</p></div></div>
+      ${decisionLog.length ? `<div class="project-decision-list">${decisionLog.map((item) => `<article class="project-decision"><strong>${esc(item.get("titulo"))}</strong><p>${esc(item.get("detalle"))}</p><small>${esc(item.get("creadoPorNombre"))} · ${dateText(item.get("fechaCreacion"), true)}</small></article>`).join("")}</div>` : emptyInline("Todavía no hay decisiones registradas.")}
+      ${!isStudentPreview() ? `<form class="inline-form project-tool-form" data-form="project-decision" data-project="${esc(id)}"><label>Acuerdo<input name="titulo" required maxlength="100" placeholder="Ej.: Cambiar la posición del sensor" /></label><label>Detalle<textarea name="detalle" required maxlength="1200" rows="2" placeholder="Qué se decidió y por qué"></textarea></label><button class="secondary-button compact" type="submit">Registrar acuerdo</button></form>` : ""}
+    </section>
+    <section class="project-tools-section"><div class="section-heading"><div><h3>Materiales del proyecto</h3><p>Solicita componentes y revisa la respuesta del responsable.</p></div></div>
+      ${materialRequests.length ? `<div class="project-material-list">${materialRequests.map((item) => `<article class="request-row"><div><strong>${esc(item.get("material"))} · ${Number(item.get("cantidad"))}</strong><small>${esc(item.get("justificacion"))} · Solicitó ${esc(item.get("solicitanteNombre"))}</small>${item.get("respuesta") ? `<small>Respuesta: ${esc(item.get("respuesta"))}</small>` : ""}</div><span class="state-pill ${item.get("estado") === "Aprobada" ? "success" : item.get("estado") === "Rechazada" ? "danger" : "warning"}">${esc(item.get("estado"))}</span>${canManage && item.get("estado") === "Pendiente" ? `<button class="secondary-button compact" data-action="resolve-material-request" data-project="${esc(id)}" data-request="${esc(item.id)}" data-decision="Aprobada">Aprobar</button><button class="secondary-button compact" data-action="resolve-material-request" data-project="${esc(id)}" data-request="${esc(item.id)}" data-decision="Rechazada">Rechazar</button>` : ""}</article>`).join("")}</div>` : emptyInline("Aún no se han solicitado materiales.")}
+      ${!canManageClub() && !isStudentPreview() ? `<form class="inline-form project-tool-form" data-form="material-request" data-project="${esc(id)}"><label>Material o componente<input name="material" required maxlength="100" placeholder="Ej.: sensor ultrasónico HC-SR04" /></label><div class="field-row"><label>Cantidad<input name="cantidad" type="number" min="1" max="100" value="1" required /></label><label>Justificación<input name="justificacion" maxlength="500" placeholder="Para qué se usará" /></label></div><button class="primary-button compact" type="submit">Solicitar material</button></form>` : ""}
+    </section>`);
   if (canEditResponsible) dialog.insertAdjacentHTML("beforeend", `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(id)}">${icon("people", 16)} Cambiar responsable del proyecto</button>`);
   document.body.append(dialog);
   dialog.showModal();
