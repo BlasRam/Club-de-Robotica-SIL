@@ -413,3 +413,22 @@ html[data-theme="dark"] .project-card-context .attention strong{color:#ffc17b}
   .project-meta{font-size:12px}
   .metric-title,.task-info h3{font-size:14px}
 }
+
+/* Distinctive section symbols in the school palette. */
+.nav-item{min-height:42px;gap:11px}
+.nav-symbol{--symbol-color:#fabb11;display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:9px;background:color-mix(in srgb,var(--symbol-color) 16%,transparent);color:var(--symbol-color);transition:transform .16s ease,background-color .16s ease}
+.nav-symbol svg{width:17px;height:17px}
+.nav-item:hover .nav-symbol{transform:translateY(-1px);background:color-mix(in srgb,var(--symbol-color) 24%,transparent)}
+.nav-symbol.proyectos,.nav-symbol.muestra{--symbol-color:#fabb11}
+.nav-symbol.tareas,.nav-symbol.avisos,.nav-symbol.inventario{--symbol-color:#ffd56b}
+.nav-symbol.acceso,.nav-symbol.prestamos{--symbol-color:#92dfc0}
+.nav-symbol.cursos,.nav-symbol.calendario,.nav-symbol.estudiantes{--symbol-color:#b9d9ff}
+.nav-symbol.sugerencias{--symbol-color:#ffabb4}
+.nav-symbol.configuracion,.nav-symbol.inicio{--symbol-color:#ffe9a8}
+html[data-theme="light"] .nav-symbol{--symbol-color:#07519a;background:color-mix(in srgb,var(--symbol-color) 11%,white)}
+html[data-theme="light"] .nav-symbol.proyectos,html[data-theme="light"] .nav-symbol.cursos,html[data-theme="light"] .nav-symbol.calendario,html[data-theme="light"] .nav-symbol.estudiantes{--symbol-color:#07519a}
+html[data-theme="light"] .nav-symbol.muestra,html[data-theme="light"] .nav-symbol.sugerencias{--symbol-color:#b32336}
+html[data-theme="light"] .nav-symbol.tareas,html[data-theme="light"] .nav-symbol.avisos,html[data-theme="light"] .nav-symbol.inventario,html[data-theme="light"] .nav-symbol.inicio,html[data-theme="light"] .nav-symbol.configuracion{--symbol-color:#876000}
+html[data-theme="light"] .nav-symbol.acceso,html[data-theme="light"] .nav-symbol.prestamos{--symbol-color:#167a59}
+.nav-item.active .nav-symbol{background:#ffffff25}
+@media(prefers-reduced-motion:reduce){.nav-symbol{transition:none}.nav-item:hover .nav-symbol{transform:none}}

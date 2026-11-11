@@ -33,7 +33,8 @@ import {
 import { getFirestore } from "firebase/firestore";
 import { deleteObject, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import homeIcon from "lucide-static/icons/house.svg?raw";
-import projectIcon from "lucide-static/icons/folder-kanban.svg?raw";
+import projectIcon from "lucide-static/icons/bot.svg?raw";
+import showcaseIcon from "lucide-static/icons/trophy.svg?raw";
 import taskIcon from "lucide-static/icons/list-checks.svg?raw";
 import accessIcon from "lucide-static/icons/door-open.svg?raw";
 import noticeIcon from "lucide-static/icons/megaphone.svg?raw";
@@ -50,10 +51,11 @@ import plusIcon from "lucide-static/icons/plus.svg?raw";
 import refreshIcon from "lucide-static/icons/refresh-cw.svg?raw";
 import checkIcon from "lucide-static/icons/check.svg?raw";
 import alertIcon from "lucide-static/icons/circle-alert.svg?raw";
-import messageIcon from "lucide-static/icons/message-square-text.svg?raw";
+import suggestionIcon from "lucide-static/icons/message-square-heart.svg?raw";
 import arrowIcon from "lucide-static/icons/arrow-right.svg?raw";
 import calendarIcon from "lucide-static/icons/calendar-days.svg?raw";
-import bookOpenIcon from "lucide-static/icons/book-open.svg?raw";
+import courseIcon from "lucide-static/icons/book-open-check.svg?raw";
+import inventoryIcon from "lucide-static/icons/package-search.svg?raw";
 import chevronLeftIcon from "lucide-static/icons/chevron-left.svg?raw";
 import chevronRightIcon from "lucide-static/icons/chevron-right.svg?raw";
 import eyeIcon from "lucide-static/icons/eye.svg?raw";
@@ -385,20 +387,20 @@ window.addEventListener("popstate", (event) => {
 const icons: Record<string, string> = {
   inicio: homeIcon,
   proyectos: projectIcon,
-  muestra: projectIcon,
+  muestra: showcaseIcon,
   tareas: taskIcon,
   acceso: accessIcon,
   avisos: noticeIcon,
-  sugerencias: messageIcon,
+  sugerencias: suggestionIcon,
   prestamos: loanIcon,
-  cursos: bookOpenIcon,
+  cursos: courseIcon,
   estudiantes: peopleIcon,
   perfil: profileIcon,
   menu: menuIcon,
   campana: bellIcon,
   configuracion: settingsIcon,
   people: peopleIcon,
-  inventario: loanIcon,
+  inventario: inventoryIcon,
   salir: logoutIcon,
   eliminar: trashIcon,
   buscar: searchIcon,
@@ -724,7 +726,7 @@ function appShell(content: string): string {
   ];
   const sideNavigation = navGroups.map((group) => {
     const groupItems = group.ids.map((id) => items.find((item) => item.id === id)).filter((item): item is { id: Page; label: string } => !!item);
-    return groupItems.length ? `<section class="nav-group"><h2>${group.label}</h2>${groupItems.map((item) => `<button class="nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" ${state.page === item.id ? 'aria-current="page"' : ""}>${icon(item.id, 18)}<span>${item.label}</span></button>`).join("")}</section>` : "";
+    return groupItems.length ? `<section class="nav-group"><h2>${group.label}</h2>${groupItems.map((item) => `<button class="nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" ${state.page === item.id ? 'aria-current="page"' : ""}><span class="nav-symbol ${item.id}">${icon(item.id, 18)}</span><span>${item.label}</span></button>`).join("")}</section>` : "";
   }).join("");
   return `
     <div class="app-shell ${isAdmin() && state.desktopPreview ? "desktop-preview" : ""} ${isStudentPreview() ? "student-preview" : ""} ${!canManageClub() ? "student-interface" : "admin-interface"} ${state.sidebarCollapsed ? "sidebar-collapsed" : ""} ${state.menuOpen ? "menu-open" : ""}">
