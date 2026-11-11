@@ -386,3 +386,30 @@ html[data-theme="light"] .account-copy small,html[data-theme="light"] .logout{co
 html[data-theme="dark"] .app-update-banner{border-color:var(--line);background:#202329}
 @media(min-width:681px){.app-update-banner{bottom:20px}}
 @media(max-width:420px){.app-update-banner{flex-wrap:wrap}.app-update-banner span{flex-basis:calc(100% - 48px)}.app-update-banner .primary-button{flex:1}}
+
+/* Grouped navigation, project context, and keyboard/desktop readability. */
+.side-nav{align-content:start;gap:17px;overflow-y:auto;min-height:0;padding:0 2px 8px}
+.nav-group{display:grid;gap:3px}
+.nav-group h2{margin:0 10px 4px;color:#aab9ca;font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}
+html[data-theme="light"] .nav-group h2{color:#637991}
+.nav-item[aria-current="page"]{box-shadow:inset 3px 0 var(--school-red);font-weight:800}
+.project-card-context{display:grid;gap:7px;margin:0 0 14px;padding:11px 12px;border:1px solid var(--line);border-radius:7px;background:color-mix(in srgb,var(--school-blue) 4%,var(--paper))}
+.project-card-context>span{display:grid;gap:3px;min-width:0}
+.project-card-context small{color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.project-card-context strong{color:var(--ink);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.project-card-context .attention strong{color:#a7431c}
+html[data-theme="dark"] .project-card-context{background:#252b35}
+html[data-theme="dark"] .project-card-context .attention strong{color:#ffc17b}
+:where(a,button,input,select,textarea,[tabindex]):focus-visible{outline:3px solid #e6a900;outline-offset:3px;scroll-margin:12px}
+.table-wrap{overscroll-behavior-x:contain;scrollbar-gutter:stable}
+.table-wrap th{position:sticky;top:0;z-index:1}
+.table-wrap tr:hover td{background:color-mix(in srgb,var(--school-blue) 4%,var(--paper))}
+@media(min-width:1100px){
+  .page-content{max-width:1320px}
+  .nav-item{min-height:43px;font-size:14px}
+  .nav-group h2{font-size:11px}
+  .project-card{padding:20px}
+  .project-description{font-size:14px;line-height:1.6}
+  .project-meta{font-size:12px}
+  .metric-title,.task-info h3{font-size:14px}
+}

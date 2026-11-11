@@ -715,6 +715,17 @@ function mobileInstallButton(className: string): string {
 
 function appShell(content: string): string {
   const items = navItems();
+  const navGroups: Array<{ label: string; ids: Page[] }> = [
+    { label: "Mi espacio", ids: ["inicio", "tareas", "acceso"] },
+    { label: "Proyectos y aprendizaje", ids: ["proyectos", "muestra", "cursos", "calendario"] },
+    { label: "Comunidad y recursos", ids: ["avisos", "sugerencias", "prestamos"] },
+    { label: "Administración", ids: ["inventario", "estudiantes"] },
+    { label: "Cuenta", ids: ["configuracion"] },
+  ];
+  const sideNavigation = navGroups.map((group) => {
+    const groupItems = group.ids.map((id) => items.find((item) => item.id === id)).filter((item): item is { id: Page; label: string } => !!item);
+    return groupItems.length ? `<section class="nav-group"><h2>${group.label}</h2>${groupItems.map((item) => `<button class="nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" ${state.page === item.id ? 'aria-current="page"' : ""}>${icon(item.id, 18)}<span>${item.label}</span></button>`).join("")}</section>` : "";
+  }).join("");
   return `
     <div class="app-shell ${isAdmin() && state.desktopPreview ? "desktop-preview" : ""} ${isStudentPreview() ? "student-preview" : ""} ${!canManageClub() ? "student-interface" : "admin-interface"} ${state.sidebarCollapsed ? "sidebar-collapsed" : ""} ${state.menuOpen ? "menu-open" : ""}">
       <button class="drawer-backdrop" data-action="close-menu" aria-label="Cerrar menú"></button>
@@ -725,9 +736,8 @@ function appShell(content: string): string {
             <img src="${esc(state.clubLogoUrl)}" alt="Escudo del Colegio San Ignacio de Loyola" /><span><strong>${CLUB_SHORT_NAME}</strong><small>San Ignacio de Loyola</small></span>
           </a>
         </div>
-        <div class="nav-caption">ESPACIO DE TRABAJO</div>
         <nav class="side-nav" aria-label="Navegación principal">
-          ${items.map((item) => `<button class="nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}">${icon(item.id, 18)}<span>${item.label}</span></button>`).join("")}
+          ${sideNavigation}
         </nav>
         <div class="sidebar-bottom">
           ${state.installPrompt ? `<button class="install-button" data-action="install">${icon("sumar")}Instalar aplicación</button>` : ""}
@@ -1104,12 +1114,31 @@ async function renderProjects(): Promise<string> {
   const snapshot = await getDocs(query(collection(db, "proyectos"), limit(60)));
   const projects: Array<{ id: string } & DocumentData> = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
   projects.sort((a, b) => (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0));
-  const progress = new Map<string, { total: number; done: number }>();
+  const progress = new Map<string, { total: number; done: number; overdue: number; nextTask?: string; nextDue?: Date; latestStage?: string }>();
   const requestStatus = new Map<string, string>();
   await Promise.all(projects.slice(0, 30).map(async (project) => {
     try {
-      const tasks = await getDocs(collection(db, "proyectos", project.id, "tareas"));
-      progress.set(project.id, { total: tasks.size, done: tasks.docs.filter((task) => task.get("estado") === "Completada").length });
+      const [tasks, stages] = await Promise.all([
+        getDocs(query(collection(db, "proyectos", project.id, "tareas"), limit(100))),
+        getDocs(query(collection(db, "proyectos", project.id, "etapas"), orderBy("fechaCreacion", "desc"), limit(1))).catch(() => null),
+      ]);
+      const pendingTasks = tasks.docs.filter((task) => task.get("estado") !== "Completada");
+      const now = new Date();
+      const overdue = pendingTasks.filter((task) => {
+        const due = task.get("fechaLimite")?.toDate?.();
+        return due instanceof Date && due < now;
+      }).length;
+      const next = pendingTasks.filter((task) => task.get("fechaLimite")?.toDate?.() instanceof Date)
+        .sort((a, b) => a.get("fechaLimite").toMillis() - b.get("fechaLimite").toMillis())[0];
+      const stage = stages?.docs[0]?.data();
+      progress.set(project.id, {
+        total: tasks.size,
+        done: tasks.docs.filter((task) => task.get("estado") === "Completada").length,
+        overdue,
+        nextTask: next?.get("titulo"),
+        nextDue: next?.get("fechaLimite")?.toDate?.(),
+        latestStage: stage ? String(stage.fase || stage.titulo || "Avance registrado") : undefined,
+      });
     } catch { /* Membership rules intentionally hide other projects' tasks. */ }
     if (!canManageClub() && !(project.miembrosUids || []).includes(state.user!.uid) && projectLead(project) !== state.user!.uid) {
       try {
@@ -1130,7 +1159,9 @@ async function renderProjects(): Promise<string> {
         : "";
       const canEditResponsible = canManageClub() || (!isStudentPreview() && project.creadoPorUid === state.user!.uid);
       const canDeleteProject = canManageClub();
-      return `<article class="project-card"><div class="project-card-top"><span class="project-mark">${icon("proyectos", 21)}</span><span class="state-pill ${project.estado === "Activo" ? "success" : "muted"}">${esc(project.estado || "Activo")}</span></div><p class="project-area">${esc((project.departamentos || []).join(" · ") || "Club de Robótica")}</p><h2>${esc(project.nombre || project.titulo || "Proyecto")}</h2><p class="project-description">${esc(project.objetivo || project.descripcion || "Sin objetivo registrado")}</p><div class="project-progress"><div><span>Progreso</span><strong>${summary ? `${percent}%` : "—"}</strong></div><progress max="100" value="${summary ? percent : 0}" aria-label="Progreso del proyecto"></progress><small>${summary ? `${summary.done} de ${summary.total} tareas completadas` : "Visible para miembros del proyecto"}</small></div><div class="project-meta"><span>${icon("people", 15)} ${(project.miembrosUids || []).length} miembros</span><span>Responsable: ${esc(project.responsableNombre || "Sin asignar")}</span></div><div class="project-card-bottom"><button class="text-button" data-action="project-detail" data-id="${esc(project.id)}">Abrir proyecto ${icon("ir", 14)}</button>${canEditResponsible ? `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(project.id)}" aria-label="Asignar responsable">${icon("people", 15)} Responsable</button>` : ""}${canDeleteProject ? `<button class="icon-button danger-icon" data-action="delete-project" data-id="${esc(project.id)}" aria-label="Eliminar proyecto" title="Eliminar proyecto">${icon("eliminar", 16)}</button>` : ""}${requestAction}</div></article>`;
+      const projectContext = summary?.latestStage || summary?.nextDue || summary?.overdue
+        ? `<div class="project-card-context">${summary.latestStage ? `<span><small>Última fase</small><strong>${esc(summary.latestStage)}</strong></span>` : ""}${summary.overdue ? `<span class="attention"><small>Atención</small><strong>${summary.overdue} tarea${summary.overdue === 1 ? "" : "s"} atrasada${summary.overdue === 1 ? "" : "s"}</strong></span>` : summary.nextDue ? `<span><small>Próxima entrega</small><strong>${esc(summary.nextTask || "Tarea")} · ${dateText(summary.nextDue)}</strong></span>` : ""}</div>` : "";
+      return `<article class="project-card"><div class="project-card-top"><span class="project-mark">${icon("proyectos", 21)}</span><span class="state-pill ${project.estado === "Activo" ? "success" : "muted"}">${esc(project.estado || "Activo")}</span></div><p class="project-area">${esc((project.departamentos || []).join(" · ") || "Club de Robótica")}</p><h2>${esc(project.nombre || project.titulo || "Proyecto")}</h2><p class="project-description">${esc(project.objetivo || project.descripcion || "Sin objetivo registrado")}</p><div class="project-progress"><div><span>Progreso</span><strong>${summary ? `${percent}%` : "—"}</strong></div><progress max="100" value="${summary ? percent : 0}" aria-label="Progreso del proyecto"></progress><small>${summary ? `${summary.done} de ${summary.total} tareas completadas` : "Visible para miembros del proyecto"}</small></div>${projectContext}<div class="project-meta"><span>${icon("people", 15)} ${(project.miembrosUids || []).length} miembros</span><span>Responsable: ${esc(project.responsableNombre || "Sin asignar")}</span></div><div class="project-card-bottom"><button class="text-button" data-action="project-detail" data-id="${esc(project.id)}">Abrir proyecto ${icon("ir", 14)}</button>${canEditResponsible ? `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(project.id)}" aria-label="Asignar responsable">${icon("people", 15)} Responsable</button>` : ""}${canDeleteProject ? `<button class="icon-button danger-icon" data-action="delete-project" data-id="${esc(project.id)}" aria-label="Eliminar proyecto" title="Eliminar proyecto">${icon("eliminar", 16)}</button>` : ""}${requestAction}</div></article>`;
     }).join("")}</div>` : emptyPanel("Aún no hay proyectos", "Cuando se creen proyectos, aparecerán aquí.")}`;
 }
 
