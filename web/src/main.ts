@@ -201,8 +201,10 @@ type AppState = {
   sidebarCollapsed: boolean;
   theme: "system" | "light" | "dark";
   reduceMotion: boolean;
+  largeText: boolean;
   calendarMonth: Date;
   calendarSelectedDate: string;
+  calendarItems: CalendarItem[];
   studentSandbox: StudentSandbox;
   installPrompt?: BeforeInstallPromptEvent;
   clubLogoUrl: string;
@@ -233,8 +235,10 @@ const state: AppState = {
     ? localStorage.getItem("cdr-theme") as "system" | "light" | "dark"
     : "system",
   reduceMotion: localStorage.getItem("cdr-reduce-motion") === "true",
+  largeText: localStorage.getItem("cdr-large-text") === "true",
   calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   calendarSelectedDate: calendarDateKey(new Date()),
+  calendarItems: [],
   studentSandbox: createStudentSandbox(),
   clubLogoUrl: "/icons/sil-school-logo.png",
   clubLogoPath: "",
@@ -321,6 +325,7 @@ function applyAppearance(): void {
     || (state.theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   document.documentElement.dataset.motion = state.reduceMotion ? "reduced" : "full";
+  document.documentElement.dataset.textSize = state.largeText ? "large" : "normal";
 }
 
 applyAppearance();
@@ -1112,6 +1117,7 @@ function renderSettings(): string {
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("configuracion", 18)}</span><div><h2>Apariencia</h2><p>Personaliza cómo se muestra Robótica SIL en este dispositivo.</p></div></div>
         <label class="settings-field" for="setting-theme"><span>Tema</span><select id="setting-theme" data-setting="theme"><option value="system" ${state.theme === "system" ? "selected" : ""}>Seguir el dispositivo</option><option value="light" ${state.theme === "light" ? "selected" : ""}>Claro</option><option value="dark" ${state.theme === "dark" ? "selected" : ""}>Oscuro</option></select></label>
         <label class="settings-toggle"><span><strong>Reducir movimiento</strong><small>Limita animaciones y transiciones.</small></span><input type="checkbox" data-setting="reduce-motion" ${state.reduceMotion ? "checked" : ""} /></label>
+        <label class="settings-toggle"><span><strong>Texto más grande</strong><small>Aumenta el tamaño del texto en toda la plataforma.</small></span><input type="checkbox" data-setting="large-text" ${state.largeText ? "checked" : ""} /></label>
       </section>
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("perfil", 18)}</span><div><h2>Cuenta</h2><p>${esc(profile.correoInstitucional || state.user?.email || "")}</p></div></div>
         <div class="settings-account-meta"><span>Tipo de cuenta</span><strong>${roleLabel()}</strong><span>Estado de acceso</span><strong>${isAdmin() ? "Administrador" : profile.autorizado ? "Autorizado" : "Pendiente de autorización"}</strong></div>
@@ -1123,6 +1129,7 @@ function renderSettings(): string {
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("inicio", 18)}</span><div><h2>Guía de inicio</h2><p>Vuelve a consultar las recomendaciones para tu perfil.</p></div></div>
         <button class="secondary-button" data-action="show-onboarding">${icon("ir", 16)} Ver guía</button>
       </section>
+      <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("alerta", 18)}</span><div><h2>Ayuda rápida</h2><p>Proyectos: abre una tarjeta para ver etapas y tareas. Calendario: selecciona un día para ver su agenda y exportar el mes. Préstamos: consulta el estado desde la tarjeta del recurso.</p></div></div></section>
       ${isAdmin() && !isStudentPreview() ? `<section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("perfil", 18)}</span><div><h2>Identidad del club</h2><p>El escudo actual es el del colegio. Puedes reemplazarlo por el logo del club cuando esté listo.</p></div></div><div class="club-logo-preview"><img src="${esc(state.clubLogoUrl)}" alt="Logo actual del colegio"/><span>Logo que verán las personas en la PWA</span></div><label class="logo-upload-label">Cambiar logo<input id="club-logo-input" type="file" accept="image/png,image/jpeg,image/webp" /></label>${state.clubLogoPath ? `<button class="secondary-button" data-action="reset-club-logo">Restablecer escudo del colegio</button>` : ""}</section>` : ""}
       <section class="settings-section settings-session"><div class="settings-section-heading"><span class="settings-icon">${icon("salir", 18)}</span><div><h2>Sesión</h2><p>Cierra tu sesión en este dispositivo.</p></div></div>
         <button class="danger-button" data-action="logout">${icon("salir", 16)} Cerrar sesión</button>
@@ -1722,6 +1729,25 @@ function calendarDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function downloadCalendarIcs(): void {
+  const escapeIcs = (value: string) => value.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+  const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Robotica SIL//Agenda//ES", "CALSCALE:GREGORIAN", "METHOD:PUBLISH"];
+  state.calendarItems.forEach((item) => {
+    const end = item.endsAt || new Date(item.startsAt.getTime() + 60 * 60 * 1000);
+    lines.push("BEGIN:VEVENT", `UID:${escapeIcs(item.id)}-${stamp(item.startsAt)}@robotica-sil`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(item.startsAt)}`, `DTEND:${stamp(end)}`, `SUMMARY:${escapeIcs(item.title)}`, `DESCRIPTION:${escapeIcs(item.detail)}`, `CATEGORIES:${item.kind.toUpperCase()}`, "END:VEVENT");
+  });
+  lines.push("END:VCALENDAR");
+  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `robotica-sil-${calendarDateKey(state.calendarMonth).slice(0, 7)}.ics`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  notify(`${state.calendarItems.length} eventos exportados.`);
+}
+
 function focusCalendarDate(dateKey: string): void {
   const date = new Date(`${dateKey}T12:00:00`);
   state.calendarMonth = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -1830,12 +1856,23 @@ async function renderCalendar(): Promise<string> {
     return `<button class="calendar-day ${activeMonth ? "" : "outside-month"} ${key === state.calendarSelectedDate ? "selected" : ""}" data-action="calendar-select-date" data-date="${key}" aria-label="${esc(new Intl.DateTimeFormat("es-PY", { dateStyle: "full" }).format(day))}, ${dateItems.length} eventos"><span>${day.getDate()}</span><span class="calendar-markers">${markers}</span></button>`;
   }).join("");
   const dayItems = itemsByDate.get(state.calendarSelectedDate) || [];
+  state.calendarItems = [...itemsByDate.values()].flat().filter((item) => item.startsAt >= monthStart && item.startsAt < nextMonth);
+  const selectedWeekStart = new Date(`${state.calendarSelectedDate}T12:00:00`);
+  selectedWeekStart.setDate(selectedWeekStart.getDate() - ((selectedWeekStart.getDay() + 6) % 7));
+  const weekEvents = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(selectedWeekStart.getFullYear(), selectedWeekStart.getMonth(), selectedWeekStart.getDate() + index);
+    const key = calendarDateKey(date);
+    const label = new Intl.DateTimeFormat("es-PY", { weekday: "long", day: "numeric", month: "short" }).format(date);
+    const events = itemsByDate.get(key) || [];
+    return `<section class="week-agenda-day"><h3>${esc(label)}</h3>${events.length ? `<div class="calendar-event-list">${events.map(calendarItemHtml).join("")}</div>` : `<p class="empty-inline">Sin actividades</p>`}</section>`;
+  }).join("");
   return `${pageHeading("Calendario", "Tus clases, exámenes y actividades del Club de Robótica.", actions)}
-    <section class="calendar-panel"><div class="calendar-toolbar"><button class="icon-button" data-action="calendar-previous" aria-label="Mes anterior" title="Mes anterior">${icon("anterior", 17)}</button><h2>${esc(title)}</h2><button class="icon-button" data-action="calendar-next" aria-label="Mes siguiente" title="Mes siguiente">${icon("siguiente", 17)}</button><button class="secondary-button compact calendar-today" data-action="calendar-today">Hoy</button></div>
+    <section class="calendar-panel"><div class="calendar-toolbar"><button class="icon-button" data-action="calendar-previous" aria-label="Mes anterior" title="Mes anterior">${icon("anterior", 17)}</button><h2>${esc(title)}</h2><button class="icon-button" data-action="calendar-next" aria-label="Mes siguiente" title="Mes siguiente">${icon("siguiente", 17)}</button><button class="secondary-button compact calendar-today" data-action="calendar-today">Hoy</button><button class="secondary-button compact" data-action="export-calendar">Descargar .ics</button></div>
       <div class="calendar-weekdays"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div><div class="calendar-grid">${cells}</div>
       <div class="calendar-legend"><span><i class="clase"></i>Clases</span><span><i class="examen"></i>Exámenes</span><span><i class="actividad"></i>Actividades Robótica SIL</span></div>
     </section>
-    <section class="calendar-agenda"><div class="section-heading"><h2>${esc(dayLabel)}</h2><span class="section-count">${dayItems.length}</span></div>${dayItems.length ? `<div class="calendar-event-list">${dayItems.map(calendarItemHtml).join("")}</div>` : emptyInline("No hay eventos para este día.")}</section>`;
+    <section class="calendar-agenda"><div class="section-heading"><h2>${esc(dayLabel)}</h2><span class="section-count">${dayItems.length}</span></div>${dayItems.length ? `<div class="calendar-event-list">${dayItems.map(calendarItemHtml).join("")}</div>` : emptyInline("No hay eventos para este día.")}</section>
+    <section class="calendar-agenda week-agenda"><div class="section-heading"><h2>Esta semana</h2><span class="state-pill muted">Lun–dom</span></div>${weekEvents}</section>`;
 }
 
 function noticeCardWithAdminAction(id: string, data: DocumentData): string {
@@ -2003,8 +2040,10 @@ async function loadInventoryOptions(): Promise<void> {
 async function renderInventory(): Promise<string> {
   const snapshot = await getDocs(query(collection(db, "inventario"), orderBy("nombre"), limit(100)));
   const items: Array<Record<string, any>> = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+  const lowStock = items.filter((item) => Number(item.cantidad || 0) <= 2 && item.estado !== "Retirado");
   return `${pageHeading("Inventario", "Artículos, disponibilidad y cantidades.", `<button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button>`)}
-    ${items.length ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Disponibles</th><th>Ubicación</th><th>Estado</th></tr></thead><tbody>${items.map((item) => `<tr><td><strong>${esc(item.nombre)}</strong><small>${esc(item.descripcion || "")}</small></td><td>${esc(item.categoria || "Sin categoría")}</td><td>${Number(item.cantidad || 0)}</td><td>${esc(item.ubicacion || "—")}</td><td><span class="state-pill ${item.estado === "Disponible" ? "success" : "muted"}">${esc(item.estado || "—")}</span></td></tr>`).join("")}</tbody></table></div>` : emptyPanel("Inventario vacío", "Agrega el primer artículo del club.")}`;
+    ${lowStock.length ? `<div class="notice-box warning inventory-alert"><strong>${lowStock.length === 1 ? "Existencia baja" : `${lowStock.length} existencias bajas`}</strong><span>${lowStock.map((item) => `${esc(item.nombre)} (${Number(item.cantidad || 0)})`).join(" · ")}. Revisa estos artículos al planificar proyectos.</span></div>` : `<div class="notice-box success inventory-alert">No hay artículos con dos unidades o menos.</div>`}
+    ${items.length ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Disponibles</th><th>Ubicación</th><th>Estado</th></tr></thead><tbody>${items.map((item) => `<tr><td><strong>${esc(item.nombre)}</strong><small>${esc(item.descripcion || "")}</small></td><td>${esc(item.categoria || "Sin categoría")}</td><td>${Number(item.cantidad || 0)}${Number(item.cantidad || 0) <= 2 && item.estado !== "Retirado" ? ` <span class="state-pill warning">Revisar</span>` : ""}</td><td>${esc(item.ubicacion || "—")}</td><td><span class="state-pill ${item.estado === "Disponible" ? "success" : "muted"}">${esc(item.estado || "—")}</span></td></tr>`).join("")}</tbody></table></div>` : emptyPanel("Inventario vacío", "Agrega el primer artículo del club.")}`;
 }
 
 async function renderStudents(): Promise<string> {
@@ -2168,6 +2207,8 @@ root.addEventListener("click", (event) => {
   } else if (action === "calendar-select-date") {
     focusCalendarDate(button.dataset.date!);
     void loadPage();
+  } else if (action === "export-calendar") {
+    downloadCalendarIcs();
   } else if (action === "new-calendar-class") {
     if (!isAdmin() && !isStudentPreview()) openDialog("calendar-class-dialog");
   } else if (action === "new-calendar-exam") {
@@ -2379,7 +2420,23 @@ document.addEventListener("keydown", (event) => {
 
 document.addEventListener("change", (event) => {
   const target = event.target as HTMLInputElement | HTMLSelectElement;
-  if (target.id === "club-logo-input" && target instanceof HTMLInputElement) {
+  if (target.id === "task-template" && target instanceof HTMLSelectElement) {
+    const templates: Record<string, { title: string; description: string; priority: string }> = {
+      pruebas: { title: "Probar componente", description: "Realizar pruebas, registrar resultados y anotar ajustes necesarios.", priority: "Normal" },
+      documentacion: { title: "Documentar avance", description: "Agregar fotos, materiales utilizados y decisiones del equipo.", priority: "Baja" },
+      investigacion: { title: "Investigar solución", description: "Comparar opciones, compartir fuentes y proponer una alternativa.", priority: "Normal" },
+      montaje: { title: "Montar prototipo", description: "Preparar materiales y ensamblar siguiendo las medidas de seguridad.", priority: "Alta" },
+    };
+    const template = templates[target.value];
+    if (template) {
+      const form = target.form;
+      if (form) {
+        (form.elements.namedItem("titulo") as HTMLInputElement).value = template.title;
+        (form.elements.namedItem("descripcion") as HTMLTextAreaElement).value = template.description;
+        (form.elements.namedItem("prioridad") as HTMLSelectElement).value = template.priority;
+      }
+    }
+  } else if (target.id === "club-logo-input" && target instanceof HTMLInputElement) {
     void handleClubLogoUpload(target.files?.[0]);
   } else if (target.dataset.action === "change-user-role" && target instanceof HTMLSelectElement) {
     void changeUserRole(target);
@@ -2390,6 +2447,10 @@ document.addEventListener("change", (event) => {
   } else if (target.dataset.setting === "reduce-motion" && target instanceof HTMLInputElement) {
     state.reduceMotion = target.checked;
     localStorage.setItem("cdr-reduce-motion", String(state.reduceMotion));
+    applyAppearance();
+  } else if (target.dataset.setting === "large-text" && target instanceof HTMLInputElement) {
+    state.largeText = target.checked;
+    localStorage.setItem("cdr-large-text", String(state.largeText));
     applyAppearance();
   }
 });
@@ -3742,7 +3803,7 @@ async function showProject(id: string): Promise<void> {
   dialog.className = "detail-dialog";
   const taskObjects = tasks.map((task) => ({ id: task.id, path: task.ref.path, ...task.data() }));
   const joinStatus = !joined && !lead && !canManageClub() ? ownRequestState === "pendiente" ? `<div class="notice-box info">Tu solicitud está pendiente de revisión.</div>` : ownRequestState === "rechazada" ? `<div class="notice-box danger">La solicitud fue rechazada. Puedes volver a enviarla.</div><button class="primary-button" data-action="join-project" data-id="${esc(id)}">Volver a solicitar</button>` : ownRequestState === "aceptada" ? `<div class="notice-box info">Tu solicitud fue aceptada.</div>` : `<button class="primary-button" data-action="join-project" data-id="${esc(id)}">Solicitar ingreso</button>` : "";
-  dialog.innerHTML = `<div class="dialog-head"><span class="project-mark">${icon("proyectos", 22)}</span><button class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="eyebrow">FICHA DEL PROYECTO</p><h2>${esc(data.nombre || data.titulo || "Proyecto")}</h2><section class="project-objective"><h3>Objetivo</h3><p>${esc(data.objetivo || data.descripcion || "Sin objetivo registrado")}</p>${data.materiales ? `<small><strong>Materiales previstos:</strong> ${esc(data.materiales)}</small>` : ""}</section><div class="project-meta"><span>Responsable: ${esc(data.responsableNombre || "Sin asignar")}</span><span>${memberProfiles.filter(Boolean).length} miembros</span></div>${showcaseBlock}${memberProfiles.filter(Boolean).length ? `<section class="project-members"><h3>Integrantes</h3><p>${memberProfiles.filter(Boolean).map(esc).join(" · ")}</p></section>` : ""}<section class="project-progress project-detail-progress"><div><span>Avance del proyecto</span><strong>${tasks.length ? `${percent}%` : "Sin tareas"}</strong></div><progress max="100" value="${percent}" aria-label="Progreso del proyecto"></progress><small>${done} de ${tasks.length} tareas completadas</small></section>${canManage && !completionEvent?.exists() ? `<div class="project-toolbar"><button class="primary-button compact" data-action="new-project-task" data-id="${esc(id)}">${icon("sumar")} Nueva tarea</button><button class="secondary-button compact" data-action="new-project-stage" data-id="${esc(id)}">Registrar etapa</button>${tasks.length > 0 && done === tasks.length ? `<button class="secondary-button compact" data-action="finish-project" data-id="${esc(id)}">Confirmar cierre y avisar</button>` : ""}</div>` : completionEvent?.exists() ? `<div class="notice-box info">Proyecto completado al 100%. Se notificó a los miembros y administradores.</div>` : ""}<section class="project-logbook"><h3>Etapas y evidencias</h3>${stages.length ? `<div class="project-stage-list">${stages.map((stage) => { const photo = stagePhotoUrls.get(stage.id); return `<article class="project-stage"><div><strong>${esc(stage.get("fase") || stage.get("titulo") || "Etapa")}</strong><time>${stage.get("fechaObjetivo") ? `Prevista: ${dateText(stage.get("fechaObjetivo"))}` : dateText(stage.get("fechaCreacion"))}</time></div><p>${esc(stage.get("evidencia") || "Sin detalle")}</p>${photo ? `<img class="project-stage-photo" src="${esc(photo)}" alt="Foto de evidencia: ${esc(stage.get("titulo") || "etapa del proyecto")}" loading="lazy" />` : ""}</article>`; }).join("")}</div>` : `<p class="empty-inline">El equipo todavía no registró etapas.</p>`}</section>${requests.length ? `<section class="project-requests"><div class="section-heading"><h3>Solicitudes pendientes</h3><span class="section-count">${requests.length}</span></div>${requests.map((request) => `<article class="request-row"><div><strong>${esc(request.get("nombreCompleto") || "Estudiante")}</strong><small>${esc(request.get("carrera") || "")} · ${esc(request.get("semestre") || "")}</small></div><div class="request-actions"><button class="secondary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="rechazada">Rechazar</button><button class="primary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="aceptada">Aceptar</button></div></article>`).join("")}</section>` : ""}${tasks.length ? `<h3>Tareas del proyecto</h3><div class="dialog-task-list">${taskObjects.map((task) => projectTaskRow(task, id, canManage, Boolean(completionEvent?.exists()))).join("")}</div>` : `<p class="empty-inline">Todavía no hay tareas en este proyecto.</p>`}${joinStatus}`;
+  dialog.innerHTML = `<div class="dialog-head"><span class="project-mark">${icon("proyectos", 22)}</span><button class="secondary-button compact" data-action="print-project-summary">Imprimir ficha</button><button class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="eyebrow">FICHA DEL PROYECTO</p><h2>${esc(data.nombre || data.titulo || "Proyecto")}</h2><section class="project-objective"><h3>Objetivo</h3><p>${esc(data.objetivo || data.descripcion || "Sin objetivo registrado")}</p>${data.materiales ? `<small><strong>Materiales previstos:</strong> ${esc(data.materiales)}</small>` : ""}</section><div class="project-meta"><span>Responsable: ${esc(data.responsableNombre || "Sin asignar")}</span><span>${memberProfiles.filter(Boolean).length} miembros</span></div>${showcaseBlock}${memberProfiles.filter(Boolean).length ? `<section class="project-members"><h3>Integrantes</h3><p>${memberProfiles.filter(Boolean).map(esc).join(" · ")}</p></section>` : ""}<section class="project-progress project-detail-progress"><div><span>Avance del proyecto</span><strong>${tasks.length ? `${percent}%` : "Sin tareas"}</strong></div><progress max="100" value="${percent}" aria-label="Progreso del proyecto"></progress><small>${done} de ${tasks.length} tareas completadas</small></section>${canManage && !completionEvent?.exists() ? `<div class="project-toolbar"><button class="primary-button compact" data-action="new-project-task" data-id="${esc(id)}">${icon("sumar")} Nueva tarea</button><button class="secondary-button compact" data-action="new-project-stage" data-id="${esc(id)}">Registrar etapa</button>${tasks.length > 0 && done === tasks.length ? `<button class="secondary-button compact" data-action="finish-project" data-id="${esc(id)}">Confirmar cierre y avisar</button>` : ""}</div>` : completionEvent?.exists() ? `<div class="notice-box info">Proyecto completado al 100%. Se notificó a los miembros y administradores.</div>` : ""}<section class="project-logbook"><h3>Etapas y evidencias</h3>${stages.length ? `<div class="project-stage-list">${stages.map((stage) => { const photo = stagePhotoUrls.get(stage.id); return `<article class="project-stage"><div><strong>${esc(stage.get("fase") || stage.get("titulo") || "Etapa")}</strong><time>${stage.get("fechaObjetivo") ? `Prevista: ${dateText(stage.get("fechaObjetivo"))}` : dateText(stage.get("fechaCreacion"))}</time></div><p>${esc(stage.get("evidencia") || "Sin detalle")}</p>${photo ? `<img class="project-stage-photo" src="${esc(photo)}" alt="Foto de evidencia: ${esc(stage.get("titulo") || "etapa del proyecto")}" loading="lazy" />` : ""}</article>`; }).join("")}</div>` : `<p class="empty-inline">El equipo todavía no registró etapas.</p>`}</section>${requests.length ? `<section class="project-requests"><div class="section-heading"><h3>Solicitudes pendientes</h3><span class="section-count">${requests.length}</span></div>${requests.map((request) => `<article class="request-row"><div><strong>${esc(request.get("nombreCompleto") || "Estudiante")}</strong><small>${esc(request.get("carrera") || "")} · ${esc(request.get("semestre") || "")}</small></div><div class="request-actions"><button class="secondary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="rechazada">Rechazar</button><button class="primary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="aceptada">Aceptar</button></div></article>`).join("")}</section>` : ""}${tasks.length ? `<h3>Tareas del proyecto</h3><div class="dialog-task-list">${taskObjects.map((task) => projectTaskRow(task, id, canManage, Boolean(completionEvent?.exists()))).join("")}</div>` : `<p class="empty-inline">Todavía no hay tareas en este proyecto.</p>`}${joinStatus}`;
   if (canEditResponsible) dialog.insertAdjacentHTML("beforeend", `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(id)}">${icon("people", 16)} Cambiar responsable del proyecto</button>`);
   document.body.append(dialog);
   dialog.showModal();
@@ -3751,6 +3812,7 @@ async function showProject(id: string): Promise<void> {
     if (!button) return;
     const action = button.dataset.action;
     if (event.target === dialog || action === "close-dialog") dialog.close();
+    else if (action === "print-project-summary") window.print();
     else if (action === "join-project") void joinProject(id, button);
     else if (action === "new-project-task") void openProjectTaskDialog(id, data);
     else if (action === "new-project-stage") void openProjectStageDialog(id, data);
@@ -3779,7 +3841,7 @@ function projectTaskRow(task: Record<string, any>, projectId: string, canManage:
 async function openProjectTaskDialog(projectId: string, project: DocumentData): Promise<void> {
   const users = await getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(100))).catch(() => null);
   const options = (users?.docs ?? []).map((user) => ({ uid: user.id, name: String(user.get("nombreCompleto") || `${user.get("nombre") || ""} ${user.get("apellido") || ""}`).trim() })).filter((user) => user.uid);
-  const form = `<form class="dialog-form" data-form="project-task" data-project="${esc(projectId)}"><div class="dialog-head"><div><p class="eyebrow">${esc(project.nombre || "PROYECTO")}</p><h2>Nueva tarea</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Título<input name="titulo" required maxlength="120" /></label><label>Descripción<textarea name="descripcion" rows="3" maxlength="1000"></textarea></label><div class="field-row"><label>Prioridad<select name="prioridad"><option>Normal</option><option>Alta</option><option>Baja</option></select></label><label>Fecha límite<input name="fechaLimite" type="date" /></label></div><fieldset><legend>Responsables (hasta 5)</legend>${options.map((user) => `<label class="check-label"><input type="checkbox" name="responsables" value="${esc(user.uid)}" data-name="${esc(user.name)}" />${esc(user.name)}</label>`).join("") || `<p class="empty-inline">No hay estudiantes autorizados para asignar.</p>`}</fieldset><button class="primary-button" type="submit">Crear tarea</button></form>`;
+  const form = `<form class="dialog-form" data-form="project-task" data-project="${esc(projectId)}"><div class="dialog-head"><div><p class="eyebrow">${esc(project.nombre || "PROYECTO")}</p><h2>Nueva tarea</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Empezar desde una plantilla<select id="task-template"><option value="">Tarea en blanco</option><option value="pruebas">Pruebas de componente</option><option value="documentacion">Documentar avance</option><option value="investigacion">Investigación</option><option value="montaje">Montaje seguro</option></select></label><label>Título<input name="titulo" required maxlength="120" /></label><label>Descripción<textarea name="descripcion" rows="3" maxlength="1000"></textarea></label><div class="field-row"><label>Prioridad<select name="prioridad"><option>Normal</option><option>Alta</option><option>Baja</option></select></label><label>Fecha límite<input name="fechaLimite" type="date" /></label></div><fieldset><legend>Responsables (hasta 5)</legend>${options.map((user) => `<label class="check-label"><input type="checkbox" name="responsables" value="${esc(user.uid)}" data-name="${esc(user.name)}" />${esc(user.name)}</label>`).join("") || `<p class="empty-inline">No hay estudiantes autorizados para asignar.</p>`}</fieldset><button class="primary-button" type="submit">Crear tarea</button></form>`;
   const dialog = document.createElement("dialog");
   dialog.className = "detail-dialog form-dialog";
   dialog.innerHTML = form;
