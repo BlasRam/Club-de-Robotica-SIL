@@ -18,6 +18,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   runTransaction,
@@ -176,6 +177,8 @@ type Profile = {
 
 type Page = "inicio" | "proyectos" | "muestra" | "cursos" | "tareas" | "acceso" | "avisos" | "sugerencias" | "prestamos" | "inventario" | "estudiantes" | "perfil" | "configuracion" | "calendario";
 type TaskFilter = "all" | "pending" | "overdue" | "week" | "undated" | "completed";
+type NoticeFilter = "all" | "unread" | "club";
+type SearchResult = { kind: "project" | "task" | "course"; id: string; title: string; detail: string; terms: string };
 type PreviewLoan = { item: string; quantity: number; purpose: string; start: string; due: string; status: string; requestStatus?: string; requestType?: string; proposedDue?: string };
 type StudentSandbox = { inside: boolean; entryAt: Date | null; taskDone: boolean; joinRequested: boolean; reactions: Record<string, string>; courseEnrollments: string[]; loans: PreviewLoan[] };
 type AppState = {
@@ -183,6 +186,9 @@ type AppState = {
   profile: Profile | null;
   page: Page;
   taskFilter: TaskFilter;
+  taskSearch: string;
+  courseFocusId: string;
+  noticeFilter: NoticeFilter;
   authMode: "login" | "register";
   authMessage: string;
   loading: boolean;
@@ -190,6 +196,8 @@ type AppState = {
   studentPreview: boolean;
   menuOpen: boolean;
   updateAvailable: boolean;
+  unreadNotifications: number;
+  showOnboarding: boolean;
   sidebarCollapsed: boolean;
   theme: "system" | "light" | "dark";
   reduceMotion: boolean;
@@ -208,6 +216,9 @@ const state: AppState = {
   profile: null,
   page: "inicio",
   taskFilter: "all",
+  taskSearch: "",
+  courseFocusId: "",
+  noticeFilter: "all",
   authMode: "login",
   authMessage: "",
   loading: true,
@@ -215,6 +226,8 @@ const state: AppState = {
   studentPreview: false,
   menuOpen: false,
   updateAvailable: false,
+  unreadNotifications: 0,
+  showOnboarding: false,
   sidebarCollapsed: false,
   theme: ["system", "light", "dark"].includes(localStorage.getItem("cdr-theme") || "")
     ? localStorage.getItem("cdr-theme") as "system" | "light" | "dark"
@@ -324,7 +337,7 @@ let exitTimer = 0;
 history.replaceState({ cdrBase: true, cdrPage: state.page }, "", location.href);
 history.pushState({ cdrBackGuard: true }, "", location.href);
 
-function navigatePage(page: Page, taskFilter?: TaskFilter): void {
+function navigatePage(page: Page, taskFilter?: TaskFilter, searchTerm?: string): void {
   const samePage = state.page === page;
   if (state.page !== page) {
     pageTrail.push(page);
@@ -334,8 +347,39 @@ function navigatePage(page: Page, taskFilter?: TaskFilter): void {
   window.clearTimeout(exitTimer);
   state.page = page;
   state.taskFilter = page === "tareas" ? taskFilter ?? (samePage ? state.taskFilter : "all") : "all";
+  state.taskSearch = page === "tareas" ? searchTerm ?? (samePage ? state.taskSearch : "") : "";
+  if (page === "avisos" && !samePage) state.noticeFilter = "all";
   state.menuOpen = false;
   render();
+}
+
+let stopUnreadNotificationListener: (() => void) | null = null;
+let globalSearchIndex: SearchResult[] = [];
+let globalSearchLoading = false;
+let globalSearchUid = "";
+let globalSearchGeneration = 0;
+
+function watchUnreadNotifications(uid: string): void {
+  stopUnreadNotificationListener?.();
+  stopUnreadNotificationListener = onSnapshot(
+    query(collection(db, "usuarios", uid, "notificaciones"), where("leida", "==", false), limit(50)),
+    (snapshot) => {
+      if (state.user?.uid !== uid) return;
+      state.unreadNotifications = snapshot.size;
+      const badge = document.querySelector<HTMLElement>(".notification-badge");
+      document.querySelector(".student-bell-button")?.setAttribute("aria-label", `Notificaciones, ${snapshot.size} sin leer`);
+      if (badge) {
+        badge.hidden = snapshot.size === 0;
+        badge.textContent = snapshot.size > 99 ? "99+" : String(snapshot.size);
+      }
+    },
+    () => {
+      state.unreadNotifications = 0;
+      document.querySelector(".student-bell-button")?.setAttribute("aria-label", "Notificaciones");
+      const badge = document.querySelector<HTMLElement>(".notification-badge");
+      if (badge) badge.hidden = true;
+    },
+  );
 }
 
 function confirmAppExit(): void {
@@ -550,7 +594,15 @@ function setBusy(button: HTMLButtonElement, busy: boolean, label?: string): void
 }
 
 function setProfile(uid: string, data: DocumentData): void {
+  if (globalSearchUid !== uid) {
+    globalSearchUid = uid;
+    globalSearchGeneration++;
+    globalSearchIndex = [];
+    globalSearchLoading = false;
+  }
   state.profile = { uid, ...data } as Profile;
+  state.showOnboarding = isAuthorized() && localStorage.getItem(`cdr-onboarding-seen:${uid}`) !== "true";
+  watchUnreadNotifications(uid);
   state.loading = false;
   state.page = "inicio";
   pageTrail = ["inicio"];
@@ -597,6 +649,13 @@ onAuthStateChanged(auth, (user) => {
   if (authSubmissionInProgress) return;
   if (user && state.authMode !== "register" &&
       (!isInstitutionalEmail(user.email || "") || !user.emailVerified)) {
+    stopUnreadNotificationListener?.();
+    stopUnreadNotificationListener = null;
+    state.unreadNotifications = 0;
+    globalSearchUid = "";
+    globalSearchGeneration++;
+    globalSearchIndex = [];
+    globalSearchLoading = false;
     state.user = null;
     state.profile = null;
     state.loading = false;
@@ -610,6 +669,14 @@ onAuthStateChanged(auth, (user) => {
     render();
   } else if (user) void loadProfile(user);
   else {
+    stopUnreadNotificationListener?.();
+    stopUnreadNotificationListener = null;
+    globalSearchUid = "";
+    globalSearchGeneration++;
+    globalSearchIndex = [];
+    globalSearchLoading = false;
+    state.unreadNotifications = 0;
+    state.showOnboarding = false;
     state.profile = null;
     state.loading = false;
     render();
@@ -722,6 +789,15 @@ function mobileInstallButton(className: string): string {
 
 function appShell(content: string): string {
   const items = navItems();
+  const onboardingTitle = isAdminInterface() ? "Tu panel de administración"
+    : state.profile?.tipoUsuario === "docente" ? "Tu espacio docente"
+      : "Tu espacio de estudiante";
+  const onboardingSteps = isAdminInterface()
+    ? [["Revisa pendientes", "Autoriza cuentas y responde solicitudes de préstamo."], ["Coordina equipos", "Consulta proyectos y actividad del club."], ["Mantén informada a la comunidad", "Publica avisos y revisa el inventario."]]
+    : state.profile?.tipoUsuario === "docente"
+      ? [["Acompaña tus equipos", "Consulta avances y fechas de proyectos."], ["Organiza actividades", "Revisa tareas y el calendario del club."], ["Comparte aprendizajes", "Envía proyectos a la muestra o revísalos si tienes permiso."]]
+      : [["Empieza por tus tareas", "Revisa fechas, prioridades y actividades asignadas."], ["Únete a proyectos", "Explora los equipos y sus etapas de trabajo."], ["Consulta recursos", "Encuentra cursos, avisos y solicita préstamos."]];
+  const onboardingModal = state.showOnboarding ? `<div class="onboarding-backdrop"><section class="onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><div class="onboarding-head"><span class="onboarding-mark">${icon("inicio", 23)}</span><button class="icon-button" data-action="finish-onboarding" aria-label="Cerrar guía">×</button></div><p class="eyebrow">CLUB DE ROBÓTICA SIL</p><h2 id="onboarding-title">${onboardingTitle}</h2><p class="onboarding-intro">Tres ideas rápidas para empezar a usar la plataforma.</p><ol>${onboardingSteps.map(([title, detail], index) => `<li><span>${index + 1}</span><div><strong>${title}</strong><small>${detail}</small></div></li>`).join("")}</ol><button class="primary-button onboarding-start" data-action="finish-onboarding">Empezar</button></section></div>` : "";
   const navGroups: Array<{ label: string; ids: Page[] }> = [
     { label: "Mi espacio", ids: ["inicio", "tareas", "acceso"] },
     { label: "Proyectos y aprendizaje", ids: ["proyectos", "muestra", "cursos", "calendario"] },
@@ -756,17 +832,118 @@ function appShell(content: string): string {
         <header class="topbar">
           <button class="icon-button student-menu-button" data-action="toggle-menu" aria-label="Abrir menú" title="Menú" aria-expanded="${state.menuOpen}">${icon("menu")}</button>
           <div class="crumb"><span>${CLUB_SHORT_NAME}</span><span class="crumb-sep">/</span><strong>${esc(state.page === "perfil" ? "Perfil" : items.find((item) => item.id === state.page)?.label ?? "Inicio")}</strong></div>
-          <div class="topbar-right"><span class="connection ${navigator.onLine ? "" : "offline"}" title="${navigator.onLine ? "Conexión a internet disponible" : "Sin conexión a internet; las funciones en línea están pausadas"}"><i></i>${navigator.onLine ? "En línea" : "Sin conexión"}</span><span class="role-tag">${isStudentPreview() ? "VISTA ESTUDIANTE" : isAdmin() ? "ADMIN" : isModerator() ? "MODERADOR" : "ESTUDIANTE"}</span>${isAdmin() ? `<button class="secondary-button student-preview-toggle" data-action="toggle-student-preview" aria-label="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}" title="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}">${icon("estudiantes", 16)}<span>${isStudentPreview() ? "Volver a admin" : "Ver como estudiante"}</span></button><button class="secondary-button admin-layout-toggle" data-action="toggle-admin-layout" aria-pressed="${state.desktopPreview}" title="Cambiar vista de administración">${icon(state.desktopPreview ? "vistaMovil" : "vistaEscritorio", 16)}<span>${state.desktopPreview ? "Vista móvil" : "Vista escritorio"}</span></button>` : ""}${mobileInstallButton("secondary-button mobile-install")}<button class="icon-button student-bell-button ${state.page === "avisos" ? "active" : ""}" data-page="avisos" title="Notificaciones" aria-label="Abrir notificaciones">${icon("campana")}</button><button class="icon-button profile-shortcut" data-page="perfil" title="Mi perfil" aria-label="Abrir mi perfil">${icon("perfil")}</button><button class="icon-button mobile-logout" data-action="logout" title="Cerrar sesión" aria-label="Cerrar sesión">${icon("salir")}</button></div>
+          <div class="topbar-right"><span class="connection ${navigator.onLine ? "" : "offline"}" title="${navigator.onLine ? "Conexión a internet disponible" : "Sin conexión a internet; las funciones en línea están pausadas"}"><i></i>${navigator.onLine ? "En línea" : "Sin conexión"}</span><span class="role-tag">${isStudentPreview() ? "VISTA ESTUDIANTE" : isAdmin() ? "ADMIN" : isModerator() ? "MODERADOR" : "ESTUDIANTE"}</span>${isAdmin() ? `<button class="secondary-button student-preview-toggle" data-action="toggle-student-preview" aria-label="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}" title="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}">${icon("estudiantes", 16)}<span>${isStudentPreview() ? "Volver a admin" : "Ver como estudiante"}</span></button><button class="secondary-button admin-layout-toggle" data-action="toggle-admin-layout" aria-pressed="${state.desktopPreview}" title="Cambiar vista de administración">${icon(state.desktopPreview ? "vistaMovil" : "vistaEscritorio", 16)}<span>${state.desktopPreview ? "Vista móvil" : "Vista escritorio"}</span></button>` : ""}${mobileInstallButton("secondary-button mobile-install")}${!isStudentPreview() ? `<button class="icon-button global-search-trigger" data-action="global-search" title="Buscar en la plataforma" aria-label="Buscar en la plataforma">${icon("buscar")}</button>` : ""}<button class="icon-button student-bell-button ${state.page === "avisos" ? "active" : ""}" data-page="avisos" title="Notificaciones" aria-label="Notificaciones, ${state.unreadNotifications} sin leer">${icon("campana")}<span class="notification-badge" ${state.unreadNotifications ? "" : "hidden"}>${state.unreadNotifications > 99 ? "99+" : state.unreadNotifications}</span></button><button class="icon-button profile-shortcut" data-page="perfil" title="Mi perfil" aria-label="Abrir mi perfil">${icon("perfil")}</button><button class="icon-button mobile-logout" data-action="logout" title="Cerrar sesión" aria-label="Cerrar sesión">${icon("salir")}</button></div>
         </header>
         ${!navigator.onLine ? `<div class="offline-banner" role="status">Sin conexión a internet. Espera a reconectarte antes de guardar cambios.</div>` : ""}
         <main id="page-content" class="page-content">${content}</main>
       </div>
       ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><div><strong>Nueva versión lista</strong><small>La aplicación se recargará para aplicar la actualización.</small></div><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
+      ${onboardingModal}
       <nav class="mobile-nav" aria-label="Navegación móvil">
         ${items.filter((item) => ["inicio", "tareas", "acceso", "proyectos", "avisos"].includes(item.id)).map((item) => `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}">${icon(item.id, 19)}<span>${item.label}</span></button>`).join("")}
       </nav>
       <div id="toast" class="toast" role="status"></div>
     </div>`;
+}
+
+function normalizeSearchText(value: unknown): string {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
+}
+
+async function loadGlobalSearchIndex(): Promise<void> {
+  const uid = state.user?.uid;
+  if (!uid) return;
+  const generation = globalSearchGeneration;
+  if (globalSearchIndex.length) return;
+  if (globalSearchLoading) {
+    while (globalSearchLoading) await new Promise((resolve) => window.setTimeout(resolve, 50));
+    return;
+  }
+  globalSearchLoading = true;
+  const projectQuery = getDocs(query(collection(db, "proyectos"), limit(60))).catch(() => null);
+  const courseQuery = isAdminInterface()
+    ? getDocs(query(collection(db, "cursos"), limit(100))).catch(() => null)
+    : getDocs(query(collection(db, "cursos"), where("estado", "==", "Publicado"), limit(100))).catch(() => null);
+  const taskQuery = isAdminInterface()
+    ? Promise.all([getDocs(query(collectionGroup(db, "tareas"), limit(120))).catch(() => null)])
+    : Promise.all([
+      getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", uid), limit(80))).catch(() => null),
+      getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", uid), limit(80))).catch(() => null),
+    ]);
+  const [projects, courses, taskSnapshots] = await Promise.all([projectQuery, courseQuery, taskQuery]);
+  if (generation !== globalSearchGeneration || state.user?.uid !== uid) return;
+  if (!isAdminInterface() && projects && state.user) {
+    const teamProjects = projects.docs.filter((project) => {
+      const data = project.data();
+      return (Array.isArray(data.miembrosUids) && data.miembrosUids.includes(uid)) || projectLead(data) === uid || data.creadoPorUid === uid;
+    }).slice(0, 15);
+    const teamTaskSnapshots = await Promise.all(teamProjects.map((project) => getDocs(query(collection(db, "proyectos", project.id, "tareas"), limit(40))).catch(() => null)));
+    if (generation !== globalSearchGeneration || state.user?.uid !== uid) return;
+    taskSnapshots.push(...teamTaskSnapshots);
+  }
+  const projectNames = new Map<string, string>();
+  projects?.docs.forEach((project) => {
+    const data = project.data();
+    const title = String(data.nombre || data.titulo || "Proyecto");
+    projectNames.set(project.id, title);
+      const areas = Array.isArray(data.departamentos) ? data.departamentos : [];
+      globalSearchIndex.push({ kind: "project", id: project.id, title, detail: String(data.objetivo || data.descripcion || "Proyecto del club"), terms: normalizeSearchText([title, data.objetivo, data.descripcion, ...areas].join(" ")) });
+  });
+  courses?.docs.forEach((course) => {
+    const data = course.data();
+    const title = String(data.titulo || "Curso");
+    globalSearchIndex.push({ kind: "course", id: course.id, title, detail: String(data.descripcion || "Curso del club"), terms: normalizeSearchText([title, data.descripcion, data.instructor, data.modalidad].join(" ")) });
+  });
+  const uniqueTasks = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+  taskSnapshots.flatMap((snapshot) => snapshot?.docs ?? []).forEach((task) => uniqueTasks.set(task.ref.path, task));
+  uniqueTasks.forEach((task) => {
+    const data = task.data();
+    const title = String(data.titulo || "Tarea");
+    const projectId = task.ref.parent.parent?.id || "";
+    const projectName = projectNames.get(projectId) || "Proyecto";
+    globalSearchIndex.push({ kind: "task", id: task.ref.path, title, detail: projectName + " · " + String(data.estado || "Pendiente"), terms: normalizeSearchText([title, data.descripcion, projectName, data.estado].join(" ")) });
+  });
+  if (generation !== globalSearchGeneration || state.user?.uid !== uid) return;
+  globalSearchLoading = false;
+}
+
+function updateGlobalSearchResults(input: string, container: HTMLElement): void {
+  const tokens = normalizeSearchText(input).trim().split(/\s+/).filter(Boolean);
+  if (globalSearchLoading) {
+    container.innerHTML = "<div class=\"global-search-empty\"><span class=\"spinner\"></span>Preparando la búsqueda…</div>";
+    return;
+  }
+  if (!tokens.length) {
+    container.innerHTML = "<div class=\"global-search-empty\">Busca por nombre de proyecto, tarea o curso.</div>";
+    return;
+  }
+  const matches = globalSearchIndex.filter((item) => tokens.every((token) => item.terms.includes(token))).slice(0, 12);
+  if (!matches.length) {
+    container.innerHTML = "<div class=\"global-search-empty\">No encontramos coincidencias para “" + esc(input.trim()) + "”.</div>";
+    return;
+  }
+  const labels = { project: "Proyecto", task: "Tarea", course: "Curso" };
+  const symbols = { project: "proyectos", task: "tareas", course: "cursos" };
+  container.innerHTML = matches.map((item) => "<button type=\"button\" class=\"global-search-result\" data-action=\"global-search-select\" data-kind=\"" + item.kind + "\" data-id=\"" + esc(item.id) + "\" data-title=\"" + esc(item.title) + "\"><span class=\"global-search-result-icon " + item.kind + "\">" + icon(symbols[item.kind], 18) + "</span><span><small>" + labels[item.kind] + "</small><strong>" + esc(item.title) + "</strong><em>" + esc(item.detail) + "</em></span>" + icon("ir", 15) + "</button>").join("");
+}
+
+function openGlobalSearch(): void {
+  if (!isAuthorized() || isStudentPreview() || document.querySelector(".global-search-dialog")) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "global-search-dialog";
+  dialog.innerHTML = "<div class=\"global-search-head\"><div><p class=\"eyebrow\">BÚSQUEDA GLOBAL</p><h2>¿Qué necesitas encontrar?</h2></div><button class=\"icon-button\" data-action=\"close-dialog\" aria-label=\"Cerrar búsqueda\">×</button></div><label class=\"global-search-input\">" + icon("buscar", 20) + "<input type=\"search\" autocomplete=\"off\" placeholder=\"Proyecto, tarea o curso…\" aria-label=\"Buscar proyecto, tarea o curso\" /><kbd>Esc</kbd></label><div class=\"global-search-results\" aria-live=\"polite\">Cargando búsqueda…</div><div class=\"global-search-foot\">Escribe para buscar · Esc para cerrar</div>";
+  root.append(dialog);
+  dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+  const input = dialog.querySelector<HTMLInputElement>("input")!;
+  const results = dialog.querySelector<HTMLElement>(".global-search-results")!;
+  input.addEventListener("input", () => updateGlobalSearchResults(input.value, results));
+  input.focus();
+  void loadGlobalSearchIndex().then(() => updateGlobalSearchResults(input.value, results)).catch(() => {
+    globalSearchLoading = false;
+    results.innerHTML = "<div class=\"global-search-empty\">No pudimos cargar la búsqueda. Comprueba tu conexión e inténtalo de nuevo.</div>";
+  });
 }
 
 function render(): void {
@@ -878,6 +1055,11 @@ async function loadPage(): Promise<void> {
     const content = await pageContent(state.page);
     const page = document.querySelector<HTMLDivElement>("#page-content");
     if (page) page.innerHTML = content;
+  if (page && state.page === "cursos" && state.courseFocusId) {
+      const course = [...page.querySelectorAll<HTMLElement>("[data-course-id]")].find((item) => item.dataset.courseId === state.courseFocusId);
+      state.courseFocusId = "";
+      if (course) window.setTimeout(() => { course.classList.add("course-search-focus"); course.scrollIntoView({ behavior: state.reduceMotion ? "auto" : "smooth", block: "center" }); window.setTimeout(() => course.classList.remove("course-search-focus"), 2500); }, 80);
+    }
     if (page && state.page === "acceso") updateAccessLockButton();
     if (page && isStudentPreview() && state.page === "prestamos") {
       page.querySelectorAll<HTMLElement>(".loan-card .loan-copy").forEach((copy, index) => {
@@ -935,8 +1117,11 @@ function renderSettings(): string {
         <div class="settings-account-meta"><span>Tipo de cuenta</span><strong>${roleLabel()}</strong><span>Estado de acceso</span><strong>${isAdmin() ? "Administrador" : profile.autorizado ? "Autorizado" : "Pendiente de autorización"}</strong></div>
         <button class="secondary-button" data-page="perfil">${icon("perfil", 16)} Mi perfil</button>
       </section>
-      <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("campana", 18)}</span><div><h2>Notificaciones</h2><p>Consulta los avisos y notificaciones recibidos dentro de la app.</p></div></div>
+      <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("campana", 18)}</span><div><h2>Notificaciones</h2><p>${state.unreadNotifications ? `${state.unreadNotifications} sin leer` : "No tienes notificaciones sin leer."}</p></div></div>
         <button class="secondary-button" data-page="avisos">${icon("campana", 16)} Abrir bandeja</button>
+      </section>
+      <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("inicio", 18)}</span><div><h2>Guía de inicio</h2><p>Vuelve a consultar las recomendaciones para tu perfil.</p></div></div>
+        <button class="secondary-button" data-action="show-onboarding">${icon("ir", 16)} Ver guía</button>
       </section>
       ${isAdmin() && !isStudentPreview() ? `<section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("perfil", 18)}</span><div><h2>Identidad del club</h2><p>El escudo actual es el del colegio. Puedes reemplazarlo por el logo del club cuando esté listo.</p></div></div><div class="club-logo-preview"><img src="${esc(state.clubLogoUrl)}" alt="Logo actual del colegio"/><span>Logo que verán las personas en la PWA</span></div><label class="logo-upload-label">Cambiar logo<input id="club-logo-input" type="file" accept="image/png,image/jpeg,image/webp" /></label>${state.clubLogoPath ? `<button class="secondary-button" data-action="reset-club-logo">Restablecer escudo del colegio</button>` : ""}</section>` : ""}
       <section class="settings-section settings-session"><div class="settings-section-heading"><span class="settings-icon">${icon("salir", 18)}</span><div><h2>Sesión</h2><p>Cierra tu sesión en este dispositivo.</p></div></div>
@@ -1254,7 +1439,7 @@ async function renderCourses(): Promise<string> {
           ? `<button class="secondary-button compact" data-action="leave-course" data-id="${esc(course.id)}">Cancelar inscripción</button>`
           : `<button class="primary-button compact" data-action="enroll-course" data-id="${esc(course.id)}">Inscribirme</button>`;
       const dates = `${dateText(course.fechaInicio)}${course.fechaFin ? ` - ${dateText(course.fechaFin)}` : ""}`;
-      return `<article class="course-card"><div class="course-card-top"><span class="course-mark">${icon("cursos", 20)}</span><span class="state-pill ${closed ? "muted" : "success"}">${closed ? "Inscripciones cerradas" : "Inscripción abierta"}</span></div><h2>${esc(course.titulo || "Curso")}</h2><p class="course-description">${esc(course.descripcion || "Sin descripción")}</p><div class="course-details"><span><strong>Docente</strong>${esc(course.instructor || "Equipo Robótica SIL")}</span><span><strong>Fecha</strong>${dates}</span><span><strong>Horario</strong>${esc(course.horario || "A confirmar")}</span><span><strong>Modalidad</strong>${esc(course.modalidad || "Presencial")}${course.lugar ? ` · ${esc(course.lugar)}` : ""}</span></div><div class="course-card-bottom">${courseAction}</div></article>`;
+      return `<article class="course-card" data-course-id="${esc(course.id)}"><div class="course-card-top"><span class="course-mark">${icon("cursos", 20)}</span><span class="state-pill ${closed ? "muted" : "success"}">${closed ? "Inscripciones cerradas" : "Inscripción abierta"}</span></div><h2>${esc(course.titulo || "Curso")}</h2><p class="course-description">${esc(course.descripcion || "Sin descripción")}</p><div class="course-details"><span><strong>Docente</strong>${esc(course.instructor || "Equipo Robótica SIL")}</span><span><strong>Fecha</strong>${dates}</span><span><strong>Horario</strong>${esc(course.horario || "A confirmar")}</span><span><strong>Modalidad</strong>${esc(course.modalidad || "Presencial")}${course.lugar ? ` · ${esc(course.lugar)}` : ""}</span></div><div class="course-card-bottom">${courseAction}</div></article>`;
     }).join("")}</div>` : emptyPanel(isAdminInterface() ? "Aún no hay cursos publicados" : "No hay cursos con inscripción abierta", isAdminInterface() ? "Publica el primer curso del club." : "Los cursos disponibles aparecerán aquí cuando el administrador los publique.")}`;
 }
 
@@ -1340,6 +1525,9 @@ async function renderTasks(): Promise<string> {
     { id: "completed", label: "Completadas", count: done.length },
   ];
   const filterTask = (task: Record<string, any>): boolean => {
+    const searchTokens = normalizeSearchText(state.taskSearch).trim().split(/\s+/).filter(Boolean);
+    const taskTerms = normalizeSearchText([task.titulo, task.descripcion, String(task.path).split("/")[1]].join(" "));
+    if (!searchTokens.every((token) => taskTerms.includes(token))) return false;
     if (state.taskFilter === "pending") return task.estado !== "Completada";
     if (state.taskFilter === "completed") return task.estado === "Completada";
     if (task.estado === "Completada") return state.taskFilter === "all";
@@ -1355,7 +1543,7 @@ async function renderTasks(): Promise<string> {
   });
   const activeFilter = filters.find((item) => item.id === state.taskFilter)?.label || "Todas";
   return `${pageHeading("Tareas", "Seguimiento de tus responsabilidades.", `<button class="icon-button" data-action="refresh" title="Actualizar" aria-label="Actualizar">${icon("actualizar")}</button>`)}
-    ${tasks.length ? `<nav class="task-priority-filters" aria-label="Filtrar tareas">${filters.map((filter) => `<button type="button" class="task-filter ${state.taskFilter === filter.id ? "active" : ""} ${filter.id === "overdue" && filter.count ? "attention" : ""}" data-page="tareas" data-task-filter="${filter.id}" aria-pressed="${state.taskFilter === filter.id}"><span>${filter.label}</span><strong>${filter.count}</strong></button>`).join("")}</nav>${visibleTasks.length ? `<div class="task-list">${visibleTasks.map((task) => taskCard(task)).join("")}</div>` : emptyInline(`No hay tareas en “${activeFilter.toLowerCase()}”.`)}` : emptyPanel("No hay tareas asignadas", "Las tareas asignadas a tu cuenta aparecerán aquí.")}`;
+    ${tasks.length ? `<label class="task-list-search">${icon("buscar", 17)}<input type="search" data-task-search-input value="${esc(state.taskSearch)}" placeholder="Buscar en mis tareas" aria-label="Buscar entre mis tareas" />${state.taskSearch ? `<button type="button" class="text-button" data-action="clear-task-search">Limpiar</button>` : ""}</label><nav class="task-priority-filters" aria-label="Filtrar tareas">${filters.map((filter) => `<button type="button" class="task-filter ${state.taskFilter === filter.id ? "active" : ""} ${filter.id === "overdue" && filter.count ? "attention" : ""}" data-page="tareas" data-task-filter="${filter.id}" aria-pressed="${state.taskFilter === filter.id}"><span>${filter.label}</span><strong>${filter.count}</strong></button>`).join("")}</nav>${visibleTasks.length ? `<div class="task-list">${visibleTasks.map((task) => taskCard(task)).join("")}</div><p class="task-search-empty" data-task-search-empty hidden>No hay tareas que coincidan con la búsqueda.</p>` : emptyInline(state.taskSearch ? `No encontramos tareas para “${esc(state.taskSearch)}”.` : `No hay tareas en “${activeFilter.toLowerCase()}”.`)}` : emptyPanel("No hay tareas asignadas", "Las tareas asignadas a tu cuenta aparecerán aquí.")}`;
 }
 
 function taskCard(task: Record<string, any>): string {
@@ -1368,7 +1556,7 @@ function taskCard(task: Record<string, any>): string {
   const weekEnd = new Date(startToday); weekEnd.setDate(weekEnd.getDate() + 7);
   const dueLabel = completed ? "Completada" : !due ? "Sin fecha" : due < startToday ? "Atrasada" : due < tomorrow ? "Vence hoy" : due <= weekEnd ? "Esta semana" : "Próxima";
   const dueTone = completed ? "success" : !due ? "muted" : due < startToday ? "danger" : due <= weekEnd ? "warning" : "muted";
-  return `<article class="task-row ${dueTone === "danger" ? "task-overdue" : ""}"><span class="task-check ${completed ? "done" : ""}">${completed ? icon("listo", 17) : ""}</span><div class="task-info"><span class="task-project">${esc(projectId)}</span><h3>${esc(task.titulo || "Tarea")}</h3><p>${esc(task.descripcion || "Sin descripción")}</p><div class="task-meta"><span class="state-pill ${dueTone}">${dueLabel}</span>${due ? `<span>${icon("fecha", 14)} ${dateText(due)}</span>` : ""}</div></div>${!completed && isAssignee ? `<button class="secondary-button compact" data-action="complete-task" data-path="${esc(task.path)}">Marcar completada</button>` : ""}</article>`;
+  return `<article class="task-row ${dueTone === "danger" ? "task-overdue" : ""}" data-task-search-text="${esc(normalizeSearchText([task.titulo, task.descripcion, projectId].join(" ")))}"><span class="task-check ${completed ? "done" : ""}">${completed ? icon("listo", 17) : ""}</span><div class="task-info"><span class="task-project">${esc(projectId)}</span><h3>${esc(task.titulo || "Tarea")}</h3><p>${esc(task.descripcion || "Sin descripción")}</p><div class="task-meta"><span class="state-pill ${dueTone}">${dueLabel}</span>${due ? `<span>${icon("fecha", 14)} ${dateText(due)}</span>` : ""}</div></div>${!completed && isAssignee ? `<button class="secondary-button compact" data-action="complete-task" data-path="${esc(task.path)}">Marcar completada</button>` : ""}</article>`;
 }
 
 async function renderAccess(): Promise<string> {
@@ -1416,10 +1604,38 @@ async function renderNotices(): Promise<string> {
   const userNotices = state.user ? await getDocs(query(collection(db, "usuarios", state.user.uid, "notificaciones"), orderBy("fechaCreacion", "desc"), limit(15))).catch(() => null) : null;
   const personal = userNotices?.docs.map((item) => ({ id: item.id, ...item.data(), personal: true })) ?? [];
   const global = snapshot.docs.map((item) => ({ id: item.id, ...item.data(), personal: false }));
-  const all: Array<Record<string, any>> = [...personal, ...global];
+  const unreadCount = personal.filter((item) => item.leida !== true).length;
+  const personalToShow = state.noticeFilter === "unread" ? personal.filter((item) => item.leida !== true) : state.noticeFilter === "club" ? [] : personal;
+  const globalToShow = state.noticeFilter === "unread" ? [] : global;
+  const all: Array<Record<string, any>> = [...personalToShow, ...globalToShow];
   all.sort((a, b) => Number(b.prioridad === "Importante") - Number(a.prioridad === "Importante") || (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0));
   return `${pageHeading("Avisos", "Comunicaciones y notificaciones del club.", canManageClub() ? `<button class="primary-button compact" data-action="new-notice">${icon("sumar")} Publicar aviso</button>` : "")}
-    ${all.length ? `<div class="notice-list">${all.map((item) => item.personal ? personalNoticeCard(item) : noticeCardWithAdminAction(item.id, item)).join("")}</div>` : emptyPanel("No hay avisos", "Los avisos publicados aparecerán en esta sección.")}`;
+    <nav class="notice-filters" aria-label="Filtrar notificaciones"><button class="notice-filter ${state.noticeFilter === "all" ? "active" : ""}" data-action="notice-filter" data-filter="all" aria-pressed="${state.noticeFilter === "all"}">Todo <strong>${personal.length + global.length}</strong></button><button class="notice-filter ${state.noticeFilter === "unread" ? "active" : ""}" data-action="notice-filter" data-filter="unread" aria-pressed="${state.noticeFilter === "unread"}">Sin leer <strong>${unreadCount}</strong></button><button class="notice-filter ${state.noticeFilter === "club" ? "active" : ""}" data-action="notice-filter" data-filter="club" aria-pressed="${state.noticeFilter === "club"}">Avisos del club <strong>${global.length}</strong></button>${unreadCount && state.noticeFilter !== "club" ? `<button class="text-button mark-all-read" data-action="mark-all-notifications-read">Marcar todas como leídas</button>` : ""}</nav>
+    ${all.length ? `<div class="notice-list">${all.map((item) => item.personal ? personalNoticeCard(item.id, item) : noticeCardWithAdminAction(item.id, item)).join("")}</div>` : emptyPanel(state.noticeFilter === "unread" ? "Todo leído" : "No hay avisos", state.noticeFilter === "unread" ? "Tus notificaciones personales ya están al día." : "Los avisos publicados aparecerán aquí.")}`;
+}
+
+async function markNotificationRead(id: string): Promise<void> {
+  if (!state.user) return;
+  try {
+    await updateDoc(doc(db, "usuarios", state.user.uid, "notificaciones", id), { leida: true });
+    await loadPage();
+  } catch (error) { notify(errorMessage(error, "No se pudo actualizar la notificación."), "error"); }
+}
+
+async function markAllNotificationsRead(button: HTMLButtonElement): Promise<void> {
+  if (!state.user) return;
+  setBusy(button, true, "Actualizando");
+  try {
+    const snapshot = await getDocs(query(collection(db, "usuarios", state.user.uid, "notificaciones"), where("leida", "==", false), limit(100)));
+    if (snapshot.empty) return await loadPage();
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((item) => batch.update(item.ref, { leida: true }));
+    await batch.commit();
+    await loadPage();
+  } catch (error) {
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudieron marcar como leídas."), "error");
+  }
 }
 
 async function renderFeedback(): Promise<string> {
@@ -1637,8 +1853,9 @@ function reactionButton(noticeId: string, reaction: string, symbol: string): str
   return `<button class="reaction-button" data-action="react" data-id="${esc(noticeId)}" data-reaction="${reaction}" aria-label="Reaccionar ${reaction}">${symbol}</button>`;
 }
 
-function personalNoticeCard(data: Record<string, any>): string {
-  return `<article class="notice-card personal-notice"><div class="notice-card-header"><span class="priority-label">PERSONAL</span><time>${dateText(data.fechaCreacion, true)}</time></div><h3>${esc(data.titulo || "Notificación")}</h3><p>${esc(data.mensaje || "")}</p></article>`;
+function personalNoticeCard(id: string, data: Record<string, any>): string {
+  const unread = data.leida !== true;
+  return `<article class="notice-card personal-notice ${unread ? "unread" : "read"}"><div class="notice-card-header"><span class="priority-label">${unread ? "SIN LEER" : "PERSONAL · LEÍDA"}</span><time>${dateText(data.fechaCreacion, true)}</time></div><h3>${esc(data.titulo || "Notificación")}</h3><p>${esc(data.mensaje || "")}</p>${unread ? `<div class="card-actions"><button class="secondary-button compact" data-action="mark-notification-read" data-id="${esc(id)}">Marcar como leída</button></div>` : ""}</article>`;
 }
 
 async function renderLoans(): Promise<string> {
@@ -1827,7 +2044,40 @@ root.addEventListener("click", (event) => {
     return;
   }
   const action = button.dataset.action;
-  if (action === "toggle-menu" || action === "close-menu") {
+  if (action === "close-dialog") {
+    button.closest<HTMLDialogElement>("dialog")?.close();
+  } else if (action === "global-search") {
+    openGlobalSearch();
+  } else if (action === "global-search-select") {
+    button.closest<HTMLDialogElement>("dialog")?.close();
+    const kind = button.dataset.kind;
+    if (kind === "project") void showProject(button.dataset.id!);
+    else if (kind === "task") navigatePage("tareas", "all", button.dataset.title || "");
+    else if (kind === "course") {
+      state.courseFocusId = button.dataset.id || "";
+      navigatePage("cursos");
+    }
+  } else if (action === "finish-onboarding") {
+    state.showOnboarding = false;
+    if (state.user) localStorage.setItem(`cdr-onboarding-seen:${state.user.uid}`, "true");
+    render();
+  } else if (action === "show-onboarding") {
+    state.showOnboarding = true;
+    render();
+  } else if (action === "notice-filter") {
+    state.noticeFilter = (button.dataset.filter as NoticeFilter) || "all";
+    void loadPage();
+  } else if (action === "clear-task-search") {
+    const input = document.querySelector<HTMLInputElement>("[data-task-search-input]");
+    if (input) {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  } else if (action === "mark-notification-read") {
+    void markNotificationRead(button.dataset.id!);
+  } else if (action === "mark-all-notifications-read") {
+    void markAllNotificationsRead(button as HTMLButtonElement);
+  } else if (action === "toggle-menu" || action === "close-menu") {
     if (action === "toggle-menu" && window.matchMedia("(min-width: 681px)").matches) {
       state.sidebarCollapsed = !state.sidebarCollapsed;
     } else {
@@ -2104,6 +2354,26 @@ root.addEventListener("input", (event) => {
     document.querySelectorAll<HTMLTableRowElement>("[data-student-row]").forEach((row) => {
       row.hidden = !row.textContent?.toLocaleLowerCase("es").includes(search);
     });
+  } else if (target.matches("[data-task-search-input]")) {
+    state.taskSearch = target.value;
+    const tokens = normalizeSearchText(target.value).trim().split(/\s+/).filter(Boolean);
+    let visible = 0;
+    document.querySelectorAll<HTMLElement>("[data-task-search-text]").forEach((row) => {
+      const terms = row.dataset.taskSearchText || "";
+      row.hidden = !tokens.every((token) => terms.includes(token));
+      if (!row.hidden) visible++;
+    });
+    const empty = document.querySelector<HTMLElement>("[data-task-search-empty]");
+    if (empty) empty.hidden = visible > 0 || !tokens.length;
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  const target = event.target;
+  const typing = target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+  if (event.key === "/" && !event.ctrlKey && !event.metaKey && !event.altKey && !typing && !isStudentPreview()) {
+    event.preventDefault();
+    openGlobalSearch();
   }
 });
 
