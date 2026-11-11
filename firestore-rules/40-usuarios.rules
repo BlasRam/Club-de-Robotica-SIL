@@ -118,11 +118,17 @@
               "autorizado",
               "rol",
               "carrera",
-            "semestre",
-            "departamento"
+              "semestre",
+              "departamento",
+              "docenteRevisor"
             ])
           && request.resource.data.autorizado is bool
           && request.resource.data.rol in ["estudiante", "moderador", "admin"]
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["docenteRevisor"])
+            || (request.resource.data.docenteRevisor is bool
+              && (!request.resource.data.docenteRevisor
+                || (request.resource.data.get("tipoUsuario", "alumno") == "docente"
+                  && request.resource.data.autorizado == true))))
           && (!esPropietario(userId) || request.resource.data.rol == resource.data.rol)
           && resource.data.correoInstitucional is string
           && (

@@ -17,6 +17,7 @@ Edita los archivos de esta carpeta, no `../firestore.rules`: ese archivo se gene
 | `60-presencias.rules` | Estado de presencia |
 | `65-puertas.rules` | Bloqueo de acceso a telemetria y comandos de puertas (reservado para hardware futuro) |
 | `70-proyectos.rules` | Proyectos, solicitudes y tareas |
+| `75-muestra.rules` | Publicaciones privadas de proyectos con aprobación docente |
 | `00-core.rules` | También contiene la lectura pública del logo y el permiso de administrador para actualizarlo |
 
 `../firestore.indexes.json` contiene solo los indices compuestos requeridos por los filtros del panel administrativo.

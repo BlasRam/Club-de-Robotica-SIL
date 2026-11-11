@@ -63,6 +63,11 @@
         && request.resource.data.responsableNombre
           != ""
 
+        && request.resource.data.get("objetivo", "") is string
+        && request.resource.data.get("objetivo", "").size() <= 600
+        && request.resource.data.get("materiales", "") is string
+        && request.resource.data.get("materiales", "").size() <= 800
+
         && usuarioAsignable(
           request.resource.data.responsableUid
         );
@@ -161,13 +166,17 @@
             /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
           )
           && request.resource.data.keys().hasOnly([
+            "fase",
             "titulo",
             "evidencia",
             "creadoPorUid",
             "creadoPorNombre",
-            "fechaCreacion"
+            "fechaCreacion",
+            "fechaObjetivo",
+            "fotoPath"
           ])
           && request.resource.data.keys().hasAll([
+            "fase",
             "titulo",
             "evidencia",
             "creadoPorUid",
@@ -177,6 +186,14 @@
           && request.resource.data.titulo is string
           && request.resource.data.titulo.size() > 0
           && request.resource.data.titulo.size() <= 100
+          && request.resource.data.fase in [
+            "Investigación",
+            "Diseño",
+            "Construcción",
+            "Pruebas",
+            "Presentación",
+            "Otra"
+          ]
           && request.resource.data.evidencia is string
           && request.resource.data.evidencia.size() > 0
           && request.resource.data.evidencia.size() <= 1200
@@ -184,6 +201,8 @@
           && request.resource.data.creadoPorNombre is string
           && request.resource.data.creadoPorNombre.size() <= 120
           && request.resource.data.fechaCreacion is timestamp
+          && (!request.resource.data.keys().hasAny(["fechaObjetivo"])
+            || request.resource.data.fechaObjetivo is timestamp)
           && (!request.resource.data.keys().hasAny(["fotoPath"])
             || (request.resource.data.fotoPath is string
               && request.resource.data.fotoPath.matches("proyectos/" + proyectoId + "/evidencias/[A-Za-z0-9_-]+")));

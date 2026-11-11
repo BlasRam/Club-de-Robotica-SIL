@@ -1073,11 +1073,17 @@ match /cursos/{cursoId} {
               "autorizado",
               "rol",
               "carrera",
-            "semestre",
-            "departamento"
+              "semestre",
+              "departamento",
+              "docenteRevisor"
             ])
           && request.resource.data.autorizado is bool
           && request.resource.data.rol in ["estudiante", "moderador", "admin"]
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["docenteRevisor"])
+            || (request.resource.data.docenteRevisor is bool
+              && (!request.resource.data.docenteRevisor
+                || (request.resource.data.get("tipoUsuario", "alumno") == "docente"
+                  && request.resource.data.autorizado == true))))
           && (!esPropietario(userId) || request.resource.data.rol == resource.data.rol)
           && resource.data.correoInstitucional is string
           && (
@@ -1451,6 +1457,11 @@ match /puertas/{puertaId} {
         && request.resource.data.responsableNombre
           != ""
 
+        && request.resource.data.get("objetivo", "") is string
+        && request.resource.data.get("objetivo", "").size() <= 600
+        && request.resource.data.get("materiales", "") is string
+        && request.resource.data.get("materiales", "").size() <= 800
+
         && usuarioAsignable(
           request.resource.data.responsableUid
         );
@@ -1549,13 +1560,17 @@ match /puertas/{puertaId} {
             /databases/$(database)/documents/proyectos/$(proyectoId)/eventos/completado-v1
           )
           && request.resource.data.keys().hasOnly([
+            "fase",
             "titulo",
             "evidencia",
             "creadoPorUid",
             "creadoPorNombre",
-            "fechaCreacion"
+            "fechaCreacion",
+            "fechaObjetivo",
+            "fotoPath"
           ])
           && request.resource.data.keys().hasAll([
+            "fase",
             "titulo",
             "evidencia",
             "creadoPorUid",
@@ -1565,6 +1580,14 @@ match /puertas/{puertaId} {
           && request.resource.data.titulo is string
           && request.resource.data.titulo.size() > 0
           && request.resource.data.titulo.size() <= 100
+          && request.resource.data.fase in [
+            "Investigación",
+            "Diseño",
+            "Construcción",
+            "Pruebas",
+            "Presentación",
+            "Otra"
+          ]
           && request.resource.data.evidencia is string
           && request.resource.data.evidencia.size() > 0
           && request.resource.data.evidencia.size() <= 1200
@@ -1572,6 +1595,8 @@ match /puertas/{puertaId} {
           && request.resource.data.creadoPorNombre is string
           && request.resource.data.creadoPorNombre.size() <= 120
           && request.resource.data.fechaCreacion is timestamp
+          && (!request.resource.data.keys().hasAny(["fechaObjetivo"])
+            || request.resource.data.fechaObjetivo is timestamp)
           && (!request.resource.data.keys().hasAny(["fotoPath"])
             || (request.resource.data.fotoPath is string
               && request.resource.data.fotoPath.matches("proyectos/" + proyectoId + "/evidencias/[A-Za-z0-9_-]+")));
@@ -2076,6 +2101,89 @@ match /puertas/{puertaId} {
             )
           );
       }
+
+// Muestra de proyectos: solo contenido aprobado es visible para el club.
+    match /muestras/{proyectoId} {
+      function esDocenteRevisor() {
+        return estaAutorizado()
+          && usuarioActual().data.get("docenteRevisor", false) == true
+          && usuarioActual().data.get("tipoUsuario", "") == "docente";
+      }
+
+      allow read: if estaAutorizado()
+        && (resource.data.estado == "aprobada"
+          || resource.data.solicitadoPorUid == request.auth.uid
+          || esDocenteRevisor()
+          || esGestorClub());
+
+      allow create: if estaAutorizado()
+        && (esGestorClub() || esResponsableProyecto(proyectoId))
+        && exists(/databases/$(database)/documents/proyectos/$(proyectoId))
+        && request.resource.data.keys().hasOnly([
+          "proyectoId", "titulo", "resumen", "areas", "materiales", "estado",
+          "solicitadoPorUid", "solicitadoPorNombre", "fechaSolicitud",
+          "revisadoPorUid", "fechaRevision", "comentarioRevision"
+        ])
+        && request.resource.data.keys().hasAll([
+          "proyectoId", "titulo", "resumen", "areas", "materiales", "estado",
+          "solicitadoPorUid", "solicitadoPorNombre", "fechaSolicitud",
+          "revisadoPorUid", "fechaRevision", "comentarioRevision"
+        ])
+        && request.resource.data.proyectoId == proyectoId
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.titulo.size() <= 100
+        && request.resource.data.resumen is string
+        && request.resource.data.resumen.size() > 0
+        && request.resource.data.resumen.size() <= 600
+        && request.resource.data.areas is list
+        && request.resource.data.areas.size() <= 3
+        && request.resource.data.materiales is string
+        && request.resource.data.materiales.size() <= 800
+        && request.resource.data.estado == "pendiente"
+        && request.resource.data.solicitadoPorUid == request.auth.uid
+        && request.resource.data.solicitadoPorNombre is string
+        && request.resource.data.solicitadoPorNombre.size() <= 120
+        && request.resource.data.fechaSolicitud is timestamp
+        && request.resource.data.revisadoPorUid == ""
+        && request.resource.data.fechaRevision == null
+        && request.resource.data.comentarioRevision == "";
+
+      allow update: if estaAutorizado() && (
+        (
+          (esDocenteRevisor() || esGestorClub())
+          && resource.data.estado == "pendiente"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "revisadoPorUid", "fechaRevision", "comentarioRevision"
+          ])
+          && request.resource.data.estado in ["aprobada", "rechazada"]
+          && request.resource.data.revisadoPorUid == request.auth.uid
+          && request.resource.data.fechaRevision is timestamp
+          && request.resource.data.comentarioRevision is string
+          && request.resource.data.comentarioRevision.size() <= 500
+        )
+        ||
+        (
+          (esGestorClub() || esResponsableProyecto(proyectoId))
+          && resource.data.estado == "rechazada"
+          && resource.data.solicitadoPorUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "solicitadoPorNombre", "fechaSolicitud", "revisadoPorUid",
+            "fechaRevision", "comentarioRevision"
+          ])
+          && request.resource.data.estado == "pendiente"
+          && request.resource.data.solicitadoPorUid == request.auth.uid
+          && request.resource.data.solicitadoPorNombre is string
+          && request.resource.data.solicitadoPorNombre.size() <= 120
+          && request.resource.data.fechaSolicitud is timestamp
+          && request.resource.data.revisadoPorUid == ""
+          && request.resource.data.fechaRevision == null
+          && request.resource.data.comentarioRevision == ""
+        )
+      );
+
+      allow delete: if false;
+    }
 
     }
   }

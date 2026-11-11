@@ -1,0 +1,82 @@
+    // Muestra de proyectos: solo contenido aprobado es visible para el club.
+    match /muestras/{proyectoId} {
+      function esDocenteRevisor() {
+        return estaAutorizado()
+          && usuarioActual().data.get("docenteRevisor", false) == true
+          && usuarioActual().data.get("tipoUsuario", "") == "docente";
+      }
+
+      allow read: if estaAutorizado()
+        && (resource.data.estado == "aprobada"
+          || resource.data.solicitadoPorUid == request.auth.uid
+          || esDocenteRevisor()
+          || esGestorClub());
+
+      allow create: if estaAutorizado()
+        && (esGestorClub() || esResponsableProyecto(proyectoId))
+        && exists(/databases/$(database)/documents/proyectos/$(proyectoId))
+        && request.resource.data.keys().hasOnly([
+          "proyectoId", "titulo", "resumen", "areas", "materiales", "estado",
+          "solicitadoPorUid", "solicitadoPorNombre", "fechaSolicitud",
+          "revisadoPorUid", "fechaRevision", "comentarioRevision"
+        ])
+        && request.resource.data.keys().hasAll([
+          "proyectoId", "titulo", "resumen", "areas", "materiales", "estado",
+          "solicitadoPorUid", "solicitadoPorNombre", "fechaSolicitud",
+          "revisadoPorUid", "fechaRevision", "comentarioRevision"
+        ])
+        && request.resource.data.proyectoId == proyectoId
+        && request.resource.data.titulo is string
+        && request.resource.data.titulo.size() > 0
+        && request.resource.data.titulo.size() <= 100
+        && request.resource.data.resumen is string
+        && request.resource.data.resumen.size() > 0
+        && request.resource.data.resumen.size() <= 600
+        && request.resource.data.areas is list
+        && request.resource.data.areas.size() <= 3
+        && request.resource.data.materiales is string
+        && request.resource.data.materiales.size() <= 800
+        && request.resource.data.estado == "pendiente"
+        && request.resource.data.solicitadoPorUid == request.auth.uid
+        && request.resource.data.solicitadoPorNombre is string
+        && request.resource.data.solicitadoPorNombre.size() <= 120
+        && request.resource.data.fechaSolicitud is timestamp
+        && request.resource.data.revisadoPorUid == ""
+        && request.resource.data.fechaRevision == null
+        && request.resource.data.comentarioRevision == "";
+
+      allow update: if estaAutorizado() && (
+        (
+          (esDocenteRevisor() || esGestorClub())
+          && resource.data.estado == "pendiente"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "revisadoPorUid", "fechaRevision", "comentarioRevision"
+          ])
+          && request.resource.data.estado in ["aprobada", "rechazada"]
+          && request.resource.data.revisadoPorUid == request.auth.uid
+          && request.resource.data.fechaRevision is timestamp
+          && request.resource.data.comentarioRevision is string
+          && request.resource.data.comentarioRevision.size() <= 500
+        )
+        ||
+        (
+          (esGestorClub() || esResponsableProyecto(proyectoId))
+          && resource.data.estado == "rechazada"
+          && resource.data.solicitadoPorUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "solicitadoPorNombre", "fechaSolicitud", "revisadoPorUid",
+            "fechaRevision", "comentarioRevision"
+          ])
+          && request.resource.data.estado == "pendiente"
+          && request.resource.data.solicitadoPorUid == request.auth.uid
+          && request.resource.data.solicitadoPorNombre is string
+          && request.resource.data.solicitadoPorNombre.size() <= 120
+          && request.resource.data.fechaSolicitud is timestamp
+          && request.resource.data.revisadoPorUid == ""
+          && request.resource.data.fechaRevision == null
+          && request.resource.data.comentarioRevision == ""
+        )
+      );
+
+      allow delete: if false;
+    }

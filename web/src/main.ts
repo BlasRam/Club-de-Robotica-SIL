@@ -167,11 +167,12 @@ type Profile = {
   correoInstitucional?: string;
   rol?: string;
   autorizado?: boolean;
+  docenteRevisor?: boolean;
   carrera?: string;
   semestre?: string;
 };
 
-type Page = "inicio" | "proyectos" | "cursos" | "tareas" | "acceso" | "avisos" | "sugerencias" | "prestamos" | "inventario" | "estudiantes" | "perfil" | "configuracion" | "calendario";
+type Page = "inicio" | "proyectos" | "muestra" | "cursos" | "tareas" | "acceso" | "avisos" | "sugerencias" | "prestamos" | "inventario" | "estudiantes" | "perfil" | "configuracion" | "calendario";
 type PreviewLoan = { item: string; quantity: number; purpose: string; start: string; due: string; status: string; requestStatus?: string; requestType?: string; proposedDue?: string };
 type StudentSandbox = { inside: boolean; entryAt: Date | null; taskDone: boolean; joinRequested: boolean; reactions: Record<string, string>; courseEnrollments: string[]; loans: PreviewLoan[] };
 type AppState = {
@@ -384,6 +385,7 @@ window.addEventListener("popstate", (event) => {
 const icons: Record<string, string> = {
   inicio: homeIcon,
   proyectos: projectIcon,
+  muestra: projectIcon,
   tareas: taskIcon,
   acceso: accessIcon,
   avisos: noticeIcon,
@@ -451,6 +453,10 @@ function isAdminInterface(): boolean {
 
 function canManageClub(): boolean {
   return (isAdmin() || (isModerator() && state.profile?.autorizado === true)) && !isStudentPreview();
+}
+
+function canReviewShowcase(): boolean {
+  return canManageClub() || (isAuthorized() && state.profile?.docenteRevisor === true);
 }
 
 function roleLabel(): string {
@@ -663,12 +669,29 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
   });
 }
 
+function updateNetworkStatus(): void {
+  const online = navigator.onLine;
+  document.querySelectorAll<HTMLElement>(".connection").forEach((element) => {
+    element.classList.toggle("offline", !online);
+    element.title = online ? "Conexión a internet disponible" : "Sin conexión a internet; las funciones en línea están pausadas";
+    element.innerHTML = `<i></i>${online ? "En línea" : "Sin conexión"}`;
+  });
+  const column = document.querySelector<HTMLElement>(".main-column");
+  const banner = document.querySelector<HTMLElement>(".offline-banner");
+  if (!online && column && !banner) document.querySelector(".topbar")?.insertAdjacentHTML("afterend", `<div class="offline-banner" role="status">Sin conexión a internet. Espera a reconectarte antes de guardar cambios.</div>`);
+  if (online) banner?.remove();
+}
+
+window.addEventListener("online", updateNetworkStatus);
+window.addEventListener("offline", updateNetworkStatus);
+
 function navItems(): { id: Page; label: string }[] {
   const items: { id: Page; label: string }[] = [
     { id: "inicio", label: "Inicio" },
     { id: "tareas", label: "Tareas" },
     { id: "acceso", label: "Acceso" },
     { id: "proyectos", label: "Proyectos" },
+    { id: "muestra", label: "Muestra de proyectos" },
     { id: "cursos", label: "Cursos" },
     { id: "avisos", label: "Avisos" },
     { id: "sugerencias", label: "Sugerencias y reportes" },
@@ -716,11 +739,12 @@ function appShell(content: string): string {
         <header class="topbar">
           <button class="icon-button student-menu-button" data-action="toggle-menu" aria-label="Abrir menú" title="Menú" aria-expanded="${state.menuOpen}">${icon("menu")}</button>
           <div class="crumb"><span>${CLUB_SHORT_NAME}</span><span class="crumb-sep">/</span><strong>${esc(state.page === "perfil" ? "Perfil" : items.find((item) => item.id === state.page)?.label ?? "Inicio")}</strong></div>
-          <div class="topbar-right"><span class="connection"><i></i>Conectado</span><span class="role-tag">${isStudentPreview() ? "VISTA ESTUDIANTE" : isAdmin() ? "ADMIN" : isModerator() ? "MODERADOR" : "ESTUDIANTE"}</span>${isAdmin() ? `<button class="secondary-button student-preview-toggle" data-action="toggle-student-preview" aria-label="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}" title="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}">${icon("estudiantes", 16)}<span>${isStudentPreview() ? "Volver a admin" : "Ver como estudiante"}</span></button><button class="secondary-button admin-layout-toggle" data-action="toggle-admin-layout" aria-pressed="${state.desktopPreview}" title="Cambiar vista de administración">${icon(state.desktopPreview ? "vistaMovil" : "vistaEscritorio", 16)}<span>${state.desktopPreview ? "Vista móvil" : "Vista escritorio"}</span></button>` : ""}${mobileInstallButton("secondary-button mobile-install")}<button class="icon-button student-bell-button ${state.page === "avisos" ? "active" : ""}" data-page="avisos" title="Notificaciones" aria-label="Abrir notificaciones">${icon("campana")}</button><button class="icon-button profile-shortcut" data-page="perfil" title="Mi perfil" aria-label="Abrir mi perfil">${icon("perfil")}</button><button class="icon-button mobile-logout" data-action="logout" title="Cerrar sesión" aria-label="Cerrar sesión">${icon("salir")}</button></div>
+          <div class="topbar-right"><span class="connection ${navigator.onLine ? "" : "offline"}" title="${navigator.onLine ? "Conexión a internet disponible" : "Sin conexión a internet; las funciones en línea están pausadas"}"><i></i>${navigator.onLine ? "En línea" : "Sin conexión"}</span><span class="role-tag">${isStudentPreview() ? "VISTA ESTUDIANTE" : isAdmin() ? "ADMIN" : isModerator() ? "MODERADOR" : "ESTUDIANTE"}</span>${isAdmin() ? `<button class="secondary-button student-preview-toggle" data-action="toggle-student-preview" aria-label="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}" title="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}">${icon("estudiantes", 16)}<span>${isStudentPreview() ? "Volver a admin" : "Ver como estudiante"}</span></button><button class="secondary-button admin-layout-toggle" data-action="toggle-admin-layout" aria-pressed="${state.desktopPreview}" title="Cambiar vista de administración">${icon(state.desktopPreview ? "vistaMovil" : "vistaEscritorio", 16)}<span>${state.desktopPreview ? "Vista móvil" : "Vista escritorio"}</span></button>` : ""}${mobileInstallButton("secondary-button mobile-install")}<button class="icon-button student-bell-button ${state.page === "avisos" ? "active" : ""}" data-page="avisos" title="Notificaciones" aria-label="Abrir notificaciones">${icon("campana")}</button><button class="icon-button profile-shortcut" data-page="perfil" title="Mi perfil" aria-label="Abrir mi perfil">${icon("perfil")}</button><button class="icon-button mobile-logout" data-action="logout" title="Cerrar sesión" aria-label="Cerrar sesión">${icon("salir")}</button></div>
         </header>
+        ${!navigator.onLine ? `<div class="offline-banner" role="status">Sin conexión a internet. Espera a reconectarte antes de guardar cambios.</div>` : ""}
         <main id="page-content" class="page-content">${content}</main>
       </div>
-      ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><span>Hay una actualización disponible.</span><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
+      ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><div><strong>Nueva versión lista</strong><small>La aplicación se recargará para aplicar la actualización.</small></div><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
       <nav class="mobile-nav" aria-label="Navegación móvil">
         ${items.filter((item) => ["inicio", "tareas", "acceso", "proyectos", "avisos"].includes(item.id)).map((item) => `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}">${icon(item.id, 19)}<span>${item.label}</span></button>`).join("")}
       </nav>
@@ -855,6 +879,7 @@ async function pageContent(page: Page): Promise<string> {
     if (page === "perfil") return renderSandboxProfile();
     if (page === "configuracion") return renderSettings();
     if (page === "calendario") return renderCalendar();
+    if (page === "muestra") return `${pageHeading("Muestra de proyectos", "Prototipos destacados del club.")}<div class="showcase-grid"><article class="showcase-card"><p class="project-area">Electrónica · Programación</p><h3>Robot móvil</h3><p>Prototipo autónomo para explorar el aula y evitar obstáculos.</p><small>Compartido con aprobación docente</small></article></div>`;
     if (page === "sugerencias") return `${pageHeading("Sugerencias y reportes", "Envía una sugerencia o reporta un error de la app.")}<div class="notice-box info">La vista de prueba no envía información real.</div>`;
     if (page === "inicio") {
       const sandboxHome = renderStudentSandbox(page);
@@ -866,6 +891,7 @@ async function pageContent(page: Page): Promise<string> {
   switch (page) {
     case "inicio": return renderHome();
     case "proyectos": return renderProjects();
+    case "muestra": return renderShowcase();
     case "cursos": return renderCourses();
     case "tareas": return renderTasks();
     case "acceso": return renderAccess();
@@ -1045,8 +1071,9 @@ async function renderHome(): Promise<string> {
   const nextTasks = [...tasks.values()].sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER)).slice(0, 3);
   const importantNotices = notices.docs.map((item) => ({ id: item.id, data: item.data() })).sort((a, b) => Number(b.data.prioridad === "Importante") - Number(a.data.prioridad === "Importante") || (b.data.fechaCreacion?.toMillis?.() ?? 0) - (a.data.fechaCreacion?.toMillis?.() ?? 0)).slice(0, 3);
   const teacher = state.profile?.tipoUsuario === "docente";
+  const teacherProjects = teacher ? await renderTeacherProjectDashboard() : "";
   return `${pageHeading(`Hola, ${esc(greeting)}`, teacher ? "Tu espacio docente: revisa cursos, actividades y avisos del club." : "Aquí tienes lo que requiere tu atención hoy.")}
-    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">ESPACIO DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Organiza tu participación en el club desde cursos, tareas y calendario.</p></div><div class="teacher-quick-links"><button data-page="cursos">${icon("cursos", 20)} Cursos</button><button data-page="tareas">${icon("tareas", 20)} Actividades</button><button data-page="calendario">${icon("calendario", 20)} Calendario</button></div></section>` : ""}
+    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">ESPACIO DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Organiza tu participación en el club desde cursos, actividades y proyectos.</p></div><div class="teacher-quick-links"><button data-page="cursos">${icon("cursos", 20)} Cursos</button><button data-page="tareas">${icon("tareas", 20)} Actividades</button><button data-page="calendario">${icon("calendario", 20)} Calendario</button><button data-page="muestra">${icon("proyectos", 20)} ${canReviewShowcase() ? "Revisar muestra" : "Muestra"}</button></div></section>${teacherProjects}` : ""}
     <section class="student-overview"><div class="access-status ${inside ? "inside" : "outside"}"><div class="status-top"><span class="status-dot"></span>${inside ? "Dentro del laboratorio" : "Fuera del laboratorio"}</div><div class="status-label">ESTADO DE ACCESO</div><button class="status-action" data-page="acceso">Abrir control de acceso${icon("ir", 16)}</button><span class="status-watermark">${icon("acceso", 120)}</span></div></section>
     ${renderStudentShortcuts()}
     ${nextTasks.length ? `<section class="unframed-section"><div class="section-heading"><h2>${teacher ? "Actividades próximas" : "Mis tareas pendientes"}</h2><button class="text-button" data-page="tareas">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => `<button class="home-task-item" data-page="tareas"><span class="state-pill warning">Pendiente</span><strong>${esc(item.get("titulo") || "Tarea")}</strong>${item.get("fechaLimite") ? `<small>Entrega: ${dateText(item.get("fechaLimite"))}</small>` : ""}</button>`).join("")}</div></section>` : ""}
@@ -1103,8 +1130,49 @@ async function renderProjects(): Promise<string> {
         : "";
       const canEditResponsible = canManageClub() || (!isStudentPreview() && project.creadoPorUid === state.user!.uid);
       const canDeleteProject = canManageClub();
-      return `<article class="project-card"><div class="project-card-top"><span class="project-mark">${icon("proyectos", 21)}</span><span class="state-pill ${project.estado === "Activo" ? "success" : "muted"}">${esc(project.estado || "Activo")}</span></div><p class="project-area">${esc((project.departamentos || []).join(" · ") || "Club de Robótica")}</p><h2>${esc(project.nombre || project.titulo || "Proyecto")}</h2><p class="project-description">${esc(project.descripcion || "Sin descripción")}</p><div class="project-progress"><div><span>Progreso</span><strong>${summary ? `${percent}%` : "—"}</strong></div><progress max="100" value="${summary ? percent : 0}" aria-label="Progreso del proyecto"></progress><small>${summary ? `${summary.done} de ${summary.total} tareas completadas` : "Visible para miembros del proyecto"}</small></div><div class="project-meta"><span>${icon("people", 15)} ${(project.miembrosUids || []).length} miembros</span><span>Responsable: ${esc(project.responsableNombre || "Sin asignar")}</span></div><div class="project-card-bottom"><button class="text-button" data-action="project-detail" data-id="${esc(project.id)}">Abrir proyecto ${icon("ir", 14)}</button>${canEditResponsible ? `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(project.id)}" aria-label="Asignar responsable">${icon("people", 15)} Responsable</button>` : ""}${canDeleteProject ? `<button class="icon-button danger-icon" data-action="delete-project" data-id="${esc(project.id)}" aria-label="Eliminar proyecto" title="Eliminar proyecto">${icon("eliminar", 16)}</button>` : ""}${requestAction}</div></article>`;
+      return `<article class="project-card"><div class="project-card-top"><span class="project-mark">${icon("proyectos", 21)}</span><span class="state-pill ${project.estado === "Activo" ? "success" : "muted"}">${esc(project.estado || "Activo")}</span></div><p class="project-area">${esc((project.departamentos || []).join(" · ") || "Club de Robótica")}</p><h2>${esc(project.nombre || project.titulo || "Proyecto")}</h2><p class="project-description">${esc(project.objetivo || project.descripcion || "Sin objetivo registrado")}</p><div class="project-progress"><div><span>Progreso</span><strong>${summary ? `${percent}%` : "—"}</strong></div><progress max="100" value="${summary ? percent : 0}" aria-label="Progreso del proyecto"></progress><small>${summary ? `${summary.done} de ${summary.total} tareas completadas` : "Visible para miembros del proyecto"}</small></div><div class="project-meta"><span>${icon("people", 15)} ${(project.miembrosUids || []).length} miembros</span><span>Responsable: ${esc(project.responsableNombre || "Sin asignar")}</span></div><div class="project-card-bottom"><button class="text-button" data-action="project-detail" data-id="${esc(project.id)}">Abrir proyecto ${icon("ir", 14)}</button>${canEditResponsible ? `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(project.id)}" aria-label="Asignar responsable">${icon("people", 15)} Responsable</button>` : ""}${canDeleteProject ? `<button class="icon-button danger-icon" data-action="delete-project" data-id="${esc(project.id)}" aria-label="Eliminar proyecto" title="Eliminar proyecto">${icon("eliminar", 16)}</button>` : ""}${requestAction}</div></article>`;
     }).join("")}</div>` : emptyPanel("Aún no hay proyectos", "Cuando se creen proyectos, aparecerán aquí.")}`;
+}
+
+async function renderShowcase(): Promise<string> {
+  if (!isAuthorized()) return pendingNotice();
+  const canReview = canReviewShowcase();
+  const [approved, pending] = await Promise.all([
+    getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60))),
+    canReview ? getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(60))) : Promise.resolve(null),
+  ]);
+  const showcaseCards = (approved.docs.map((item) => ({ id: item.id, ...item.data() })));
+  showcaseCards.sort((a, b) => (b.fechaRevision?.toMillis?.() ?? 0) - (a.fechaRevision?.toMillis?.() ?? 0));
+  const reviewCards = pending?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
+  return `${pageHeading("Muestra de proyectos", "Ideas aprobadas para compartir dentro del club.")}
+    <div class="notice-box info showcase-privacy">Esta muestra solo está disponible para cuentas autorizadas. No publica nombres ni correos de estudiantes.</div>
+    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión docente</h2><p>Aprueba proyectos antes de que aparezcan en la muestra del club.</p></div><span class="section-count">${reviewCards.length}</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => `<article class="showcase-card pending"><span class="state-pill warning">Pendiente de revisión</span><h3>${esc(item.titulo || "Proyecto")}</h3><p>${esc(item.resumen || "")}</p><small>${esc((item.areas || []).join(" · ") || "Club de Robótica")} · Solicita ${esc(item.solicitadoPorNombre || "el equipo")}</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Pedir cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar muestra</button></div></article>`).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
+    <section class="unframed-section"><div class="section-heading"><div><h2>Proyectos destacados</h2><p>${showcaseCards.length ? `${showcaseCards.length} publicados` : "Aún no hay proyectos aprobados"}</p></div></div>${showcaseCards.length ? `<div class="showcase-grid">${showcaseCards.map((item) => `<article class="showcase-card"><p class="project-area">${esc((item.areas || []).join(" · ") || "Club de Robótica")}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p>${esc(item.resumen || "")}</p>${item.materiales ? `<div class="showcase-materials"><strong>Materiales</strong><span>${esc(item.materiales)}</span></div>` : ""}<small>Compartido con aprobación docente</small></article>`).join("")}</div>` : emptyPanel("Todavía no hay proyectos en la muestra", "Desde la ficha de un proyecto, el responsable puede solicitar que se comparta con el club.")}</section>`;
+}
+
+async function renderTeacherProjectDashboard(): Promise<string> {
+  const projects = await getDocs(query(collection(db, "proyectos"), where("estado", "==", "Activo"), limit(60)));
+  const uid = state.user!.uid;
+  const accompanied = projects.docs.filter((project) => {
+    const data = project.data();
+    return projectLead(data) === uid || (Array.isArray(data.miembrosUids) && data.miembrosUids.includes(uid));
+  }).slice(0, 20);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const overview = await Promise.all(accompanied.map(async (project) => {
+    const [tasks, latestStage] = await Promise.all([
+      getDocs(query(collection(db, "proyectos", project.id, "tareas"), limit(60))).catch(() => null),
+      getDocs(query(collection(db, "proyectos", project.id, "etapas"), orderBy("fechaCreacion", "desc"), limit(1))).catch(() => null),
+    ]);
+    const pendingTasks = (tasks?.docs ?? []).filter((task) => task.get("estado") !== "Completada");
+    const overdue = pendingTasks.filter((task) => task.get("fechaLimite")?.toDate && task.get("fechaLimite").toDate() < today).length;
+    const latest = latestStage?.docs[0]?.get("fechaCreacion")?.toDate?.() ?? project.get("fechaCreacion")?.toDate?.() ?? null;
+    const stale = !latest || Date.now() - latest.getTime() > 14 * 24 * 60 * 60 * 1000;
+    return { id: project.id, data: project.data(), tasks: pendingTasks.length, overdue, stale, latest };
+  }));
+  const overdueTotal = overview.reduce((sum, project) => sum + project.overdue, 0);
+  const staleTotal = overview.filter((project) => project.stale).length;
+  return `<section class="teacher-project-dashboard"><div class="section-heading"><div><h2>Seguimiento de equipos</h2><p>Proyectos en los que participas como responsable o integrante.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div><div class="teacher-project-metrics"><div><strong>${overview.length}</strong><span>Equipos</span></div><div class="${overdueTotal ? "attention" : ""}"><strong>${overdueTotal}</strong><span>Tareas atrasadas</span></div><div class="${staleTotal ? "attention" : ""}"><strong>${staleTotal}</strong><span>Sin avances en 14 días</span></div></div>${overview.length ? `<div class="teacher-project-list">${overview.map((item) => `<button class="teacher-project-item" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.data.nombre || "Proyecto")}</strong><small>${item.latest ? `Último avance: ${dateText(item.latest)}` : "Todavía no hay etapas registradas"}</small></span><span class="teacher-project-badges">${item.overdue ? `<i class="state-pill warning">${item.overdue} atrasadas</i>` : `<i class="state-pill success">Al día</i>`}${item.stale ? `<i class="state-pill muted">Revisar avance</i>` : ""}</span></button>`).join("")}</div>` : emptyInline("Aún no acompañas un proyecto. Pide que te asignen como responsable o integrante para ver su seguimiento aquí.")}</section>`;
 }
 
 async function renderCourses(): Promise<string> {
@@ -1631,8 +1699,8 @@ async function renderStudents(): Promise<string> {
   const snapshot = await getDocs(query(collection(db, "usuarios"), where("rol", "in", ["estudiante", "moderador", "admin"]), limit(100)));
   const students: Array<Record<string, any>> = snapshot.docs.map((item) => ({ uid: item.id, ...item.data() }));
   students.sort((a, b) => String(a.nombreCompleto || a.nombre || "").localeCompare(String(b.nombreCompleto || b.nombre || ""), "es"));
-  return `${pageHeading("Personas y roles", "Autoriza cuentas y asigna roles de gestión del club.", `<label class="search-field">${icon("buscar")}<input id="student-search" placeholder="Buscar persona" /></label>`)}
-    <div class="table-wrap"><table><thead><tr><th>Persona</th><th>Área de interés</th><th>Curso o grado</th><th>Acceso</th><th>Rol</th><th></th></tr></thead><tbody id="student-rows">${students.map((student) => studentRow(student)).join("")}</tbody></table></div>`;
+  return `${pageHeading("Personas y roles", "Autoriza cuentas, asigna roles y habilita revisores docentes.", `<label class="search-field">${icon("buscar")}<input id="student-search" placeholder="Buscar persona" /></label>`)}
+    <div class="table-wrap"><table><thead><tr><th>Persona</th><th>Área de interés</th><th>Curso o grado</th><th>Acceso</th><th>Rol</th><th>Revisión docente</th><th></th></tr></thead><tbody id="student-rows">${students.map((student) => studentRow(student)).join("")}</tbody></table></div>`;
 }
 
 function studentRow(student: Record<string, any>): string {
@@ -1643,7 +1711,10 @@ function studentRow(student: Record<string, any>): string {
   const accessAction = role !== "admin"
     ? `<button class="secondary-button compact" data-action="toggle-student" data-id="${esc(student.uid)}" data-authorized="${Boolean(student.autorizado)}" ${self ? "disabled" : ""}>${student.autorizado ? "Bloquear" : "Autorizar"}</button>`
     : `<span class="state-pill success">Administrador</span>`;
-  return `<tr data-student-row><td><strong>${esc(student.nombreCompleto || `${student.nombre || ""} ${student.apellido || ""}`)}</strong><small>${esc(student.correoInstitucional || "")}</small></td><td>${esc(student.carrera || "—")}</td><td>${esc(student.semestre || "—")}</td><td><span class="state-pill ${student.autorizado ? "success" : "warning"}">${student.autorizado ? "Autorizado" : "Pendiente"}</span></td><td>${roleSelect}</td><td>${accessAction}</td></tr>`;
+  const reviewerAction = student.tipoUsuario === "docente"
+    ? `<button class="secondary-button compact" data-action="toggle-showcase-reviewer" data-id="${esc(student.uid)}" data-enabled="${Boolean(student.docenteRevisor)}" ${!student.autorizado || self ? "disabled" : ""}>${student.docenteRevisor ? "Quitar permiso" : "Habilitar"}</button>`
+    : `<span class="state-pill muted">Solo docente</span>`;
+  return `<tr data-student-row><td><strong>${esc(student.nombreCompleto || `${student.nombre || ""} ${student.apellido || ""}`)}</strong><small>${esc(student.correoInstitucional || "")}</small></td><td>${esc(student.carrera || "—")}</td><td>${esc(student.semestre || "—")}</td><td><span class="state-pill ${student.autorizado ? "success" : "warning"}">${student.autorizado ? "Autorizado" : "Pendiente"}</span></td><td>${roleSelect}</td><td>${reviewerAction}</td><td>${accessAction}</td></tr>`;
 }
 
 function emptyPanel(title: string, message: string): string {
@@ -1764,12 +1835,16 @@ root.addEventListener("click", (event) => {
     openDialog("item-dialog");
   } else if (action === "toggle-student") {
     void toggleStudentAccess(button.dataset.id!, button.dataset.authorized !== "true", button as HTMLButtonElement);
+  } else if (action === "toggle-showcase-reviewer" && isAdminInterface()) {
+    void toggleShowcaseReviewer(button as HTMLButtonElement);
   } else if (action === "new-project") {
     void openProjectDialog();
   } else if (action === "new-course" && isAdminInterface()) {
     openDialog("course-dialog");
   } else if (action === "project-detail") {
     void showProject(button.dataset.id!);
+  } else if (action === "review-showcase") {
+    void resolveShowcaseReview(button as HTMLButtonElement);
   } else if (action === "edit-project-responsible" && !isStudentPreview()) {
     void openProjectResponsibleDialog(button.dataset.id!);
   } else if (action === "delete-project" && !isStudentPreview()) {
@@ -2814,7 +2889,9 @@ async function submitProject(form: HTMLFormElement): Promise<void> {
   try {
     await addDoc(collection(db, "proyectos"), {
       nombre: String(data.get("nombre") || "").trim(),
-      descripcion: String(data.get("descripcion") || "").trim(),
+      descripcion: String(data.get("objetivo") || "").trim(),
+      objetivo: String(data.get("objetivo") || "").trim(),
+      materiales: String(data.get("materiales") || "").trim(),
       departamentos: data.getAll("departamentos").map(String),
       estado: "Activo",
       creadoPorUid: state.user.uid,
@@ -2829,6 +2906,61 @@ async function submitProject(form: HTMLFormElement): Promise<void> {
   } catch (error) {
     setBusy(button, false);
     notify(errorMessage(error, "No se pudo crear el proyecto."), "error");
+  }
+}
+
+async function requestProjectShowcase(projectId: string, project: DocumentData, existing: DocumentData | null, dialog: HTMLDialogElement): Promise<void> {
+  if (!state.user || !isAuthorized()) return;
+  try {
+    if (existing && existing.estado !== "rechazada") throw new Error("Este proyecto ya está publicado o esperando revisión.");
+    const summary = String(project.objetivo || project.descripcion || "").trim();
+    if (!summary) throw new Error("Completa el objetivo del proyecto antes de solicitar publicación.");
+    const request = {
+      estado: "pendiente",
+      solicitadoPorUid: state.user.uid,
+      solicitadoPorNombre: fullName(),
+      fechaSolicitud: serverTimestamp(),
+      revisadoPorUid: "",
+      fechaRevision: null,
+      comentarioRevision: "",
+    };
+    const publicationRef = doc(db, "muestras", projectId);
+    if (existing?.estado === "rechazada") await updateDoc(publicationRef, request);
+    else await setDoc(publicationRef, {
+      proyectoId: projectId,
+      titulo: String(project.nombre || project.titulo || "Proyecto").slice(0, 100),
+      resumen: summary.slice(0, 600),
+      areas: Array.isArray(project.departamentos) ? project.departamentos.slice(0, 3) : [],
+      materiales: String(project.materiales || "").slice(0, 800),
+      ...request,
+    });
+    notify("Solicitud enviada. Un docente debe aprobarla para mostrarla al club.");
+    dialog.close();
+    await showProject(projectId);
+  } catch (error) {
+    notify(errorMessage(error, "No se pudo enviar el proyecto a revisión."), "error");
+  }
+}
+
+async function resolveShowcaseReview(button: HTMLButtonElement): Promise<void> {
+  if (!state.user || !canReviewShowcase()) return;
+  const projectId = button.dataset.id;
+  const decision = button.dataset.decision;
+  if (!projectId || !["aprobada", "rechazada"].includes(decision || "")) return;
+  setBusy(button, true, decision === "aprobada" ? "Publicando" : "Guardando revisión");
+  try {
+    const comment = button.closest<HTMLElement>(".showcase-card")?.querySelector<HTMLInputElement>("[data-review-comment]")?.value.trim() || "";
+    await updateDoc(doc(db, "muestras", projectId), {
+      estado: decision,
+      revisadoPorUid: state.user.uid,
+      fechaRevision: serverTimestamp(),
+      comentarioRevision: decision === "rechazada" ? comment.slice(0, 500) : "",
+    });
+    notify(decision === "aprobada" ? "Proyecto aprobado y publicado en la muestra." : "Se enviaron los comentarios al responsable.");
+    await loadPage();
+  } catch (error) {
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudo guardar la revisión."), "error");
   }
 }
 
@@ -2852,7 +2984,7 @@ async function openProjectDialog(): Promise<void> {
     const select = `<label>Responsable del proyecto<select name="responsableUid" required>${options.map((user) => `<option value="${esc(user.uid)}" data-name="${esc(user.name)}" ${user.uid === state.user?.uid ? "selected" : ""}>${esc(user.name)}</option>`).join("")}</select></label>`;
     const dialog = document.createElement("dialog");
     dialog.className = "detail-dialog form-dialog";
-    dialog.innerHTML = `<form class="dialog-form" data-form="project"><div class="dialog-head"><div><p class="eyebrow">TRABAJO DEL CLUB</p><h2>Nuevo proyecto</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Nombre<input name="nombre" required maxlength="100" /></label><label>Descripción<textarea name="descripcion" rows="3"></textarea></label>${select}<fieldset><legend>Áreas</legend>${["Electrónica", "Mecánica", "Programación"].map((name) => `<label class="check-label"><input type="checkbox" name="departamentos" value="${name}" />${name}</label>`).join("")}</fieldset><button class="primary-button" type="submit">Crear proyecto</button></form>`;
+    dialog.innerHTML = `<form class="dialog-form" data-form="project"><div class="dialog-head"><div><p class="eyebrow">TRABAJO DEL CLUB</p><h2>Nuevo proyecto</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Nombre<input name="nombre" required maxlength="100" /></label><label>Objetivo del proyecto<textarea name="objetivo" rows="3" maxlength="600" required placeholder="¿Qué problema resolverá o qué construirán?"></textarea></label><label>Materiales previstos<textarea name="materiales" rows="2" maxlength="800" placeholder="Anota componentes y herramientas que necesitará el equipo"></textarea></label>${select}<fieldset><legend>Áreas</legend>${["Electrónica", "Mecánica", "Programación"].map((name) => `<label class="check-label"><input type="checkbox" name="departamentos" value="${name}" />${name}</label>`).join("")}</fieldset><button class="primary-button" type="submit">Crear proyecto</button></form>`;
     document.body.append(dialog);
     dialog.showModal();
     dialog.addEventListener("click", (event) => { if (event.target === dialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) dialog.close(); });
@@ -3000,7 +3132,7 @@ async function submitProjectTask(form: HTMLFormElement): Promise<void> {
 function openProjectStageDialog(projectId: string, project: DocumentData): void {
   const dialog = document.createElement("dialog");
   dialog.className = "detail-dialog form-dialog";
-  dialog.innerHTML = `<form class="dialog-form" data-form="project-stage" data-project="${esc(projectId)}"><div class="dialog-head"><div><p class="eyebrow">${esc(project.nombre || "PROYECTO")}</p><h2>Registrar etapa</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Etapa<input name="titulo" required maxlength="100" placeholder="Ej.: Diseño del prototipo" /></label><label>Avance y evidencia<textarea name="evidencia" rows="4" required maxlength="1200" placeholder="Describe qué hizo el equipo, qué aprendió o qué evidencia obtuvo."></textarea></label><label>Foto de evidencia (opcional)<input name="foto" type="file" accept="image/jpeg,image/png,image/webp" /></label><small class="field-hint">JPG, PNG o WebP, hasta 4 MB.</small><button class="primary-button" type="submit">Guardar etapa</button></form>`;
+  dialog.innerHTML = `<form class="dialog-form" data-form="project-stage" data-project="${esc(projectId)}"><div class="dialog-head"><div><p class="eyebrow">${esc(project.nombre || "PROYECTO")}</p><h2>Registrar etapa</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Fase del proyecto<select name="fase" required><option value="Investigación">Investigación</option><option value="Diseño">Diseño</option><option value="Construcción">Construcción</option><option value="Pruebas">Pruebas</option><option value="Presentación">Presentación</option><option value="Otra">Otra</option></select></label><label>Fecha prevista (opcional)<input name="fechaObjetivo" type="date" /></label><label>Avance y reflexión<textarea name="evidencia" rows="4" required maxlength="1200" placeholder="¿Qué hizo el equipo, qué aprendió y cuál fue el resultado?"></textarea></label><label>Foto de evidencia (opcional)<input name="foto" type="file" accept="image/jpeg,image/png,image/webp" /></label><small class="field-hint">JPG, PNG o WebP, hasta 4 MB.</small><button class="primary-button" type="submit">Guardar etapa</button></form>`;
   document.body.append(dialog);
   dialog.showModal();
   dialog.addEventListener("click", (event) => { if (event.target === dialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) dialog.close(); });
@@ -3016,8 +3148,9 @@ async function submitProjectStage(form: HTMLFormElement): Promise<void> {
   let photoWarning = false;
   try {
     const data = new FormData(form);
-    const title = String(data.get("titulo") || "").trim();
+    const title = String(data.get("fase") || "").trim();
     const evidence = String(data.get("evidencia") || "").trim();
+    const dueValue = String(data.get("fechaObjetivo") || "");
     const image = form.querySelector<HTMLInputElement>('input[name="foto"]')?.files?.[0];
     if (!title || !evidence) throw new Error("Completa la etapa y su evidencia.");
     if (image && (!/^image\/(jpeg|png|webp)$/.test(image.type) || image.size > 4 * 1024 * 1024)) throw new Error("La foto debe ser JPG, PNG o WebP y pesar hasta 4 MB.");
@@ -3031,11 +3164,13 @@ async function submitProjectStage(form: HTMLFormElement): Promise<void> {
       }
     }
     await addDoc(collection(db, "proyectos", projectId, "etapas"), {
+      fase: title,
       titulo: title,
       evidencia,
       creadoPorUid: state.user.uid,
       creadoPorNombre: fullName(),
       fechaCreacion: serverTimestamp(),
+      ...(dueValue ? { fechaObjetivo: Timestamp.fromDate(new Date(`${dueValue}T12:00:00`)) } : {}),
       ...(uploadedPath ? { fotoPath: uploadedPath } : {}),
     });
     notify(photoWarning ? "Etapa registrada. La foto no se guardó; habilita Firebase Storage para adjuntar imágenes." : "Etapa registrada.", photoWarning ? "error" : "ok");
@@ -3163,6 +3298,29 @@ async function changeUserRole(select: HTMLSelectElement): Promise<void> {
   }
 }
 
+async function toggleShowcaseReviewer(button: HTMLButtonElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview()) return;
+  const uid = button.dataset.id || "";
+  const enable = button.dataset.enabled !== "true";
+  if (!uid || uid === state.user?.uid) return;
+  const target = await getDoc(doc(db, "usuarios", uid));
+  if (!target.exists() || !target.get("autorizado") || target.get("tipoUsuario") !== "docente") {
+    notify("Solo se puede habilitar a una cuenta docente autorizada.", "error");
+    return;
+  }
+  const name = String(target.get("nombreCompleto") || "esta persona");
+  if (!window.confirm(`${enable ? "¿Habilitar" : "¿Quitar"} a ${name} para revisar y aprobar proyectos de la muestra?`)) return;
+  setBusy(button, true);
+  try {
+    await updateDoc(doc(db, "usuarios", uid), { docenteRevisor: enable });
+    notify(enable ? "Permiso de revisión docente habilitado." : "Permiso de revisión docente quitado.");
+    await loadPage();
+  } catch (error) {
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudo actualizar el permiso docente."), "error");
+  }
+}
+
 async function showProject(id: string): Promise<void> {
   const project = await getDoc(doc(db, "proyectos", id));
   if (!project.exists()) return;
@@ -3205,11 +3363,21 @@ async function showProject(id: string): Promise<void> {
   const percent = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const completionEvent = await getDoc(doc(db, "proyectos", id, "eventos", "completado-v1")).catch(() => null);
   const canEditResponsible = canManageClub() || (!isStudentPreview() && data.creadoPorUid === state.user?.uid);
+  const showcaseSnapshot = await getDoc(doc(db, "muestras", id)).catch(() => null);
+  const showcase = showcaseSnapshot?.exists() ? showcaseSnapshot.data() : null;
+  const canRequestShowcase = (lead || canManageClub()) && !isStudentPreview();
+  const showcaseBlock = showcase?.estado === "aprobada"
+    ? `<div class="notice-box info project-showcase-status">Este proyecto está en la muestra privada del club.</div>`
+    : showcase?.estado === "pendiente"
+      ? `<div class="notice-box warning project-showcase-status">La solicitud de publicación espera revisión docente.</div>`
+      : showcase?.estado === "rechazada"
+        ? `<div class="notice-box warning project-showcase-status">Se solicitaron ajustes${showcase.comentarioRevision ? `: ${esc(showcase.comentarioRevision)}` : "."}</div>${canRequestShowcase ? `<button class="secondary-button compact" data-action="request-project-showcase" data-id="${esc(id)}">Volver a solicitar publicación</button>` : ""}`
+        : canRequestShowcase ? `<button class="secondary-button compact project-showcase-request" data-action="request-project-showcase" data-id="${esc(id)}">Solicitar publicación en la muestra</button>` : "";
   const dialog = document.createElement("dialog");
   dialog.className = "detail-dialog";
   const taskObjects = tasks.map((task) => ({ id: task.id, path: task.ref.path, ...task.data() }));
   const joinStatus = !joined && !lead && !canManageClub() ? ownRequestState === "pendiente" ? `<div class="notice-box info">Tu solicitud está pendiente de revisión.</div>` : ownRequestState === "rechazada" ? `<div class="notice-box danger">La solicitud fue rechazada. Puedes volver a enviarla.</div><button class="primary-button" data-action="join-project" data-id="${esc(id)}">Volver a solicitar</button>` : ownRequestState === "aceptada" ? `<div class="notice-box info">Tu solicitud fue aceptada.</div>` : `<button class="primary-button" data-action="join-project" data-id="${esc(id)}">Solicitar ingreso</button>` : "";
-  dialog.innerHTML = `<div class="dialog-head"><span class="project-mark">${icon("proyectos", 22)}</span><button class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="eyebrow">FICHA DEL PROYECTO</p><h2>${esc(data.nombre || data.titulo || "Proyecto")}</h2><p>${esc(data.descripcion || "Sin descripción")}</p><div class="project-meta"><span>Responsable: ${esc(data.responsableNombre || "Sin asignar")}</span><span>${memberProfiles.filter(Boolean).length} miembros</span></div>${memberProfiles.filter(Boolean).length ? `<section class="project-members"><h3>Integrantes</h3><p>${memberProfiles.filter(Boolean).map(esc).join(" · ")}</p></section>` : ""}<section class="project-progress project-detail-progress"><div><span>Avance del proyecto</span><strong>${tasks.length ? `${percent}%` : "Sin tareas"}</strong></div><progress max="100" value="${percent}" aria-label="Progreso del proyecto"></progress><small>${done} de ${tasks.length} tareas completadas</small></section>${canManage && !completionEvent?.exists() ? `<div class="project-toolbar"><button class="primary-button compact" data-action="new-project-task" data-id="${esc(id)}">${icon("sumar")} Nueva tarea</button><button class="secondary-button compact" data-action="new-project-stage" data-id="${esc(id)}">Registrar etapa</button>${tasks.length > 0 && done === tasks.length ? `<button class="secondary-button compact" data-action="finish-project" data-id="${esc(id)}">Confirmar cierre y avisar</button>` : ""}</div>` : completionEvent?.exists() ? `<div class="notice-box info">Proyecto completado al 100%. Se notificó a los miembros y administradores.</div>` : ""}<section class="project-logbook"><h3>Etapas y evidencias</h3>${stages.length ? `<div class="project-stage-list">${stages.map((stage) => { const photo = stagePhotoUrls.get(stage.id); return `<article class="project-stage"><div><strong>${esc(stage.get("titulo") || "Etapa")}</strong><time>${dateText(stage.get("fechaCreacion"))}</time></div><p>${esc(stage.get("evidencia") || "Sin detalle")}</p>${photo ? `<img class="project-stage-photo" src="${esc(photo)}" alt="Foto de evidencia: ${esc(stage.get("titulo") || "etapa del proyecto")}" loading="lazy" />` : ""}</article>`; }).join("")}</div>` : `<p class="empty-inline">El equipo todavía no registró etapas.</p>`}</section>${requests.length ? `<section class="project-requests"><div class="section-heading"><h3>Solicitudes pendientes</h3><span class="section-count">${requests.length}</span></div>${requests.map((request) => `<article class="request-row"><div><strong>${esc(request.get("nombreCompleto") || "Estudiante")}</strong><small>${esc(request.get("carrera") || "")} · ${esc(request.get("semestre") || "")}</small></div><div class="request-actions"><button class="secondary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="rechazada">Rechazar</button><button class="primary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="aceptada">Aceptar</button></div></article>`).join("")}</section>` : ""}${tasks.length ? `<h3>Tareas del proyecto</h3><div class="dialog-task-list">${taskObjects.map((task) => projectTaskRow(task, id, canManage, Boolean(completionEvent?.exists()))).join("")}</div>` : `<p class="empty-inline">Todavía no hay tareas en este proyecto.</p>`}${joinStatus}`;
+  dialog.innerHTML = `<div class="dialog-head"><span class="project-mark">${icon("proyectos", 22)}</span><button class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="eyebrow">FICHA DEL PROYECTO</p><h2>${esc(data.nombre || data.titulo || "Proyecto")}</h2><section class="project-objective"><h3>Objetivo</h3><p>${esc(data.objetivo || data.descripcion || "Sin objetivo registrado")}</p>${data.materiales ? `<small><strong>Materiales previstos:</strong> ${esc(data.materiales)}</small>` : ""}</section><div class="project-meta"><span>Responsable: ${esc(data.responsableNombre || "Sin asignar")}</span><span>${memberProfiles.filter(Boolean).length} miembros</span></div>${showcaseBlock}${memberProfiles.filter(Boolean).length ? `<section class="project-members"><h3>Integrantes</h3><p>${memberProfiles.filter(Boolean).map(esc).join(" · ")}</p></section>` : ""}<section class="project-progress project-detail-progress"><div><span>Avance del proyecto</span><strong>${tasks.length ? `${percent}%` : "Sin tareas"}</strong></div><progress max="100" value="${percent}" aria-label="Progreso del proyecto"></progress><small>${done} de ${tasks.length} tareas completadas</small></section>${canManage && !completionEvent?.exists() ? `<div class="project-toolbar"><button class="primary-button compact" data-action="new-project-task" data-id="${esc(id)}">${icon("sumar")} Nueva tarea</button><button class="secondary-button compact" data-action="new-project-stage" data-id="${esc(id)}">Registrar etapa</button>${tasks.length > 0 && done === tasks.length ? `<button class="secondary-button compact" data-action="finish-project" data-id="${esc(id)}">Confirmar cierre y avisar</button>` : ""}</div>` : completionEvent?.exists() ? `<div class="notice-box info">Proyecto completado al 100%. Se notificó a los miembros y administradores.</div>` : ""}<section class="project-logbook"><h3>Etapas y evidencias</h3>${stages.length ? `<div class="project-stage-list">${stages.map((stage) => { const photo = stagePhotoUrls.get(stage.id); return `<article class="project-stage"><div><strong>${esc(stage.get("fase") || stage.get("titulo") || "Etapa")}</strong><time>${stage.get("fechaObjetivo") ? `Prevista: ${dateText(stage.get("fechaObjetivo"))}` : dateText(stage.get("fechaCreacion"))}</time></div><p>${esc(stage.get("evidencia") || "Sin detalle")}</p>${photo ? `<img class="project-stage-photo" src="${esc(photo)}" alt="Foto de evidencia: ${esc(stage.get("titulo") || "etapa del proyecto")}" loading="lazy" />` : ""}</article>`; }).join("")}</div>` : `<p class="empty-inline">El equipo todavía no registró etapas.</p>`}</section>${requests.length ? `<section class="project-requests"><div class="section-heading"><h3>Solicitudes pendientes</h3><span class="section-count">${requests.length}</span></div>${requests.map((request) => `<article class="request-row"><div><strong>${esc(request.get("nombreCompleto") || "Estudiante")}</strong><small>${esc(request.get("carrera") || "")} · ${esc(request.get("semestre") || "")}</small></div><div class="request-actions"><button class="secondary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="rechazada">Rechazar</button><button class="primary-button compact" data-action="resolve-project-request" data-id="${esc(id)}" data-uid="${esc(request.id)}" data-decision="aceptada">Aceptar</button></div></article>`).join("")}</section>` : ""}${tasks.length ? `<h3>Tareas del proyecto</h3><div class="dialog-task-list">${taskObjects.map((task) => projectTaskRow(task, id, canManage, Boolean(completionEvent?.exists()))).join("")}</div>` : `<p class="empty-inline">Todavía no hay tareas en este proyecto.</p>`}${joinStatus}`;
   if (canEditResponsible) dialog.insertAdjacentHTML("beforeend", `<button class="secondary-button compact" data-action="edit-project-responsible" data-id="${esc(id)}">${icon("people", 16)} Cambiar responsable del proyecto</button>`);
   document.body.append(dialog);
   dialog.showModal();
@@ -3221,6 +3389,7 @@ async function showProject(id: string): Promise<void> {
     else if (action === "join-project") void joinProject(id, button);
     else if (action === "new-project-task") void openProjectTaskDialog(id, data);
     else if (action === "new-project-stage") void openProjectStageDialog(id, data);
+    else if (action === "request-project-showcase") void requestProjectShowcase(id, data, showcase, dialog);
     else if (action === "resolve-project-request") void resolveProjectRequest(button, dialog);
     else if (action === "finish-project") void finishProject(id, button, dialog);
     else if (action === "complete-task") void completeTask(button.dataset.path!, button, async () => { dialog.close(); await showProject(id); });
