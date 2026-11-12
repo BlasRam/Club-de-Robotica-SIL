@@ -1314,7 +1314,7 @@ async function renderHome(): Promise<string> {
         ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
         ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
       </section>
-      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos", "prestamos", "prestamos", "loans")}${adminQuickLink("Estudiantes", "estudiantes", "estudiantes", "people")}${adminQuickLink("Docentes", "docentes", "docentes", "people")}${adminQuickLink("Muestra", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
+      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos", "prestamos", "prestamos", "loans")}${adminQuickLink("Muestra", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
       <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
   }
   const [loans, presence, notices, calendar, assignedByOwner, assignedByList, featuredShowcase] = await Promise.all([
