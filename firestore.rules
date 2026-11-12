@@ -1075,6 +1075,17 @@ match /cursos/{cursoId} {
 
       allow update: if
         (
+          // Las cuentas iniciales pueden recuperar su rol si su perfil fue
+          // creado antes de habilitar la administración por lista explícita.
+          esPropietario(userId)
+          && esAdministradorInicial()
+          && resource.data.correoInstitucional == request.auth.token.email
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["rol", "autorizado"])
+          && request.resource.data.diff(resource.data).affectedKeys().hasAny(["rol", "autorizado"])
+          && request.resource.data.rol == "admin"
+          && request.resource.data.autorizado == true
+        )
+        || (
           esAdministrador()
           && request.resource.data.diff(resource.data)
             .affectedKeys().hasOnly([

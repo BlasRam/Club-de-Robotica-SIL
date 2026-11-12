@@ -637,7 +637,16 @@ async function loadProfile(user: User): Promise<void> {
       render();
       return;
     }
-    setProfile(user.uid, snapshot.data());
+    const profile = snapshot.data();
+    if (isInitialAdminEmail(user.email || "")
+      && (profile.rol !== "admin" || profile.autorizado !== true)) {
+      // Renueva los claims del correo verificado antes de la recuperación del rol.
+      await user.getIdToken(true);
+      await updateDoc(doc(db, "usuarios", user.uid), { rol: "admin", autorizado: true });
+      profile.rol = "admin";
+      profile.autorizado = true;
+    }
+    setProfile(user.uid, profile);
   } catch (error) {
     state.loading = false;
     state.authMessage = errorMessage(error, "No se pudo cargar tu perfil.");
@@ -1417,7 +1426,7 @@ async function renderShowcase(): Promise<string> {
     approved = await getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60)));
   } catch (error) {
     const accessHelp = state.user?.emailVerified
-      ? "Si ya tienes un perfil de administrador autorizado, las reglas de Firestore del proyecto deben incluir el permiso para gestores y estar desplegadas. Luego, cierra sesión y vuelve a entrar para renovar el acceso."
+      ? `Diagnóstico: cuenta inicial reconocida ${isInitialAdminEmail(state.user.email || "") ? "sí" : "no"}; perfil administrador ${isAdmin() ? "sí" : "no"}; perfil autorizado ${state.profile?.autorizado === true ? "sí" : "no"}. Si alguno de estos datos no corresponde, el administrador debe corregir el perfil en Usuarios.`
       : "Verifica tu correo y vuelve a iniciar sesión para renovar el acceso.";
     return `${pageHeading("Muestra de proyectos", "Conoce los prototipos destacados del club.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los proyectos</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(accessHelp)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
   }
