@@ -40,15 +40,14 @@
               && data.fotoPath.matches("proyectos/" + proyectoId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
       }
 
-      allow read: if estaAutorizado()
+      allow read: if esGestorClub()
+        || (estaAutorizado()
         && (resource.data.estado == "aprobada"
           || resource.data.solicitadoPorUid == request.auth.uid
-          || esDocenteRevisor()
-          || esGestorClub());
+          || esDocenteRevisor()));
 
-      allow create: if estaAutorizado()
-        && (esGestorClub() || esResponsableProyecto(proyectoId))
-        && exists(/databases/$(database)/documents/proyectos/$(proyectoId))
+      allow create: if exists(/databases/$(database)/documents/proyectos/$(proyectoId))
+        && (esGestorClub() || (estaAutorizado() && esResponsableProyecto(proyectoId)))
         && request.resource.data.keys().hasOnly([
           "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
           "pruebas", "aprendizajes", "areas", "materiales", "videoUrl", "fotoPath", "estado",
@@ -72,7 +71,7 @@
         && request.resource.data.fechaRevision == null
         && request.resource.data.comentarioRevision == "";
 
-      allow update: if estaAutorizado() && (
+      allow update: if
         (
           (esDocenteRevisor() || esGestorClub())
           && resource.data.estado == "pendiente"
@@ -87,7 +86,8 @@
         )
         ||
         (
-          (esGestorClub() || esResponsableProyecto(proyectoId))
+          estaAutorizado()
+          && (esGestorClub() || esResponsableProyecto(proyectoId))
           && resource.data.estado == "rechazada"
           && resource.data.solicitadoPorUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -114,8 +114,7 @@
           && request.resource.data.revisadoPorUid == ""
           && request.resource.data.fechaRevision == null
           && request.resource.data.comentarioRevision == ""
-        )
-      );
+        );
 
       allow delete: if false;
     }
