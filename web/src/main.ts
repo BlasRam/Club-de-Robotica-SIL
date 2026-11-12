@@ -1548,7 +1548,39 @@ function renderProjectMilestones(currentStage: string): string {
 function showcaseDetailsMarkup(item: Record<string, any>): string {
   const detail = (title: string, value: unknown) => typeof value === "string" && value.trim() ? `<section class="showcase-detail"><h4>${title}</h4><p>${esc(value)}</p></section>` : "";
   const videoUrl = safeShowcaseVideoUrl(item.videoUrl);
-  return `${detail("Problema u objetivo", item.problema)}${detail("Cómo funciona", item.funcionamiento)}${detail("Áreas y tecnologías", item.tecnologias || (Array.isArray(item.areas) ? item.areas.join(" · ") : ""))}${detail("Pruebas y resultados", item.pruebas)}${detail("Aprendizajes del equipo", item.aprendizajes)}${detail("Materiales principales", item.materiales)}${videoUrl ? `<a class="showcase-video-link" href="${esc(videoUrl)}" target="_blank" rel="noopener noreferrer">▶ Ver demostración en video</a>` : ""}`;
+  const guide = `${detail("Problema u objetivo", item.problema)}${detail("Cómo funciona", item.funcionamiento)}${detail("Conexiones", item.conexiones)}${detail("Pasos de implementación", item.pasosImplementacion)}${detail("Materiales principales", item.materiales)}${detail("Pruebas y resultados", item.pruebas)}${item.codigoPrueba ? `<section class="showcase-detail"><h4>Código de prueba</h4><pre class="showcase-code"><code>${esc(item.codigoPrueba)}</code></pre><button class="secondary-button compact showcase-copy-button" data-action="copy-showcase-code">Copiar código</button></section>` : ""}${detail("Aprendizajes del equipo", item.aprendizajes)}${detail("Seguridad", item.seguridad)}${detail("Áreas y tecnologías", item.tecnologias || (Array.isArray(item.areas) ? item.areas.join(" · ") : ""))}${videoUrl ? `<a class="showcase-video-link" href="${esc(videoUrl)}" target="_blank" rel="noopener noreferrer">▶ Ver demostración en video</a>` : ""}`;
+  return `<details class="showcase-guide"><summary>Ver guía de implementación</summary><div class="showcase-details-content">${guide || `<p class="showcase-legacy-note">Esta guía se publicó con una versión anterior y aún no tiene pasos detallados.</p>`}</div></details>`;
+}
+
+function showcaseCardMarkup(item: Record<string, any>, photos: Map<string, string>, pending = false): string {
+  const areas = Array.isArray(item.areas) ? item.areas.filter((area: unknown) => typeof area === "string") : [];
+  const areaText = areas.join(" · ") || "Club de Robótica";
+  const level = typeof item.nivelDificultad === "string" ? item.nivelDificultad : "";
+  const time = typeof item.tiempoEstimado === "string" ? item.tiempoEstimado : "";
+  const searchText = normalizeSearchText([item.titulo, item.resumen, item.problema, item.funcionamiento, item.conexiones, item.pasosImplementacion, item.materiales, item.tecnologias, item.pruebas, item.aprendizajes, item.codigoPrueba, ...areas].join(" "));
+  return `<article class="showcase-card ${pending ? "pending" : ""}" data-showcase-card data-showcase-search="${esc(searchText)}" data-showcase-area="${esc(normalizeSearchText(areas.join(" ")))}" data-showcase-level="${esc(normalizeSearchText(level))}">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : pending ? "" : `<div class="showcase-cover-placeholder">${icon("proyectos", 34)}<span>Proyecto de Robótica SIL</span></div>`}${pending ? `<span class="state-pill warning">Pendiente de revisión</span>` : ""}<p class="project-area">${esc(areaText)}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-guide-meta">${level ? `<span class="showcase-guide-badge">${esc(level)}</span>` : `<span class="showcase-guide-badge muted">Nivel sin indicar</span>`}${time ? `<span class="showcase-guide-badge">${esc(time)}</span>` : ""}</div>${showcaseDetailsMarkup(item)}${pending ? `<small class="showcase-review-meta">${esc(areaText)} · Solicitud del equipo</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Solicitar cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar proyecto</button></div>` : `<small class="showcase-approved-label">Compartido con aprobación docente</small>`}</article>`;
+}
+
+function applyShowcaseFilters(): void {
+  const library = document.querySelector<HTMLElement>("[data-showcase-library]");
+  if (!library) return;
+  const search = normalizeSearchText(library.querySelector<HTMLInputElement>("[data-showcase-search-input]")?.value || "").trim().split(/\s+/).filter(Boolean);
+  const area = normalizeSearchText(library.querySelector<HTMLSelectElement>("[data-showcase-area-filter]")?.value || "");
+  const level = normalizeSearchText(library.querySelector<HTMLSelectElement>("[data-showcase-level-filter]")?.value || "");
+  const cards = [...library.querySelectorAll<HTMLElement>("[data-showcase-card]")];
+  let visible = 0;
+  for (const card of cards) {
+    const terms = card.dataset.showcaseSearch || "";
+    const matches = search.every((token) => terms.includes(token))
+      && (!area || (card.dataset.showcaseArea || "").includes(area))
+      && (!level || card.dataset.showcaseLevel === level);
+    card.hidden = !matches;
+    if (matches) visible++;
+  }
+  const count = library.querySelector<HTMLElement>("[data-showcase-result-count]");
+  if (count) count.textContent = `${visible} ${visible === 1 ? "guía" : "guías"}`;
+  const empty = library.querySelector<HTMLElement>("[data-showcase-filter-empty]");
+  if (empty) empty.hidden = visible > 0 || cards.length === 0;
 }
 
 async function renderShowcase(): Promise<string> {
@@ -1592,11 +1624,12 @@ async function renderShowcase(): Promise<string> {
     if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
     try { photos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* La ficha sigue visible aunque no cargue la foto. */ }
   }));
-  return `${pageHeading("Proyectos destacados", "Conoce qué problema resuelve cada prototipo, cómo funciona y qué aprendió el equipo.")}
+  const areas = [...new Set(showcaseCards.flatMap((item) => Array.isArray(item.areas) ? item.areas.filter((area: unknown) => typeof area === "string") : []))].sort((a, b) => a.localeCompare(b, "es"));
+  return `${pageHeading("Proyectos destacados", "Explora ideas del club y aprende cómo construirlas paso a paso.")}
     <div class="notice-box info showcase-privacy">Visible para todas las cuentas con sesión iniciada. Solo se muestran proyectos aprobados; no mostramos nombres ni correos de estudiantes y las fotos pasan por revisión docente.</div>
     ${canReview && !pending ? `<div class="notice-box danger">No se pudo cargar la cola de revisión. Los proyectos aprobados siguen disponibles; revisa que las reglas de Firestore estén actualizadas.</div>` : ""}
-    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión de proyectos</h2><p>${canManageClub() ? "Tu cuenta de administración puede aprobar proyectos y solicitar cambios." : "Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club."}</p></div><span class="section-count">${reviewCards.length} pendientes</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => `<article class="showcase-card pending">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : ""}<span class="state-pill warning">Pendiente de revisión</span><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-review-meta">${esc((item.areas || []).join(" · ") || "Club de Robótica")} · Solicitud del equipo</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Solicitar cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar proyecto</button></div></article>`).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
-    <section class="unframed-section"><div class="section-heading"><div><h2>Proyectos destacados</h2><p>${showcaseCards.length ? `${showcaseCards.length} publicados` : "Aún no hay proyectos aprobados"}</p></div></div>${showcaseCards.length ? `<div class="showcase-grid">${showcaseCards.map((item) => `<article class="showcase-card">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : `<div class="showcase-cover-placeholder">${icon("proyectos", 34)}<span>Proyecto de Robótica SIL</span></div>`}<p class="project-area">${esc((item.areas || []).join(" · ") || "Club de Robótica")}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-approved-label">Compartido con aprobación docente</small></article>`).join("")}</div>` : emptyPanel("Todavía no hay proyectos destacados", "Desde la ficha de un proyecto, el responsable puede completar la presentación y enviarla a revisión docente.")}</section>`;
+    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión de proyectos</h2><p>${canManageClub() ? "Tu cuenta de administración puede aprobar proyectos y solicitar cambios." : "Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club."}</p></div><span class="section-count">${reviewCards.length} pendientes</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => showcaseCardMarkup(item, photos, true)).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
+    <section class="unframed-section" data-showcase-library><div class="section-heading"><div><h2>Biblioteca de proyectos</h2><p>Explora ideas y sigue las guías para aprender construyendo.</p></div><span class="section-count" data-showcase-result-count>${showcaseCards.length} ${showcaseCards.length === 1 ? "guía" : "guías"}</span></div>${showcaseCards.length ? `<div class="showcase-filters"><label>Buscar guía<input type="search" data-showcase-search-input placeholder="Sensor, robot, Arduino…" /></label><label>Área<select data-showcase-area-filter><option value="">Todas las áreas</option>${areas.map((area) => `<option value="${esc(area)}">${esc(area)}</option>`).join("")}</select></label><label>Nivel<select data-showcase-level-filter><option value="">Todos los niveles</option><option>Inicial</option><option>Intermedio</option><option>Avanzado</option></select></label></div><p class="showcase-filter-empty" data-showcase-filter-empty hidden>No encontramos guías con esos filtros. Prueba otra búsqueda o cambia el área.</p><div class="showcase-grid">${showcaseCards.map((item) => showcaseCardMarkup(item, photos)).join("")}</div>` : emptyPanel("Todavía no hay guías de proyectos", "Desde un proyecto, el responsable puede preparar una guía y enviarla a revisión docente.")}</section>`;
 }
 
 async function renderTeacherProjectDashboard(): Promise<string> {
@@ -2499,6 +2532,11 @@ root.addEventListener("click", (event) => {
     void resolveMaterialRequest(button);
   } else if (action === "review-showcase") {
     void resolveShowcaseReview(button as HTMLButtonElement);
+  } else if (action === "copy-showcase-code") {
+    const code = button.closest<HTMLElement>(".showcase-card")?.querySelector(".showcase-code code")?.textContent || "";
+    if (!code) return;
+    if (!navigator.clipboard?.writeText) return notify("Selecciona el código y cópialo manualmente.", "error");
+    void navigator.clipboard.writeText(code).then(() => notify("Código copiado.")).catch(() => notify("No se pudo copiar. Selecciona el código y cópialo manualmente.", "error"));
   } else if (action === "edit-project-responsible" && !isStudentPreview()) {
     void openProjectResponsibleDialog(button.dataset.id!);
   } else if (action === "delete-project" && !isStudentPreview()) {
@@ -2678,6 +2716,8 @@ root.addEventListener("input", (event) => {
     });
     const empty = document.querySelector<HTMLElement>("[data-task-search-empty]");
     if (empty) empty.hidden = visible > 0 || !tokens.length;
+  } else if (target.matches("[data-showcase-search-input]")) {
+    applyShowcaseFilters();
   }
 });
 
@@ -2692,7 +2732,9 @@ document.addEventListener("keydown", (event) => {
 
 document.addEventListener("change", (event) => {
   const target = event.target as HTMLInputElement | HTMLSelectElement;
-  if (target.id === "task-template" && target instanceof HTMLSelectElement) {
+  if (target.matches("[data-showcase-area-filter], [data-showcase-level-filter]")) {
+    applyShowcaseFilters();
+  } else if (target.id === "task-template" && target instanceof HTMLSelectElement) {
     const templates: Record<string, { title: string; description: string; priority: string }> = {
       pruebas: { title: "Probar componente", description: "Realizar pruebas, registrar resultados y anotar ajustes necesarios.", priority: "Normal" },
       documentacion: { title: "Documentar avance", description: "Agregar fotos, materiales utilizados y decisiones del equipo.", priority: "Baja" },
@@ -3662,11 +3704,16 @@ async function requestProjectShowcase(projectId: string, project: DocumentData, 
     <label>¿Qué problema busca resolver?<textarea name="problema" rows="2" maxlength="600" required placeholder="Describe la necesidad o pregunta que motivó el proyecto">${esc(previous.problema || "")}</textarea></label>
     <label>¿Cómo funciona el prototipo?<textarea name="funcionamiento" rows="3" maxlength="1000" required placeholder="Explica cómo se usa y qué pasos sigue">${esc(previous.funcionamiento || "")}</textarea></label>
     <label>Áreas y tecnologías<textarea name="tecnologias" rows="2" maxlength="500" required placeholder="Ej.: programación con Arduino, sensor ultrasónico y piezas impresas">${esc(previous.tecnologias || (Array.isArray(project.departamentos) ? project.departamentos.join(" · ") : ""))}</textarea></label>
+    <div class="showcase-form-row"><label>Nivel<select name="nivelDificultad" required><option value="">Elige un nivel</option>${["Inicial", "Intermedio", "Avanzado"].map((level) => `<option ${previous.nivelDificultad === level ? "selected" : ""}>${level}</option>`).join("")}</select></label><label>Tiempo estimado<select name="tiempoEstimado" required><option value="">Elige un tiempo</option>${["1-2 horas", "3-5 horas", "Más de 5 horas"].map((time) => `<option ${previous.tiempoEstimado === time ? "selected" : ""}>${time}</option>`).join("")}</select></label></div>
+    <label>Conexiones<textarea name="conexiones" rows="3" maxlength="1200" required placeholder="Ej.: VCC del sensor a 5V, GND a GND, TRIG al pin 9 y ECHO al pin 10">${esc(previous.conexiones || "")}</textarea><small>Indica los pines o uniones entre componentes. Si puedes, agrega un diagrama o foto.</small></label>
+    <label>Pasos para construirlo<textarea name="pasosImplementacion" rows="5" maxlength="3000" required placeholder="1. Prepara la base…&#10;2. Conecta…&#10;3. Carga el programa…">${esc(previous.pasosImplementacion || "")}</textarea><small>Numera los pasos para que otro estudiante pueda repetir el montaje.</small></label>
     <label>Pruebas y resultados<textarea name="pruebas" rows="2" maxlength="1000" required placeholder="Qué probaron, qué ocurrió y qué resultado obtuvieron">${esc(previous.pruebas || "")}</textarea></label>
     <label>¿Qué aprendió el equipo?<textarea name="aprendizajes" rows="2" maxlength="1000" required placeholder="Dificultades, descubrimientos o mejoras pendientes">${esc(previous.aprendizajes || "")}</textarea></label>
     <label>Materiales principales<textarea name="materiales" rows="2" maxlength="800" placeholder="Componentes y herramientas utilizados">${esc(previous.materiales || project.materiales || "")}</textarea></label>
+    <label>Código para probarlo (opcional)<textarea name="codigoPrueba" rows="8" maxlength="6000" spellcheck="false" autocapitalize="off" placeholder="Pega aquí un ejemplo breve. No incluyas contraseñas, tokens ni datos personales.">${esc(previous.codigoPrueba || "")}</textarea></label>
+    <label>Precauciones de seguridad (opcional)<textarea name="seguridad" rows="2" maxlength="1000" placeholder="Ej.: desconecta la batería antes de cambiar conexiones; pide apoyo para usar herramientas.">${esc(previous.seguridad || "")}</textarea></label>
     <label>Video de demostración (opcional)<input name="videoUrl" type="url" value="${esc(previous.videoUrl || "")}" maxlength="400" placeholder="Enlace seguro de YouTube o Vimeo" /><small>Se mostrará como enlace; el video no se reproduce automáticamente.</small></label>
-    <label>Foto principal (opcional)<input name="foto" type="file" accept="image/jpeg,image/png,image/webp" data-showcase-cover /><small data-showcase-file-name>${previous.fotoPath ? "Ya hay una foto cargada; déjalo vacío para conservarla." : "JPG, PNG o WebP de hasta 4 MB. Si Firebase Storage no está disponible, puedes enviar la ficha sin foto."}</small></label>
+    <label>Foto del prototipo o conexiones (opcional)<input name="foto" type="file" accept="image/jpeg,image/png,image/webp" data-showcase-cover /><small data-showcase-file-name>${previous.fotoPath ? "Ya hay una foto cargada; déjalo vacío para conservarla." : "JPG, PNG o WebP de hasta 4 MB. Si Firebase Storage no está disponible, puedes enviar la guía sin foto."}</small></label>
     <button class="primary-button" type="submit">${previous.estado === "rechazada" ? "Enviar de nuevo a revisión" : "Enviar a revisión docente"}</button>
   </form>`;
   document.body.append(formDialog);
@@ -3696,8 +3743,9 @@ async function submitShowcaseRequest(form: HTMLFormElement): Promise<void> {
   if (videoUrl && !safeShowcaseVideoUrl(videoUrl)) return notify("Usa un enlace HTTPS de YouTube o Vimeo.", "error");
   const image = form.querySelector<HTMLInputElement>('input[name="foto"]')?.files?.[0];
   if (image && (!/^image\/(jpeg|png|webp)$/.test(image.type) || image.size > 4 * 1024 * 1024)) return notify("La foto debe ser JPG, PNG o WebP y pesar hasta 4 MB.", "error");
-  const values = Object.fromEntries(["titulo", "resumen", "problema", "funcionamiento", "tecnologias", "pruebas", "aprendizajes", "materiales"].map((key) => [key, String(data.get(key) || "").trim()]));
-  if (Object.entries(values).some(([key, value]) => key !== "materiales" && !value)) return notify("Completa las secciones principales de la ficha.", "error");
+  const values = Object.fromEntries(["titulo", "resumen", "problema", "funcionamiento", "tecnologias", "pruebas", "aprendizajes", "conexiones", "pasosImplementacion", "nivelDificultad", "tiempoEstimado", "codigoPrueba", "seguridad", "materiales"].map((key) => [key, String(data.get(key) || "").trim()]));
+  const requiredFields = new Set(["titulo", "resumen", "problema", "funcionamiento", "tecnologias", "pruebas", "aprendizajes", "conexiones", "pasosImplementacion", "nivelDificultad", "tiempoEstimado"]);
+  if (Object.entries(values).some(([key, value]) => requiredFields.has(key) && !value)) return notify("Completa las secciones principales de la ficha.", "error");
   setBusy(button, true, "Enviando");
   let uploadedPath = "";
   try {
