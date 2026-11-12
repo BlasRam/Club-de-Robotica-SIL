@@ -57,6 +57,22 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
         run: npx firebase-tools deploy --project club-de-robotica-sil --only hosting,firestore:rules --non-interactive
 
+      - name: Set up Google Cloud CLI for deployed rules check
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Verify published guide read rule is active
+        shell: bash
+        run: |
+          access_token="$(gcloud auth print-access-token)"
+          release="$(curl --fail --silent --show-error -H "Authorization: Bearer $access_token" \
+            'https://firebaserules.googleapis.com/v1/projects/club-de-robotica-sil/releases/cloud.firestore')"
+          ruleset_name="$(jq -er '.rulesetName' <<< "$release")"
+          ruleset="$(curl --fail --silent --show-error -H "Authorization: Bearer $access_token" \
+            "https://firebaserules.googleapis.com/v1/$ruleset_name")"
+          jq -e '[.source.files[].content | contains("match /guiasPublicadas/{guiaId}") and contains("allow read: if true;")] | any' \
+            <<< "$ruleset" > /dev/null
+          echo "La versión activa de las reglas permite leer guiasPublicadas."
+
       - name: Deploy Storage rules (requires Storage API enabled)
         continue-on-error: true
         env:
