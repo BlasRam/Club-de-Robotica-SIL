@@ -34,7 +34,7 @@ import {
 import { getFirestore } from "firebase/firestore";
 import { deleteObject, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import homeIcon from "lucide-static/icons/house.svg?raw";
-import projectIcon from "lucide-static/icons/bot.svg?raw";
+import projectIcon from "lucide-static/icons/folder-kanban.svg?raw";
 import showcaseIcon from "lucide-static/icons/trophy.svg?raw";
 import taskIcon from "lucide-static/icons/list-checks.svg?raw";
 import accessIcon from "lucide-static/icons/door-open.svg?raw";
