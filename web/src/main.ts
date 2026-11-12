@@ -872,7 +872,14 @@ function appShell(content: string): string {
       ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><div><strong>Nueva versión lista</strong><small>La aplicación se recargará para aplicar la actualización.</small></div><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
       ${onboardingModal}
       <nav class="mobile-nav" aria-label="Navegación móvil">
-        ${items.filter((item) => (isAuthorized() ? ["inicio", "tareas", "acceso", "proyectos", "avisos"] : ["inicio", "muestra", "sugerencias", "configuracion"]).includes(item.id)).map((item) => { const label = item.id === "acceso" ? "Entrada" : item.id === "sugerencias" ? "Ayuda" : item.label; return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}">${icon(item.id, 19)}<span>${label}</span></button>`; }).join("")}
+        ${items.filter((item) => {
+          const mobilePages = !isAuthorized()
+            ? ["inicio", "muestra", "sugerencias", "configuracion"]
+            : state.profile?.tipoUsuario === "docente" && !isStudentPreview()
+              ? ["inicio", "proyectos", "tareas", "muestra", "calendario"]
+              : ["inicio", "tareas", "acceso", "proyectos", "avisos"];
+          return mobilePages.includes(item.id);
+        }).map((item) => { const label = item.id === "acceso" ? "Entrada" : item.id === "sugerencias" ? "Ayuda" : item.id === "calendario" ? "Agenda" : item.id === "muestra" ? canReviewShowcase() ? "Revisión" : "Destacados" : item.label; return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}">${icon(item.id, 19)}<span>${label}</span></button>`; }).join("")}
       </nav>
       <div id="toast" class="toast" role="status"></div>
     </div>`;
@@ -1317,7 +1324,8 @@ async function renderHome(): Promise<string> {
       <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos de materiales", "prestamos", "prestamos", "loans")}${adminQuickLink("Proyectos destacados", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
       <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
   }
-  const [loans, presence, notices, calendar, assignedByOwner, assignedByList, featuredShowcase] = await Promise.all([
+  const teacher = state.profile?.tipoUsuario === "docente";
+  const [loans, presence, notices, calendar, assignedByOwner, assignedByList, featuredShowcase, studentProjectRecords] = await Promise.all([
     getDocs(query(collection(db, "reservas"), where("solicitanteUid", "==", state.user!.uid))),
     getDoc(doc(db, "presencias", state.user!.uid)),
     getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(10))),
@@ -1325,6 +1333,7 @@ async function renderHome(): Promise<string> {
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", state.user!.uid), limit(20))).catch(() => null),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", state.user!.uid), limit(20))).catch(() => null),
     getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(3))).catch(() => null),
+    teacher ? Promise.resolve(null) : getDocs(query(collection(db, "proyectos"), limit(60))).catch(() => null),
   ]);
   const inside = presence.exists() && presenceIsCurrent(presence.data());
   const tasks = new Map<string, QueryDocumentSnapshot<DocumentData>>();
@@ -1335,26 +1344,84 @@ async function renderHome(): Promise<string> {
   const overdueHomeTasks = [...tasks.values()].filter((task) => task.get("fechaLimite")?.toDate?.() instanceof Date && task.get("fechaLimite").toDate() < dueTodayStart);
   const nextTasks = [...tasks.values()].sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER)).slice(0, 3);
   const importantNotices = notices.docs.map((item) => ({ id: item.id, data: item.data() })).sort((a, b) => Number(b.data.prioridad === "Importante") - Number(a.data.prioridad === "Importante") || (b.data.fechaCreacion?.toMillis?.() ?? 0) - (a.data.fechaCreacion?.toMillis?.() ?? 0)).slice(0, 3);
-  const teacher = state.profile?.tipoUsuario === "docente";
   const teacherProjects = teacher ? await renderTeacherProjectDashboard() : "";
+  const studentProjects = !teacher ? await renderStudentProjectDashboard(studentProjectRecords) : "";
   const pendingShowcase = teacher && canReviewShowcase()
     ? await getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
     : null;
   const pendingLoans = loans.docs.filter((loan) => loan.get("estado") === "Pendiente").length;
   const featured = featuredShowcase?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
+  const studentProjectNames = new Map((studentProjectRecords?.docs ?? []).map((project) => [project.id, String(project.get("nombre") || project.get("titulo") || "Proyecto del club")]));
+  const featuredPhotos = new Map<string, string>();
+  await Promise.all(featured.map(async (item) => {
+    if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
+    try { featuredPhotos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* El resumen sigue visible si el almacenamiento no está listo. */ }
+  }));
   return `${pageHeading(`Hola, ${esc(greeting)}`, teacher ? "Panel docente · equipos, actividades y revisiones." : "Panel del estudiante · tareas, proyectos y actividad del club.")}
-    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a los equipos, orienta proyectos y revisa los avances del club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas" data-task-filter="pending">${icon("tareas", 20)} Actividades pendientes</button><button data-page="calendario">${icon("calendario", 20)} Calendario</button><button data-page="muestra">${icon("muestra", 20)} ${canReviewShowcase() ? `Revisiones (${pendingShowcase?.size ?? 0})` : "Muestra"}</button></div></section>${teacherProjects}` : ""}
-    ${!teacher ? renderStudentHomeModules(inside, tasks.size, pendingLoans) : ""}
-    ${overdueHomeTasks.length ? `<div class="notice-box warning home-overdue-alert"><strong>Hay ${overdueHomeTasks.length} tarea${overdueHomeTasks.length === 1 ? " atrasada" : "s atrasadas"}.</strong><span>Revísalas y acuerda con tu equipo un nuevo plan.</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver tareas atrasadas</button></div>` : ""}
-    ${nextTasks.length ? `<section class="unframed-section"><div class="section-heading"><h2>${teacher ? "Actividades próximas" : "Mis tareas pendientes"}</h2><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => `<button class="home-task-item" data-page="tareas" data-task-filter="pending"><span class="state-pill warning">Pendiente</span><strong>${esc(item.get("titulo") || "Tarea")}</strong>${item.get("fechaLimite") ? `<small>Entrega: ${dateText(item.get("fechaLimite"))}</small>` : ""}</button>`).join("")}</div></section>` : ""}
+    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a tus equipos, orienta proyectos y revisa las propuestas del club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas" data-task-filter="pending">${icon("tareas", 20)} Actividades pendientes</button><button data-page="calendario">${icon("calendario", 20)} Agenda</button>${canReviewShowcase() ? `<button data-page="muestra">${icon("muestra", 20)} Revisar proyectos <span class="teacher-link-count">${pendingShowcase?.size ?? 0}</span></button>` : `<button data-page="muestra">${icon("muestra", 20)} Proyectos destacados</button>`}</div></section>` : ""}
+    ${overdueHomeTasks.length ? `<div class="notice-box warning home-overdue-alert"><strong>Hay ${overdueHomeTasks.length} tarea${overdueHomeTasks.length === 1 ? " atrasada" : "s atrasadas"}.</strong><span>${teacher ? "Coordina con el equipo una fecha para completar cada una." : "Revisa las fechas y acuerda con tu equipo un nuevo plan."}</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver tareas atrasadas</button></div>` : ""}
+    ${nextTasks.length ? `<section class="unframed-section home-priority-section"><div class="section-heading"><div><h2>${teacher ? "Actividades próximas" : "Qué sigue"}</h2><p>${teacher ? `${tasks.size} actividad${tasks.size === 1 ? " pendiente" : "es pendientes"} asignada${tasks.size === 1 ? "" : "s"} a tu cuenta.` : `${tasks.size} tarea${tasks.size === 1 ? " pendiente" : "s pendientes"}.`}</p></div><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => homeTaskCard(item, studentProjectNames)).join("")}</div></section>` : !teacher ? `<section class="unframed-section home-priority-section"><div class="section-heading"><h2>Qué sigue</h2></div><div class="home-empty-next"><span class="state-pill success">Al día</span><p>No tienes tareas pendientes. Revisa tus proyectos o los avisos del club.</p><button class="secondary-button compact" data-page="proyectos">Ver mis proyectos</button></div></section>` : `<section class="unframed-section home-priority-section"><div class="section-heading"><h2>Actividades próximas</h2></div><div class="home-empty-next"><span class="state-pill success">Sin tareas asignadas</span><p>Las tareas de tus equipos aparecerán aquí cuando se asignen a tu cuenta.</p><button class="secondary-button compact" data-page="proyectos">Ver mis equipos</button></div></section>`}
+    ${teacher ? teacherProjects : `${studentProjects}${renderStudentHomeModules(inside, tasks.size, pendingLoans)}`}
     ${calendar}
-    ${renderHomeShowcase(featured)}
+    ${renderHomeShowcase(featured, featuredPhotos)}
     <section class="unframed-section"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${importantNotices.length ? `<div class="notice-list">${importantNotices.map((item) => noticeCard(item.id, item.data, false)).join("")}</div>` : emptyInline("No hay avisos publicados.")}</section>`;
 }
 
-function renderHomeShowcase(items: Array<{ id: string; titulo?: string; resumen?: string }>): string {
+function homeTaskCard(item: QueryDocumentSnapshot<DocumentData>, projectNames: Map<string, string>): string {
+  const taskPath = item.ref.path.split("/");
+  const projectId = taskPath.length > 1 ? taskPath[1] : "";
+  const projectName = projectNames.get(projectId) || String(item.get("proyectoNombre") || "Actividad del club");
+  const due = taskDueDate(item.data());
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDay = due ? new Date(due) : null;
+  dueDay?.setHours(0, 0, 0, 0);
+  const dueLabel = !dueDay ? "Sin fecha de entrega" : dueDay < today ? `Atrasada · vencía ${dateText(dueDay)}` : dueDay.getTime() === today.getTime() ? "Vence hoy" : `Entrega: ${dateText(dueDay)}`;
+  return `<button class="home-task-item" data-action="project-detail" data-id="${esc(projectId)}" aria-label="Abrir ${esc(item.get("titulo") || "tarea")} del proyecto ${esc(projectName)}"><span class="home-task-project">${esc(projectName)}</span><strong>${esc(item.get("titulo") || "Tarea")}</strong><small class="${dueDay && dueDay < today ? "overdue" : ""}">${esc(dueLabel)} · Abrir proyecto</small></button>`;
+}
+
+async function renderStudentProjectDashboard(records: { docs: QueryDocumentSnapshot<DocumentData>[] } | null): Promise<string> {
+  if (!records) return `<section class="unframed-section student-team-section"><div class="section-heading"><h2>Mi equipo</h2><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div><div class="notice-box warning">No se pudieron cargar tus proyectos. Puedes reintentar o abrir el apartado Proyectos.</div><button class="secondary-button compact" data-action="refresh">Reintentar</button></section>`;
+  const uid = state.user!.uid;
+  const projects = records.docs.filter((project) => {
+    const data = project.data();
+    return projectLead(data) === uid || (Array.isArray(data.miembrosUids) && data.miembrosUids.includes(uid));
+  }).sort((a, b) => Number(b.get("estado") === "Activo") - Number(a.get("estado") === "Activo")).slice(0, 5);
+  const overview = await Promise.all(projects.map(async (project) => {
+    const [tasks, latestStage] = await Promise.all([
+      getDocs(query(collection(db, "proyectos", project.id, "tareas"), limit(50))).catch(() => null),
+      getDocs(query(collection(db, "proyectos", project.id, "etapas"), orderBy("fechaCreacion", "desc"), limit(1))).catch(() => null),
+    ]);
+    const allTasks = tasks?.docs ?? [];
+    const pending = allTasks.filter((task) => task.get("estado") !== "Completada");
+    pending.sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER));
+    const completed = allTasks.length - pending.length;
+    return {
+      id: project.id,
+      data: project.data(),
+      total: allTasks.length,
+      completed,
+      nextTask: pending[0]?.data() ?? null,
+      latest: latestStage?.docs[0]?.get("fechaCreacion") ?? project.get("fechaCreacion"),
+    };
+  }));
+  return `<section class="unframed-section student-team-section"><div class="section-heading"><div><h2>Mi equipo</h2><p>Tus proyectos, avances y próximos pasos.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div>${overview.length ? `<div class="student-team-grid">${overview.map((item) => {
+    const progress = item.total ? Math.round(item.completed / item.total * 100) : 0;
+    const nextTask = item.nextTask;
+    const due = nextTask ? taskDueDate(nextTask) : null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDay = due ? new Date(due) : null;
+    dueDay?.setHours(0, 0, 0, 0);
+    const dueLabel = !dueDay ? "Sin fecha" : dueDay < today ? `Atrasada · vencía ${dateText(dueDay)}` : dueDay.getTime() === today.getTime() ? "Vence hoy" : `Entrega: ${dateText(dueDay)}`;
+    const nextTaskInfo = nextTask ? `${nextTask.titulo || "Tarea pendiente"} · ${dueLabel}` : item.total ? "Todas las tareas están completadas." : "El equipo todavía no creó tareas.";
+    return `<button class="student-team-card" data-action="project-detail" data-id="${esc(item.id)}"><span class="student-team-top"><span class="project-mark">${icon("proyectos", 20)}</span><span class="state-pill ${item.data.estado === "Activo" ? "success" : "muted"}">${esc(item.data.estado || "Proyecto")}</span></span><strong>${esc(item.data.nombre || item.data.titulo || "Proyecto")}</strong><small class="student-team-objective">${esc(item.data.objetivo || item.data.descripcion || "Proyecto de Robótica SIL")}</small><div class="student-team-progress"><span>Avance</span><strong>${item.total ? `${progress}%` : "Sin tareas"}</strong><progress max="100" value="${progress}" aria-label="Avance de ${esc(item.data.nombre || "proyecto")}"></progress><small>${item.total ? `${item.completed} de ${item.total} tareas completadas` : "El responsable puede agregar tareas al proyecto."}</small></div><span class="student-team-next"><b>Próximo paso</b>${esc(nextTaskInfo)}</span><small class="student-team-latest">${item.latest ? `Último avance: ${dateText(item.latest, true)}` : "Sin avances registrados todavía."}</small><span class="student-team-open">Abrir proyecto ${icon("ir", 14)}</span></button>`;
+  }).join("")}</div>` : `<div class="student-project-empty"><span class="state-pill muted">Aún sin equipo</span><p>Cuando te unas a un proyecto, aquí verás el avance y la próxima tarea.</p><div><button class="secondary-button compact" data-page="proyectos">Explorar proyectos</button><button class="text-button" data-page="sugerencias">Ayuda y sugerencias</button></div></div>`}</section>`;
+}
+
+function renderHomeShowcase(items: Array<{ id: string; titulo?: string; resumen?: string; problema?: string; aprendizajes?: string }>, photos: Map<string, string>): string {
   if (!items.length) return "";
-  return `<section class="unframed-section home-showcase"><div class="section-heading"><div><h2>Ideas del club</h2><p>Proyectos que ya pasaron la revisión docente.</p></div><button class="text-button" data-page="muestra">Ver la muestra ${icon("ir", 14)}</button></div><div class="home-showcase-grid">${items.map((item) => `<button class="home-showcase-card" data-page="muestra"><span class="project-mark">${icon("muestra", 20)}</span><strong>${esc(item.titulo || "Proyecto destacado")}</strong><small>${esc(item.resumen || "Conoce el prototipo y los aprendizajes del equipo.")}</small></button>`).join("")}</div></section>`;
+  return `<section class="unframed-section home-showcase"><div class="section-heading"><div><h2>Ideas del club</h2><p>Proyectos que ya pasaron la revisión docente.</p></div><button class="text-button" data-page="muestra">Ver proyectos destacados ${icon("ir", 14)}</button></div><div class="home-showcase-grid">${items.map((item) => `<button class="home-showcase-card" data-page="muestra">${photos.has(item.id) ? `<img class="home-showcase-photo" src="${esc(photos.get(item.id)!)}" alt="Imagen del proyecto ${esc(item.titulo || "destacado")}" loading="lazy" />` : `<span class="project-mark">${icon("muestra", 20)}</span>`}<strong>${esc(item.titulo || "Proyecto destacado")}</strong><small>${esc(item.problema || item.resumen || "Conoce el prototipo.")}</small>${item.aprendizajes ? `<span class="home-showcase-learning"><b>Aprendizaje:</b> ${esc(item.aprendizajes)}</span>` : ""}</button>`).join("")}</div></section>`;
 }
 
 function metric(title: string, value: number, hint: string, page: Page, tone = "plain"): string {
@@ -1513,15 +1580,16 @@ async function renderTeacherProjectDashboard(): Promise<string> {
     ]);
     const pendingTasks = (tasks?.docs ?? []).filter((task) => task.get("estado") !== "Completada");
     const overdue = pendingTasks.filter((task) => task.get("fechaLimite")?.toDate && task.get("fechaLimite").toDate() < today).length;
+    pendingTasks.sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER));
     const latest = latestStage?.docs[0]?.get("fechaCreacion")?.toDate?.() ?? project.get("fechaCreacion")?.toDate?.() ?? null;
     const stale = !latest || Date.now() - latest.getTime() > 14 * 24 * 60 * 60 * 1000;
     const stage = latestStage?.docs[0]?.data();
-    return { id: project.id, data: project.data(), tasks: pendingTasks.length, overdue, stale, latest, stage };
+    return { id: project.id, data: project.data(), tasks: pendingTasks.length, nextTask: pendingTasks[0]?.data() ?? null, overdue, stale, latest, stage };
   }));
   const overdueTotal = overview.reduce((sum, project) => sum + project.overdue, 0);
   const staleTotal = overview.filter((project) => project.stale).length;
   const recentActivity = overview.filter((item) => item.stage).sort((a, b) => (b.stage.fechaCreacion?.toMillis?.() ?? 0) - (a.stage.fechaCreacion?.toMillis?.() ?? 0)).slice(0, 5);
-  return `<section class="teacher-project-dashboard"><div class="section-heading"><div><h2>Seguimiento de equipos</h2><p>Proyectos en los que participas como responsable o integrante.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div><div class="teacher-project-metrics"><div><strong>${overview.length}</strong><span>Equipos</span></div><button type="button" class="${overdueTotal ? "attention" : ""}" data-page="tareas" data-task-filter="overdue"><strong>${overdueTotal}</strong><span>Tareas atrasadas</span></button><div class="${staleTotal ? "attention" : ""}"><strong>${staleTotal}</strong><span>Sin avances en 14 días</span></div></div>${overview.length ? `<div class="teacher-project-list">${overview.map((item) => `<button class="teacher-project-item" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.data.nombre || "Proyecto")}</strong><small>${item.latest ? `Último avance: ${dateText(item.latest)}` : "Todavía no hay etapas registradas"}</small></span><span class="teacher-project-badges">${item.overdue ? `<i class="state-pill warning">${item.overdue} atrasadas</i>` : `<i class="state-pill success">Al día</i>`}${item.stale ? `<i class="state-pill muted">Revisar avance</i>` : ""}</span></button>`).join("")}</div>` : emptyInline("Aún no acompañas un proyecto. Pide que te asignen como responsable o integrante para ver su seguimiento aquí.")}${recentActivity.length ? `<div class="teacher-recent-activity"><h3>Actividad reciente de tus equipos</h3>${recentActivity.map((item) => `<button class="teacher-activity-entry" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.stage.fase || item.stage.titulo || "Avance")}</strong><small>${esc(item.data.nombre || "Proyecto")} · ${dateText(item.stage.fechaCreacion, true)}</small></span><span>${esc(String(item.stage.evidencia || "" ).slice(0, 150))}</span></button>`).join("")}</div>` : ""}</section>`;
+  return `<section class="teacher-project-dashboard"><div class="section-heading"><div><h2>Seguimiento de equipos</h2><p>Proyectos, responsables, próximos plazos y últimos avances.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div><div class="teacher-project-metrics"><div><strong>${overview.length}</strong><span>Equipos</span></div><button type="button" class="${overdueTotal ? "attention" : ""}" data-page="tareas" data-task-filter="overdue"><strong>${overdueTotal}</strong><span>Tareas atrasadas</span></button><div class="${staleTotal ? "attention" : ""}"><strong>${staleTotal}</strong><span>Sin avances en 14 días</span></div></div>${overview.length ? `<div class="teacher-project-list">${overview.map((item) => `<button class="teacher-project-item" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.data.nombre || "Proyecto")}</strong><small>Responsable: ${esc(item.data.responsableNombre || "Sin asignar")} · ${item.latest ? `Último avance: ${dateText(item.latest)}` : "Sin avances registrados"}</small>${item.nextTask ? `<small class="teacher-project-next">Próxima tarea: ${esc(item.nextTask.titulo || "Tarea pendiente")}${item.nextTask.fechaLimite ? ` · ${dateText(item.nextTask.fechaLimite)}` : " · Sin fecha"}</small>` : `<small class="teacher-project-next">No hay tareas pendientes.</small>`}</span><span class="teacher-project-badges">${item.overdue ? `<i class="state-pill warning">${item.overdue} atrasadas</i>` : `<i class="state-pill success">Al día</i>`}${item.stale ? `<i class="state-pill muted">Revisar avance</i>` : ""}</span></button>`).join("")}</div>` : emptyInline("Aún no acompañas un proyecto. Pide que te asignen como responsable o integrante para ver su seguimiento aquí.")}${recentActivity.length ? `<div class="teacher-recent-activity"><h3>Actividad reciente de tus equipos</h3>${recentActivity.map((item) => `<button class="teacher-activity-entry" data-action="project-detail" data-id="${esc(item.id)}"><span><strong>${esc(item.stage.fase || item.stage.titulo || "Avance")}</strong><small>${esc(item.data.nombre || "Proyecto")} · ${dateText(item.stage.fechaCreacion, true)}</small></span><span>${esc(String(item.stage.evidencia || "").slice(0, 150))}</span></button>`).join("")}</div>` : ""}</section>`;
 }
 
 async function renderCourses(): Promise<string> {
