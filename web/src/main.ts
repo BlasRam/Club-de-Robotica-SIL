@@ -1605,14 +1605,17 @@ async function renderShowcase(): Promise<string> {
       tokenResult = await state.user?.getIdTokenResult().catch(() => null) ?? null;
     }
     if (!approved) {
+      const directRead = await getDoc(doc(db, "guiasPublicadas", "__diagnostico_acceso__"))
+        .then(() => "permitida")
+        .catch((probeError: unknown) => String((probeError as { code?: string })?.code || "error desconocido"));
       const tokenEmail = String(tokenResult?.claims.email || "").trim().toLowerCase();
       const profileEmail = String(state.profile?.correoInstitucional || "").trim().toLowerCase();
       const claimVerified = tokenResult?.claims.email_verified === true;
       const targetProject = db.app.options.projectId === "club-de-robotica-sil";
       const sameFirebaseApp = auth.app === db.app;
       const firebaseCode = String((error as { code?: string })?.code || "desconocido");
-      const diagnosis = `Diagnóstico Firebase: sesión activa ${state.user ? "sí" : "no"}; correo verificado en sesión ${state.user?.emailVerified ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; perfil inicial reconocido ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; Auth y Firestore usan la misma app ${sameFirebaseApp ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}; código ${firebaseCode}.`;
-      return `${pageHeading("Guías de proyectos", "Explora proyectos del club y aprende a construirlos.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar las guías</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
+      const diagnosis = `Versión guias-diag-2; ruta guiasPublicadas; lista ${firebaseCode}; lectura directa ${directRead}; sesión activa ${state.user ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; perfil inicial reconocido ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; Auth y Firestore usan la misma app ${sameFirebaseApp ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}.`;
+      return `${pageHeading("Guías de proyectos", "Explora proyectos del club y aprende a construirlos.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar las guías</h2><p>Firebase no permitió leer el catálogo de guías.</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
     }
   }
   // La cola de moderación es opcional: si sus reglas rechazan esta consulta,
