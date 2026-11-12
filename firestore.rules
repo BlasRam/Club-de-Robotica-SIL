@@ -2217,10 +2217,14 @@ match /puertas/{puertaId} {
               && data.fotoPath.matches("proyectos/" + proyectoId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
       }
 
-      allow read: if esGestorClub()
-        || (estaAutenticado() && resource.data.estado == "aprobada")
-        || (estaAutorizado()
-          && (resource.data.solicitadoPorUid == request.auth.uid || esDocenteRevisor()));
+      // La muestra publicada no depende del rol ni de que el perfil ya esté
+      // autorizado; poner esta condición primero evita evaluar el perfil para
+      // las consultas de la colección aprobada.
+      allow read: if estaAutenticado()
+        && (resource.data.estado == "aprobada"
+          || esGestorClub()
+          || (estaAutorizado()
+            && (resource.data.solicitadoPorUid == request.auth.uid || esDocenteRevisor())));
 
       allow create: if exists(/databases/$(database)/documents/proyectos/$(proyectoId))
         && (esGestorClub() || (estaAutorizado() && esResponsableProyecto(proyectoId)))

@@ -1471,7 +1471,9 @@ async function renderShowcase(): Promise<string> {
       const profileEmail = String(state.profile?.correoInstitucional || "").trim().toLowerCase();
       const claimVerified = tokenResult?.claims.email_verified === true;
       const targetProject = db.app.options.projectId === "club-de-robotica-sil";
-      const diagnosis = `Diagnóstico Firebase: correo verificado en sesión ${state.user?.emailVerified ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; token de cuenta inicial ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con el token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}.`;
+      const sameFirebaseApp = auth.app === db.app;
+      const firebaseCode = String((error as { code?: string })?.code || "desconocido");
+      const diagnosis = `Diagnóstico Firebase: sesión activa ${state.user ? "sí" : "no"}; correo verificado en sesión ${state.user?.emailVerified ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; perfil inicial reconocido ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; Auth y Firestore usan la misma app ${sameFirebaseApp ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}; código ${firebaseCode}.`;
       return `${pageHeading("Muestra de proyectos", "Conoce los prototipos destacados del club.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los proyectos</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
     }
   }
