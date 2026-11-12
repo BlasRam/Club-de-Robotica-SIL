@@ -1,5 +1,6 @@
-    // Muestra de proyectos: solo contenido aprobado es visible para el club.
-    match /muestras/{proyectoId} {
+    // Biblioteca nueva de guías. Las cuentas administradoras iniciales pueden
+    // administrar la colección completa; los demás perfiles solo ven guías aprobadas.
+    match /guiasClub/{proyectoId} {
       function esDocenteRevisor() {
         return estaAutorizado()
           && usuarioActual().data.get("docenteRevisor", false) == true
@@ -52,9 +53,7 @@
               && data.fotoPath.matches("proyectos/" + proyectoId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
       }
 
-      // Las cuentas administradoras iniciales pueden consultar toda esta
-      // colección para gestionar la muestra, incluso si su perfil quedó
-      // desincronizado. El permiso se limita a /muestras.
+      // El acceso de administración se limita a esta colección.
       allow read: if esAdministradorInicial();
 
       // Mantener la lectura del catálogo aprobado en una regla simple permite
@@ -70,7 +69,7 @@
             && (resource.data.solicitadoPorUid == request.auth.uid || esDocenteRevisor())));
 
       allow create: if exists(/databases/$(database)/documents/proyectos/$(proyectoId))
-        && (esGestorClub() || (estaAutorizado() && esResponsableProyecto(proyectoId)))
+        && (esAdministradorInicial() || esGestorClub() || (estaAutorizado() && esResponsableProyecto(proyectoId)))
         && request.resource.data.keys().hasOnly([
           "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
           "pruebas", "aprendizajes", "conexiones", "pasosImplementacion", "nivelDificultad",

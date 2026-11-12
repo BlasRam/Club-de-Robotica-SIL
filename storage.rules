@@ -24,7 +24,7 @@ service firebase.storage {
     }
 
     function isApprovedShowcaseImage(projectId, fileName) {
-      let showcase = firestore.get(/databases/(default)/documents/muestras/$(projectId)).data;
+      let showcase = firestore.get(/databases/(default)/documents/guiasClub/$(projectId)).data;
       return request.auth != null
         && request.auth.token.email_verified == true
         && fileName.matches("showcase-[A-Za-z0-9_-]+")

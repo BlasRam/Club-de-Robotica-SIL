@@ -20,7 +20,7 @@ const sections = [
   ["presencias", "60-presencias.rules"],
   ["puertas", "65-puertas.rules"],
   ["proyectos", "70-proyectos.rules"],
-  ["muestras", "75-muestra.rules"],
+  ["guiasClub", "75-guias-club.rules"],
 ];
 const closing = "    }\n  }\n}\n";
 

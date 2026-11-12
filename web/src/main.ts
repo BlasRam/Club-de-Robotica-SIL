@@ -827,7 +827,7 @@ function navItems(): { id: Page; label: string }[] {
     { id: "tareas", label: "Tareas" },
     { id: "acceso", label: "Entrada al laboratorio" },
     { id: "proyectos", label: "Proyectos" },
-    { id: "muestra", label: "Proyectos destacados" },
+    { id: "muestra", label: "Guías de proyectos" },
     { id: "cursos", label: "Cursos" },
     { id: "avisos", label: "Avisos" },
     { id: "sugerencias", label: "Ayuda y sugerencias" },
@@ -909,7 +909,7 @@ function appShell(content: string): string {
               ? ["inicio", "proyectos", "tareas", "muestra", "calendario"]
               : ["inicio", "tareas", "acceso", "proyectos", "avisos"];
           return mobilePages.includes(item.id);
-        }).map((item) => { const label = item.id === "acceso" ? "Entrada" : item.id === "sugerencias" ? "Ayuda" : item.id === "calendario" ? "Agenda" : item.id === "muestra" ? canReviewShowcase() ? "Revisión" : "Destacados" : item.label; return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}">${icon(item.id, 19)}<span>${label}</span></button>`; }).join("")}
+        }).map((item) => { const label = item.id === "acceso" ? "Entrada" : item.id === "sugerencias" ? "Ayuda" : item.id === "calendario" ? "Agenda" : item.id === "muestra" ? "Guías" : item.label; return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}">${icon(item.id, 19)}<span>${label}</span></button>`; }).join("")}
       </nav>
       <div id="toast" class="toast" role="status"></div>
     </div>`;
@@ -1154,7 +1154,7 @@ async function pageContent(page: Page): Promise<string> {
     if (page === "perfil") return renderSandboxProfile();
     if (page === "configuracion") return renderSettings();
     if (page === "calendario") return renderCalendar();
-    if (page === "muestra") return `${pageHeading("Proyectos destacados", "Prototipos del club que ya fueron revisados.")}<div class="showcase-grid"><article class="showcase-card"><p class="project-area">Electrónica · Programación</p><h3>Robot móvil</h3><p>Prototipo autónomo para explorar el aula y evitar obstáculos.</p><small>Compartido con aprobación docente</small></article></div>`;
+    if (page === "muestra") return `${pageHeading("Guías de proyectos", "Prototipos del club que ya fueron revisados.")}<div class="showcase-grid"><article class="showcase-card"><p class="project-area">Electrónica · Programación</p><h3>Robot móvil</h3><p>Prototipo autónomo para explorar el aula y evitar obstáculos.</p><small>Guía compartida con el club</small></article></div>`;
     if (page === "sugerencias") return `${pageHeading("Ayuda y sugerencias", "Envía una idea o reporta un problema de la PWA.")}<div class="notice-box info">La vista de prueba no envía información real.</div>`;
     if (page === "inicio") {
       const sandboxHome = renderStudentSandbox(page);
@@ -1227,7 +1227,7 @@ function renderProfile(): string {
     <div class="profile-layout"><form class="profile-form" data-form="profile">
       <div class="profile-fields"><label>Nombre<input name="nombre" value="${esc(profile.nombre)}" autocomplete="given-name" maxlength="60" required /></label><label>Apellido<input name="apellido" value="${esc(profile.apellido)}" autocomplete="family-name" maxlength="60" required /></label>
         ${renderMemberFields(profile, false)}</div>
-      <div class="profile-readonly"><div class="profile-line"><span>Correo de la cuenta</span><strong>${esc(profile.correoInstitucional || state.user?.email)}</strong></div><div class="profile-line"><span>Tipo de cuenta</span><strong>${roleLabel()}</strong></div><div class="profile-line"><span>Estado de cuenta</span><strong>${isAdmin() ? "Administración" : profile.autorizado ? "Autorizada" : "Pendiente de revisión"}</strong></div><div class="profile-line"><span>Revisión de proyectos</span><strong>${canManageClub() ? "Habilitada como administrador" : canReviewShowcase() ? "Habilitada · revisor docente" : "No habilitada"}</strong></div></div>
+      <div class="profile-readonly"><div class="profile-line"><span>Correo de la cuenta</span><strong>${esc(profile.correoInstitucional || state.user?.email)}</strong></div><div class="profile-line"><span>Tipo de cuenta</span><strong>${roleLabel()}</strong></div><div class="profile-line"><span>Estado de cuenta</span><strong>${isAdmin() ? "Administración" : profile.autorizado ? "Autorizada" : "Pendiente de revisión"}</strong></div><div class="profile-line"><span>Revisión de guías</span><strong>${canManageClub() ? "Habilitada como administrador" : canReviewShowcase() ? "Habilitada · revisor docente" : "No habilitada"}</strong></div></div>
       <p class="profile-note">El correo, el rol y la autorización no se pueden cambiar desde esta pantalla.</p><button class="primary-button" type="submit">Guardar cambios ${icon("listo", 16)}</button>
     </form></div>`;
 }
@@ -1336,7 +1336,7 @@ async function renderHome(): Promise<string> {
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Aprobada"))),
       getDocs(query(collection(db, "proyectos"), where("estado", "==", "Activo"))),
       getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"), where("autorizado", "==", false))),
-      getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null),
+      getDocs(query(collection(db, "guiasClub"), where("estado", "==", "pendiente"), limit(30))).catch(() => null),
       getDocs(query(collection(db, "usuarios"), where("tipoUsuario", "==", "docente"), limit(100))),
       getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(500))),
     ]);
@@ -1351,12 +1351,12 @@ async function renderHome(): Promise<string> {
         ${metric("Estudiantes", students.length, "Personas registradas", "estudiantes", "people")}
         ${metric("Docentes", teacherRecords.size, "Cuentas docentes", "docentes", "people")}
         ${metric("Cuentas pendientes", pendingAccess.length, "Estudiantes por revisar", "estudiantes", "alert")}
-        ${metric("Muestra por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase")}
+        ${metric("Guías por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase")}
         ${metric("Préstamos pendientes", pendingLoans.size, "Solicitudes por resolver", "prestamos", "loan")}
         ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
         ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
       </section>
-      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos de materiales", "prestamos", "prestamos", "loans")}${adminQuickLink("Proyectos destacados", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
+      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos de materiales", "prestamos", "prestamos", "loans")}${adminQuickLink("Guías de proyectos", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
       <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
   }
   const teacher = state.profile?.tipoUsuario === "docente";
@@ -1367,7 +1367,7 @@ async function renderHome(): Promise<string> {
     renderHomeCalendar(),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", state.user!.uid), limit(20))).catch(() => null),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", state.user!.uid), limit(20))).catch(() => null),
-    getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(3))).catch(() => null),
+    getDocs(query(collection(db, "guiasClub"), where("estado", "==", "aprobada"), limit(3))).catch(() => null),
     teacher ? Promise.resolve(null) : getDocs(query(collection(db, "proyectos"), limit(60))).catch(() => null),
   ]);
   const inside = presence.exists() && presenceIsCurrent(presence.data());
@@ -1382,7 +1382,7 @@ async function renderHome(): Promise<string> {
   const teacherProjects = teacher ? await renderTeacherProjectDashboard() : "";
   const studentProjects = !teacher ? await renderStudentProjectDashboard(studentProjectRecords) : "";
   const pendingShowcase = teacher && canReviewShowcase()
-    ? await getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
+    ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
     : null;
   const pendingLoans = loans.docs.filter((loan) => loan.get("estado") === "Pendiente").length;
   const featured = featuredShowcase?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
@@ -1393,7 +1393,7 @@ async function renderHome(): Promise<string> {
     try { featuredPhotos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* El resumen sigue visible si el almacenamiento no está listo. */ }
   }));
   return `${pageHeading(`Hola, ${esc(greeting)}`, teacher ? "Panel docente · equipos, actividades y revisiones." : "Panel del estudiante · tareas, proyectos y actividad del club.")}
-    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a tus equipos, orienta proyectos y revisa las propuestas del club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas" data-task-filter="pending">${icon("tareas", 20)} Actividades pendientes</button><button data-page="calendario">${icon("calendario", 20)} Agenda</button>${canReviewShowcase() ? `<button data-page="muestra">${icon("muestra", 20)} Revisar proyectos <span class="teacher-link-count">${pendingShowcase?.size ?? 0}</span></button>` : `<button data-page="muestra">${icon("muestra", 20)} Proyectos destacados</button>`}</div></section>` : ""}
+    ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a tus equipos y orienta sus guías para el club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas" data-task-filter="pending">${icon("tareas", 20)} Actividades pendientes</button><button data-page="calendario">${icon("calendario", 20)} Agenda</button>${canReviewShowcase() ? `<button data-page="muestra">${icon("muestra", 20)} Revisar guías <span class="teacher-link-count">${pendingShowcase?.size ?? 0}</span></button>` : `<button data-page="muestra">${icon("muestra", 20)} Guías de proyectos</button>`}</div></section>` : ""}
     ${overdueHomeTasks.length ? `<div class="notice-box warning home-overdue-alert"><strong>Hay ${overdueHomeTasks.length} tarea${overdueHomeTasks.length === 1 ? " atrasada" : "s atrasadas"}.</strong><span>${teacher ? "Coordina con el equipo una fecha para completar cada una." : "Revisa las fechas y acuerda con tu equipo un nuevo plan."}</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver tareas atrasadas</button></div>` : ""}
     ${nextTasks.length ? `<section class="unframed-section home-priority-section"><div class="section-heading"><div><h2>${teacher ? "Actividades próximas" : "Qué sigue"}</h2><p>${teacher ? `${tasks.size} actividad${tasks.size === 1 ? " pendiente" : "es pendientes"} asignada${tasks.size === 1 ? "" : "s"} a tu cuenta.` : `${tasks.size} tarea${tasks.size === 1 ? " pendiente" : "s pendientes"}.`}</p></div><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => homeTaskCard(item, studentProjectNames)).join("")}</div></section>` : !teacher ? `<section class="unframed-section home-priority-section"><div class="section-heading"><h2>Qué sigue</h2></div><div class="home-empty-next"><span class="state-pill success">Al día</span><p>No tienes tareas pendientes. Revisa tus proyectos o los avisos del club.</p><button class="secondary-button compact" data-page="proyectos">Ver mis proyectos</button></div></section>` : `<section class="unframed-section home-priority-section"><div class="section-heading"><h2>Actividades próximas</h2></div><div class="home-empty-next"><span class="state-pill success">Sin tareas asignadas</span><p>Las tareas de tus equipos aparecerán aquí cuando se asignen a tu cuenta.</p><button class="secondary-button compact" data-page="proyectos">Ver mis equipos</button></div></section>`}
     ${teacher ? teacherProjects : `${studentProjects}${renderStudentHomeModules(inside, tasks.size, pendingLoans)}`}
@@ -1552,13 +1552,14 @@ function showcaseDetailsMarkup(item: Record<string, any>): string {
   return `<details class="showcase-guide"><summary>Ver guía de implementación</summary><div class="showcase-details-content">${guide || `<p class="showcase-legacy-note">Esta guía se publicó con una versión anterior y aún no tiene pasos detallados.</p>`}</div></details>`;
 }
 
-function showcaseCardMarkup(item: Record<string, any>, photos: Map<string, string>, pending = false): string {
+function showcaseCardMarkup(item: Record<string, any>, photos: Map<string, string>, status: "approved" | "pending" | "rejected" = "approved"): string {
+  const pending = status === "pending";
   const areas = Array.isArray(item.areas) ? item.areas.filter((area: unknown) => typeof area === "string") : [];
   const areaText = areas.join(" · ") || "Club de Robótica";
   const level = typeof item.nivelDificultad === "string" ? item.nivelDificultad : "";
   const time = typeof item.tiempoEstimado === "string" ? item.tiempoEstimado : "";
   const searchText = normalizeSearchText([item.titulo, item.resumen, item.problema, item.funcionamiento, item.conexiones, item.pasosImplementacion, item.materiales, item.tecnologias, item.pruebas, item.aprendizajes, item.codigoPrueba, ...areas].join(" "));
-  return `<article class="showcase-card ${pending ? "pending" : ""}" data-showcase-card data-showcase-search="${esc(searchText)}" data-showcase-area="${esc(normalizeSearchText(areas.join(" ")))}" data-showcase-level="${esc(normalizeSearchText(level))}">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : pending ? "" : `<div class="showcase-cover-placeholder">${icon("proyectos", 34)}<span>Proyecto de Robótica SIL</span></div>`}${pending ? `<span class="state-pill warning">Pendiente de revisión</span>` : ""}<p class="project-area">${esc(areaText)}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-guide-meta">${level ? `<span class="showcase-guide-badge">${esc(level)}</span>` : `<span class="showcase-guide-badge muted">Nivel sin indicar</span>`}${time ? `<span class="showcase-guide-badge">${esc(time)}</span>` : ""}</div>${showcaseDetailsMarkup(item)}${pending ? `<small class="showcase-review-meta">${esc(areaText)} · Solicitud del equipo</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Solicitar cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar proyecto</button></div>` : `<small class="showcase-approved-label">Compartido con aprobación docente</small>`}</article>`;
+  return `<article class="showcase-card ${status !== "approved" ? "pending" : ""}" data-showcase-card data-showcase-search="${esc(searchText)}" data-showcase-area="${esc(normalizeSearchText(areas.join(" ")))}" data-showcase-level="${esc(normalizeSearchText(level))}">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : status === "pending" ? "" : `<div class="showcase-cover-placeholder">${icon("proyectos", 34)}<span>Proyecto de Robótica SIL</span></div>`}${status === "pending" ? `<span class="state-pill warning">Pendiente de revisión</span>` : status === "rejected" ? `<span class="state-pill warning">Cambios solicitados</span>` : ""}<p class="project-area">${esc(areaText)}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-guide-meta">${level ? `<span class="showcase-guide-badge">${esc(level)}</span>` : `<span class="showcase-guide-badge muted">Nivel sin indicar</span>`}${time ? `<span class="showcase-guide-badge">${esc(time)}</span>` : ""}</div>${showcaseDetailsMarkup(item)}${pending ? `<small class="showcase-review-meta">${esc(areaText)} · Solicitud del equipo</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Solicitar cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar proyecto</button></div>` : status === "rejected" ? `<small class="showcase-approved-label">${esc(item.comentarioRevision || "Guía devuelta para cambios")}</small>` : `<small class="showcase-approved-label">Compartido con aprobación docente</small>`}</article>`;
 }
 
 function applyShowcaseFilters(): void {
@@ -1585,9 +1586,12 @@ function applyShowcaseFilters(): void {
 
 async function renderShowcase(): Promise<string> {
   const canReview = canReviewShowcase();
+  const guideQuery = () => canManageClub()
+    ? query(collection(db, "guiasClub"), limit(100))
+    : query(collection(db, "guiasClub"), where("estado", "==", "aprobada"), limit(60));
   let approved;
   try {
-    approved = await getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60)));
+    approved = await getDocs(guideQuery());
   } catch {
     let error: unknown;
     let tokenResult: Awaited<ReturnType<User["getIdTokenResult"]>> | null = null;
@@ -1595,7 +1599,7 @@ async function renderShowcase(): Promise<string> {
       // La autorización de Firestore usa los claims del ID token, no solo el
       // estado de correo verificado que muestra el cliente Auth.
       await state.user?.getIdToken(true);
-      approved = await getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60)));
+      approved = await getDocs(guideQuery());
     } catch (retryError) {
       error = retryError;
       tokenResult = await state.user?.getIdTokenResult().catch(() => null) ?? null;
@@ -1608,27 +1612,33 @@ async function renderShowcase(): Promise<string> {
       const sameFirebaseApp = auth.app === db.app;
       const firebaseCode = String((error as { code?: string })?.code || "desconocido");
       const diagnosis = `Diagnóstico Firebase: sesión activa ${state.user ? "sí" : "no"}; correo verificado en sesión ${state.user?.emailVerified ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; perfil inicial reconocido ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; Auth y Firestore usan la misma app ${sameFirebaseApp ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}; código ${firebaseCode}.`;
-      return `${pageHeading("Proyectos destacados", "Conoce los prototipos del club que ya fueron revisados.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los proyectos</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
+      return `${pageHeading("Guías de proyectos", "Explora proyectos del club y aprende a construirlos.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar las guías</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
     }
   }
   // La cola de moderación es opcional: si sus reglas rechazan esta consulta,
   // los proyectos ya aprobados deben seguir visibles.
-  const pending = canReview
-    ? await getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
+  const allGuides = canManageClub() ? approved.docs : null;
+  const pending = canReview && !allGuides
+    ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
     : null;
-  const showcaseCards = approved.docs.map((item) => ({ id: item.id, ...item.data() }));
+  const rejected = canManageClub() ? null : canReview
+    ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "rechazada"), limit(30))).catch(() => null)
+    : null;
+  const showcaseCards = (allGuides ? allGuides.filter((item) => item.get("estado") === "aprobada") : approved.docs).map((item) => ({ id: item.id, ...item.data() }));
   showcaseCards.sort((a, b) => (b.fechaRevision?.toMillis?.() ?? 0) - (a.fechaRevision?.toMillis?.() ?? 0));
-  const reviewCards = pending?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
+  const reviewCards = (allGuides ? allGuides.filter((item) => item.get("estado") === "pendiente") : pending?.docs ?? []).map((item) => ({ id: item.id, ...item.data() }));
+  const rejectedCards = (allGuides ? allGuides.filter((item) => item.get("estado") === "rechazada") : rejected?.docs ?? []).map((item) => ({ id: item.id, ...item.data() }));
   const photos = new Map<string, string>();
-  await Promise.all([...showcaseCards, ...reviewCards].map(async (item) => {
+  await Promise.all([...showcaseCards, ...reviewCards, ...rejectedCards].map(async (item) => {
     if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
     try { photos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* La ficha sigue visible aunque no cargue la foto. */ }
   }));
   const areas = [...new Set(showcaseCards.flatMap((item) => Array.isArray(item.areas) ? item.areas.filter((area: unknown) => typeof area === "string") : []))].sort((a, b) => a.localeCompare(b, "es"));
-  return `${pageHeading("Proyectos destacados", "Explora ideas del club y aprende cómo construirlas paso a paso.")}
+  return `${pageHeading("Guías de proyectos", "Explora ideas del club y aprende cómo construirlas paso a paso.")}
     <div class="notice-box info showcase-privacy">Visible para todas las cuentas con sesión iniciada. Solo se muestran proyectos aprobados; no mostramos nombres ni correos de estudiantes y las fotos pasan por revisión docente.</div>
-    ${canReview && !pending ? `<div class="notice-box danger">No se pudo cargar la cola de revisión. Los proyectos aprobados siguen disponibles; revisa que las reglas de Firestore estén actualizadas.</div>` : ""}
-    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión de proyectos</h2><p>${canManageClub() ? "Tu cuenta de administración puede aprobar proyectos y solicitar cambios." : "Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club."}</p></div><span class="section-count">${reviewCards.length} pendientes</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => showcaseCardMarkup(item, photos, true)).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
+    ${canReview && !pending && !allGuides ? `<div class="notice-box danger">No se pudo cargar la cola de revisión. Las guías publicadas siguen disponibles; revisa las reglas de Firestore.</div>` : ""}
+    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión de guías</h2><p>${canManageClub() ? "Tu cuenta de administración puede aprobar proyectos y solicitar cambios." : "Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club."}</p></div><span class="section-count">${reviewCards.length} pendientes</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => showcaseCardMarkup(item, photos, "pending")).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
+    ${canManageClub() && rejectedCards.length ? `<section class="unframed-section"><div class="section-heading"><div><h2>Guías con cambios solicitados</h2><p>Historial de guías que esperan una nueva versión del responsable.</p></div><span class="section-count">${rejectedCards.length}</span></div><div class="showcase-grid">${rejectedCards.map((item) => showcaseCardMarkup(item, photos, "rejected")).join("")}</div></section>` : ""}
     <section class="unframed-section" data-showcase-library><div class="section-heading"><div><h2>Biblioteca de proyectos</h2><p>Explora ideas y sigue las guías para aprender construyendo.</p></div><span class="section-count" data-showcase-result-count>${showcaseCards.length} ${showcaseCards.length === 1 ? "guía" : "guías"}</span></div>${showcaseCards.length ? `<div class="showcase-filters"><label>Buscar guía<input type="search" data-showcase-search-input placeholder="Sensor, robot, Arduino…" /></label><label>Área<select data-showcase-area-filter><option value="">Todas las áreas</option>${areas.map((area) => `<option value="${esc(area)}">${esc(area)}</option>`).join("")}</select></label><label>Nivel<select data-showcase-level-filter><option value="">Todos los niveles</option><option>Inicial</option><option>Intermedio</option><option>Avanzado</option></select></label></div><p class="showcase-filter-empty" data-showcase-filter-empty hidden>No encontramos guías con esos filtros. Prueba otra búsqueda o cambia el área.</p><div class="showcase-grid">${showcaseCards.map((item) => showcaseCardMarkup(item, photos)).join("")}</div>` : emptyPanel("Todavía no hay guías de proyectos", "Desde un proyecto, el responsable puede preparar una guía y enviarla a revisión docente.")}</section>`;
 }
 
@@ -2328,7 +2338,7 @@ async function renderTeachers(): Promise<string> {
   const reviewers = teachers.filter((teacher) => teacher.autorizado === true && teacher.docenteRevisor === true).length;
   return `${pageHeading("Docentes", "Administra las cuentas docentes y quién puede revisar proyectos.", `<label class="search-field">${icon("buscar")}<input id="teacher-search" placeholder="Buscar docente" /></label>`)}
     <section class="teacher-directory-summary" aria-label="Resumen de docentes"><span><strong>${teachers.length}</strong> registrados</span><span><strong>${authorized}</strong> autorizados</span><span><strong>${reviewers}</strong> revisores de proyectos</span></section>
-    ${teachers.length ? `<div class="table-wrap"><table><thead><tr><th>Docente</th><th>Área de enseñanza</th><th>Acceso</th><th>Rol en la PWA</th><th>Revisión de proyectos</th></tr></thead><tbody>${teachers.map((teacher) => teacherRow(teacher)).join("")}</tbody></table></div>` : emptyPanel("Aún no hay docentes registrados", "Las cuentas que elijan “Docente” al registrarse aparecerán aquí para que puedas autorizarlas y asignarles permisos.")}`;
+    ${teachers.length ? `<div class="table-wrap"><table><thead><tr><th>Docente</th><th>Área de enseñanza</th><th>Acceso</th><th>Rol en la PWA</th><th>Revisión de guías</th></tr></thead><tbody>${teachers.map((teacher) => teacherRow(teacher)).join("")}</tbody></table></div>` : emptyPanel("Aún no hay docentes registrados", "Las cuentas que elijan “Docente” al registrarse aparecerán aquí para que puedas autorizarlas y asignarles permisos.")}`;
 }
 
 function teacherRow(teacher: Record<string, any>): string {
@@ -3697,7 +3707,7 @@ async function requestProjectShowcase(projectId: string, project: DocumentData, 
   const previous = existing || {};
   const summary = String(previous.resumen || project.objetivo || project.descripcion || "");
   formDialog.innerHTML = `<form class="dialog-form" data-form="showcase-request" data-project="${esc(projectId)}" data-resubmit="${previous.estado === "rechazada"}">
-    <div class="dialog-head"><div><p class="eyebrow">MUESTRA DEL CLUB</p><h2>Presenta el proyecto</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div>
+    <div class="dialog-head"><div><p class="eyebrow">GUÍAS DE PROYECTOS</p><h2>Presenta el proyecto</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div>
     <p class="showcase-form-intro">La ficha será visible dentro del club cuando un docente la apruebe. No incluiremos nombres ni correos del equipo.</p>
     <label>Nombre del proyecto<input name="titulo" value="${esc(previous.titulo || project.nombre || project.titulo || "")}" maxlength="100" required /></label>
     <label>Resumen breve<textarea name="resumen" rows="2" maxlength="600" required placeholder="Qué construyeron y qué hace">${esc(summary)}</textarea></label>
@@ -3749,7 +3759,7 @@ async function submitShowcaseRequest(form: HTMLFormElement): Promise<void> {
   setBusy(button, true, "Enviando");
   let uploadedPath = "";
   try {
-    const publicationRef = doc(db, "muestras", projectId);
+    const publicationRef = doc(db, "guiasClub", projectId);
     const [existingSnapshot, projectSnapshot] = await Promise.all([
       getDoc(publicationRef),
       getDoc(doc(db, "proyectos", projectId)),
@@ -3786,13 +3796,13 @@ async function resolveShowcaseReview(button: HTMLButtonElement): Promise<void> {
   setBusy(button, true, decision === "aprobada" ? "Publicando" : "Guardando revisión");
   try {
     const comment = button.closest<HTMLElement>(".showcase-card")?.querySelector<HTMLInputElement>("[data-review-comment]")?.value.trim() || "";
-    await updateDoc(doc(db, "muestras", projectId), {
+    await updateDoc(doc(db, "guiasClub", projectId), {
       estado: decision,
       revisadoPorUid: state.user.uid,
       fechaRevision: serverTimestamp(),
       comentarioRevision: decision === "rechazada" ? comment.slice(0, 500) : "",
     });
-    notify(decision === "aprobada" ? "Proyecto aprobado y publicado en Proyectos destacados." : "Se enviaron los comentarios al responsable.");
+    notify(decision === "aprobada" ? "Proyecto aprobado y publicado en Guías de proyectos." : "Se enviaron los comentarios al responsable.");
     await loadPage();
   } catch (error) {
     setBusy(button, false);
@@ -4283,16 +4293,16 @@ async function showProject(id: string): Promise<void> {
   const percent = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const completionEvent = await getDoc(doc(db, "proyectos", id, "eventos", "completado-v1")).catch(() => null);
   const canEditResponsible = canManageClub() || (!isStudentPreview() && data.creadoPorUid === state.user?.uid);
-  const showcaseSnapshot = await getDoc(doc(db, "muestras", id)).catch(() => null);
+  const showcaseSnapshot = await getDoc(doc(db, "guiasClub", id)).catch(() => null);
   const showcase = showcaseSnapshot?.exists() ? showcaseSnapshot.data() : null;
   const canRequestShowcase = (lead || canManageClub()) && !isStudentPreview();
   const showcaseBlock = showcase?.estado === "aprobada"
-    ? `<div class="notice-box info project-showcase-status">Este proyecto aparece en Proyectos destacados para las cuentas del club.</div>`
+    ? `<div class="notice-box info project-showcase-status">Esta guía aparece en Guías de proyectos para las cuentas del club.</div>`
     : showcase?.estado === "pendiente"
       ? `<div class="notice-box warning project-showcase-status">La solicitud de publicación espera revisión docente.</div>`
       : showcase?.estado === "rechazada"
         ? `<div class="notice-box warning project-showcase-status">Se solicitaron ajustes${showcase.comentarioRevision ? `: ${esc(showcase.comentarioRevision)}` : "."}</div>${canRequestShowcase ? `<button class="secondary-button compact" data-action="request-project-showcase" data-id="${esc(id)}">Volver a solicitar publicación</button>` : ""}`
-        : canRequestShowcase ? `<button class="secondary-button compact project-showcase-request" data-action="request-project-showcase" data-id="${esc(id)}">Solicitar publicación en Proyectos destacados</button>` : "";
+        : canRequestShowcase ? `<button class="secondary-button compact project-showcase-request" data-action="request-project-showcase" data-id="${esc(id)}">Enviar guía a revisión</button>` : "";
   let decisionLog: QueryDocumentSnapshot<DocumentData>[] = [];
   let materialRequests: QueryDocumentSnapshot<DocumentData>[] = [];
   if (joined || lead || canManageClub()) {
