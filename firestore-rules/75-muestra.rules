@@ -52,6 +52,11 @@
               && data.fotoPath.matches("proyectos/" + proyectoId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
       }
 
+      // Las cuentas administradoras iniciales pueden consultar toda esta
+      // colección para gestionar la muestra, incluso si su perfil quedó
+      // desincronizado. El permiso se limita a /muestras.
+      allow read: if esAdministradorInicial();
+
       // Mantener la lectura del catálogo aprobado en una regla simple permite
       // que Firestore compruebe la consulta filtrada por estado sin evaluar el
       // perfil. Las solicitudes pendientes siguen limitadas a responsables y
