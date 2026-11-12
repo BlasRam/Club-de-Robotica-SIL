@@ -145,7 +145,7 @@
       allow delete: if false;
     }
 
-    // Catálogo público depurado: solo contiene campos didácticos, sin datos de
+    // Catálogo depurado: solo contiene campos didácticos, sin datos de
     // solicitante ni comentarios privados. Las solicitudes permanecen en
     // guiasClub y conservan sus reglas privadas.
     match /guiasPublicadas/{guiaId} {
@@ -191,7 +191,7 @@
               && data.fotoPath.matches("proyectos/" + guiaId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
       }
 
-      allow read: if true;
+      allow read: if estaAutenticado();
       allow create, update: if (esAdministradorInicial() || esGestorClub() || esRevisorDeGuias())
         && guiaPublicaValida(request.resource.data);
       allow delete: if esAdministradorInicial() || esGestorClub() || esRevisorDeGuias();

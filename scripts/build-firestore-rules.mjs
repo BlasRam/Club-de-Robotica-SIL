@@ -22,7 +22,7 @@ const sections = [
   ["proyectos", "70-proyectos.rules"],
   ["guiasClub", "75-guias-club.rules"],
 ];
-const closing = "    }\n  }\n}\n";
+const closing = "  }\n}\n";
 
 async function splitCurrentRules() {
   const source = await readFile(output, "utf8");
@@ -62,6 +62,26 @@ async function buildRules() {
     parts.push(await readFile(path.join(sourceDir, filename), "utf8"));
   }
   const assembled = `${parts.map((part) => part.trim()).join("\n\n")}\n\n${closing}`;
+  const rootCollections = new Set([...sections.map(([collection]) => collection), "guiasPublicadas"]);
+  let depth = 0;
+  for (const line of assembled.split("\n")) {
+    const match = line.match(/^\s*match \/([A-Za-z]+)\/\{/);
+    if (match && rootCollections.has(match[1]) && depth !== 2) {
+      throw new Error(`La colección ${match[1]} está anidada: profundidad ${depth}, esperada 2.`);
+    }
+    let quote = null;
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (quote) {
+        if (character === "\\") index += 1;
+        else if (character === quote) quote = null;
+      } else if (character === "/" && line[index + 1] === "/") break;
+      else if (character === "'" || character === '"') quote = character;
+      else if (character === "{") depth += 1;
+      else if (character === "}") depth -= 1;
+    }
+  }
+  if (depth !== 0) throw new Error(`Las reglas tienen ${depth} bloques sin cerrar.`);
   await writeFile(output, assembled, "utf8");
   console.log(`Generado firestore.rules (${Buffer.byteLength(assembled, "utf8")} bytes).`);
 }

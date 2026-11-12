@@ -69,7 +69,7 @@ jobs:
           ruleset_name="$(jq -er '.rulesetName' <<< "$release")"
           ruleset="$(curl --fail --silent --show-error -H "Authorization: Bearer $access_token" \
             "https://firebaserules.googleapis.com/v1/$ruleset_name")"
-          jq -e '[.source.files[].content | contains("match /guiasPublicadas/{guiaId}") and contains("allow read: if true;")] | any' \
+          jq -e '[.source.files[].content | contains("match /guiasPublicadas/{guiaId}") and contains("allow read: if estaAutenticado();")] | any' \
             <<< "$ruleset" > /dev/null
           echo "La versión activa de las reglas permite leer guiasPublicadas."
 
