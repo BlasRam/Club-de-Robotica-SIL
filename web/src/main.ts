@@ -347,6 +347,13 @@ history.replaceState({ cdrBase: true, cdrPage: state.page }, "", location.href);
 history.pushState({ cdrBackGuard: true }, "", location.href);
 
 function navigatePage(page: Page, taskFilter?: TaskFilter, searchTerm?: string): void {
+  if (!isAuthorized() && !canUseWhileAccessPending(page)) {
+    state.page = "inicio";
+    state.menuOpen = false;
+    notify("Tu perfil sigue pendiente. Puedes consultar la muestra aprobada y tu cuenta.", "error");
+    render();
+    return;
+  }
   const samePage = state.page === page;
   if (state.page !== page) {
     pageTrail.push(page);
@@ -546,6 +553,10 @@ function createStudentSandbox(): StudentSandbox {
 
 function isAuthorized(): boolean {
   return isAdmin() || state.profile?.autorizado === true;
+}
+
+function canUseWhileAccessPending(page: Page): boolean {
+  return ["inicio", "muestra", "perfil", "configuracion", "sugerencias"].includes(page);
 }
 
 function dateText(value: unknown, withTime = false): string {
@@ -794,7 +805,7 @@ function navItems(): { id: Page; label: string }[] {
   ];
   if (isAdminInterface()) items.push({ id: "inventario", label: "Inventario" }, { id: "estudiantes", label: "Estudiantes" });
   items.push({ id: "configuracion", label: "Configuración" });
-  return items;
+  return isAuthorized() ? items : items.filter((item) => canUseWhileAccessPending(item.id));
 }
 
 function isStandaloneDisplay(): boolean {
@@ -852,7 +863,7 @@ function appShell(content: string): string {
         <header class="topbar">
           <button class="icon-button student-menu-button" data-action="toggle-menu" aria-label="Abrir menú" title="Menú" aria-expanded="${state.menuOpen}">${icon("menu")}</button>
           <div class="crumb"><span>${CLUB_SHORT_NAME}</span><span class="crumb-sep">/</span><strong>${esc(state.page === "perfil" ? "Perfil" : items.find((item) => item.id === state.page)?.label ?? "Inicio")}</strong></div>
-          <div class="topbar-right"><span class="connection ${navigator.onLine ? "" : "offline"}" title="${navigator.onLine ? "Conexión a internet disponible" : "Sin conexión a internet; las funciones en línea están pausadas"}"><i></i>${navigator.onLine ? "En línea" : "Sin conexión"}</span><span class="role-tag">${isStudentPreview() ? "VISTA ESTUDIANTE" : isAdmin() ? "ADMIN" : isModerator() ? "MODERADOR" : "ESTUDIANTE"}</span>${isAdmin() ? `<button class="secondary-button student-preview-toggle" data-action="toggle-student-preview" aria-label="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}" title="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}">${icon("estudiantes", 16)}<span>${isStudentPreview() ? "Volver a admin" : "Ver como estudiante"}</span></button><button class="secondary-button admin-layout-toggle" data-action="toggle-admin-layout" aria-pressed="${state.desktopPreview}" title="Cambiar vista de administración">${icon(state.desktopPreview ? "vistaMovil" : "vistaEscritorio", 16)}<span>${state.desktopPreview ? "Vista móvil" : "Vista escritorio"}</span></button>` : ""}${mobileInstallButton("secondary-button mobile-install")}${!isStudentPreview() ? `<button class="icon-button global-search-trigger" data-action="global-search" title="Buscar en la plataforma" aria-label="Buscar en la plataforma">${icon("buscar")}</button>` : ""}<button class="icon-button student-bell-button ${state.page === "avisos" ? "active" : ""}" data-page="avisos" title="Notificaciones" aria-label="Notificaciones, ${state.unreadNotifications} sin leer">${icon("campana")}<span class="notification-badge" ${state.unreadNotifications ? "" : "hidden"}>${state.unreadNotifications > 99 ? "99+" : state.unreadNotifications}</span></button><button class="icon-button profile-shortcut" data-page="perfil" title="Mi perfil" aria-label="Abrir mi perfil">${icon("perfil")}</button></div>
+          <div class="topbar-right"><span class="connection ${navigator.onLine ? "" : "offline"}" title="${navigator.onLine ? "Conexión a internet disponible" : "Sin conexión a internet; las funciones en línea están pausadas"}"><i></i>${navigator.onLine ? "En línea" : "Sin conexión"}</span><span class="role-tag">${isStudentPreview() ? "VISTA ESTUDIANTE" : isAdmin() ? "ADMIN" : isModerator() ? "MODERADOR" : state.profile?.tipoUsuario === "docente" ? "DOCENTE" : "ESTUDIANTE"}</span>${isAdmin() ? `<button class="secondary-button student-preview-toggle" data-action="toggle-student-preview" aria-label="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}" title="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}">${icon("estudiantes", 16)}<span>${isStudentPreview() ? "Volver a admin" : "Ver como estudiante"}</span></button><button class="secondary-button admin-layout-toggle" data-action="toggle-admin-layout" aria-pressed="${state.desktopPreview}" title="Cambiar vista de administración">${icon(state.desktopPreview ? "vistaMovil" : "vistaEscritorio", 16)}<span>${state.desktopPreview ? "Vista móvil" : "Vista escritorio"}</span></button>` : ""}${mobileInstallButton("secondary-button mobile-install")}${isAuthorized() && !isStudentPreview() ? `<button class="icon-button global-search-trigger" data-action="global-search" title="Buscar en la plataforma" aria-label="Buscar en la plataforma">${icon("buscar")}</button>` : ""}<button class="icon-button student-bell-button ${state.page === "avisos" ? "active" : ""}" data-page="avisos" title="Notificaciones" aria-label="Notificaciones, ${state.unreadNotifications} sin leer">${icon("campana")}<span class="notification-badge" ${state.unreadNotifications ? "" : "hidden"}>${state.unreadNotifications > 99 ? "99+" : state.unreadNotifications}</span></button><button class="icon-button profile-shortcut" data-page="perfil" title="Mi perfil" aria-label="Abrir mi perfil">${icon("perfil")}</button></div>
         </header>
         ${!navigator.onLine ? `<div class="offline-banner" role="status">Sin conexión a internet. Espera a reconectarte antes de guardar cambios.</div>` : ""}
         <main id="page-content" class="page-content">${content}</main>
@@ -860,7 +871,7 @@ function appShell(content: string): string {
       ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><div><strong>Nueva versión lista</strong><small>La aplicación se recargará para aplicar la actualización.</small></div><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
       ${onboardingModal}
       <nav class="mobile-nav" aria-label="Navegación móvil">
-        ${items.filter((item) => ["inicio", "tareas", "acceso", "proyectos", "avisos"].includes(item.id)).map((item) => `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}">${icon(item.id, 19)}<span>${item.label}</span></button>`).join("")}
+        ${items.filter((item) => (isAuthorized() ? ["inicio", "tareas", "acceso", "proyectos", "avisos"] : ["inicio", "muestra", "sugerencias", "configuracion"]).includes(item.id)).map((item) => `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}">${icon(item.id, 19)}<span>${item.label}</span></button>`).join("")}
       </nav>
       <div id="toast" class="toast" role="status"></div>
     </div>`;
@@ -1094,6 +1105,10 @@ async function loadPage(): Promise<void> {
 }
 
 async function pageContent(page: Page): Promise<string> {
+  if (!isAuthorized() && !canUseWhileAccessPending(page)) {
+    state.page = "inicio";
+    return pendingNotice();
+  }
   if (isStudentPreview()) {
     if (page === "perfil") return renderSandboxProfile();
     if (page === "configuracion") return renderSettings();
@@ -1269,16 +1284,17 @@ async function renderHome(): Promise<string> {
   const greeting = fullName().split(" ")[0];
   if (!isAuthorized()) {
     return `${pageHeading(`Hola, ${esc(greeting)}`, "Tu perfil está pendiente de autorización.")}
-      <section class="pending-banner">${icon("alerta", 22)}<div><strong>Solicitud en revisión</strong><p>El administrador debe autorizar tu cuenta antes de habilitar proyectos, préstamos y control de acceso.</p></div></section>
+      <section class="pending-banner">${icon("alerta", 22)}<div><strong>Solicitud en revisión</strong><p>Mientras se revisa tu cuenta, puedes consultar proyectos aprobados y enviar una sugerencia. El administrador habilitará tareas, proyectos y préstamos al autorizarte.</p><div class="card-actions"><button class="secondary-button compact" data-page="muestra">Ver proyectos aprobados</button><button class="text-button" data-page="sugerencias">Enviar sugerencia</button></div></div></section>
       <section class="unframed-section"><h2>Tu perfil</h2><div class="profile-line"><span>Correo institucional</span><strong>${esc(state.profile?.correoInstitucional)}</strong></div><div class="profile-line"><span>Área de interés</span><strong>${esc(state.profile?.carrera || "Sin indicar")}</strong></div></section>`;
   }
   if (isAdminInterface()) {
-    const [students, pendingLoans, activeLoans, projects, pendingAccess] = await Promise.all([
+    const [students, pendingLoans, activeLoans, projects, pendingAccess, pendingShowcase] = await Promise.all([
       getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"))),
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Pendiente"))),
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Aprobada"))),
       getDocs(query(collection(db, "proyectos"), where("estado", "==", "Activo"))),
       getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"), where("autorizado", "==", false))),
+      getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null),
     ]);
     const recent = await getDocs(query(collection(db, "accesos"), orderBy("fechaHora", "desc"), limit(30)));
     const recentEntries = recent.docs.filter((item) => item.get("tipo") === "entrada").slice(0, 5);
@@ -1287,20 +1303,22 @@ async function renderHome(): Promise<string> {
       <section class="metrics-grid">
         ${metric("Estudiantes", students.size, "Personas registradas", "estudiantes", "people")}
         ${metric("Acceso pendiente", pendingAccess.size, "Requieren revisión", "estudiantes", "alert")}
+        ${metric("Muestra por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase")}
         ${metric("Préstamos pendientes", pendingLoans.size, "Solicitudes por resolver", "prestamos", "loan")}
         ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
         ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
       </section>
-      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos", "prestamos", "prestamos", "loans")}${adminQuickLink("Estudiantes", "estudiantes", "estudiantes", "people")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
+      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos", "prestamos", "prestamos", "loans")}${adminQuickLink("Estudiantes", "estudiantes", "estudiantes", "people")}${adminQuickLink("Muestra", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
       <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
   }
-  const [loans, presence, notices, calendar, assignedByOwner, assignedByList] = await Promise.all([
+  const [loans, presence, notices, calendar, assignedByOwner, assignedByList, featuredShowcase] = await Promise.all([
     getDocs(query(collection(db, "reservas"), where("solicitanteUid", "==", state.user!.uid))),
     getDoc(doc(db, "presencias", state.user!.uid)),
     getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(10))),
     renderHomeCalendar(),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", state.user!.uid), limit(20))).catch(() => null),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", state.user!.uid), limit(20))).catch(() => null),
+    getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(3))).catch(() => null),
   ]);
   const inside = presence.exists() && presenceIsCurrent(presence.data());
   const tasks = new Map<string, QueryDocumentSnapshot<DocumentData>>();
@@ -1317,17 +1335,24 @@ async function renderHome(): Promise<string> {
     ? await getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
     : null;
   const pendingLoans = loans.docs.filter((loan) => loan.get("estado") === "Pendiente").length;
+  const featured = featuredShowcase?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
   return `${pageHeading(`Hola, ${esc(greeting)}`, teacher ? "Panel docente · equipos, actividades y revisiones." : "Panel del estudiante · tareas, proyectos y actividad del club.")}
     ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a los equipos, orienta proyectos y revisa los avances del club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas" data-task-filter="pending">${icon("tareas", 20)} Actividades pendientes</button><button data-page="calendario">${icon("calendario", 20)} Calendario</button><button data-page="muestra">${icon("muestra", 20)} ${canReviewShowcase() ? `Revisiones (${pendingShowcase?.size ?? 0})` : "Muestra"}</button></div></section>${teacherProjects}` : ""}
     ${!teacher ? renderStudentHomeModules(inside, tasks.size, pendingLoans) : ""}
     ${overdueHomeTasks.length ? `<div class="notice-box warning home-overdue-alert"><strong>Hay ${overdueHomeTasks.length} tarea${overdueHomeTasks.length === 1 ? " atrasada" : "s atrasadas"}.</strong><span>Revísalas y acuerda con tu equipo un nuevo plan.</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver tareas atrasadas</button></div>` : ""}
     ${nextTasks.length ? `<section class="unframed-section"><div class="section-heading"><h2>${teacher ? "Actividades próximas" : "Mis tareas pendientes"}</h2><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => `<button class="home-task-item" data-page="tareas" data-task-filter="pending"><span class="state-pill warning">Pendiente</span><strong>${esc(item.get("titulo") || "Tarea")}</strong>${item.get("fechaLimite") ? `<small>Entrega: ${dateText(item.get("fechaLimite"))}</small>` : ""}</button>`).join("")}</div></section>` : ""}
     ${calendar}
+    ${renderHomeShowcase(featured)}
     <section class="unframed-section"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${importantNotices.length ? `<div class="notice-list">${importantNotices.map((item) => noticeCard(item.id, item.data, false)).join("")}</div>` : emptyInline("No hay avisos publicados.")}</section>`;
 }
 
+function renderHomeShowcase(items: Array<{ id: string; titulo?: string; resumen?: string }>): string {
+  if (!items.length) return "";
+  return `<section class="unframed-section home-showcase"><div class="section-heading"><div><h2>Ideas del club</h2><p>Proyectos que ya pasaron la revisión docente.</p></div><button class="text-button" data-page="muestra">Ver la muestra ${icon("ir", 14)}</button></div><div class="home-showcase-grid">${items.map((item) => `<button class="home-showcase-card" data-page="muestra"><span class="project-mark">${icon("muestra", 20)}</span><strong>${esc(item.titulo || "Proyecto destacado")}</strong><small>${esc(item.resumen || "Conoce el prototipo y los aprendizajes del equipo.")}</small></button>`).join("")}</div></section>`;
+}
+
 function metric(title: string, value: number, hint: string, page: Page, tone = "plain"): string {
-  const visualIcon = tone === "people" ? icon("estudiantes") : tone === "loan" || tone === "active" ? icon("prestamos") : tone === "project" ? icon("proyectos") : tone === "alert" ? icon("alerta") : icon("inicio");
+  const visualIcon = tone === "people" ? icon("estudiantes") : tone === "loan" || tone === "active" ? icon("prestamos") : tone === "project" ? icon("proyectos") : tone === "showcase" ? icon("muestra") : tone === "alert" ? icon("alerta") : icon("inicio");
   return `<button class="metric-card" data-page="${page}"><span class="metric-symbol ${tone}">${visualIcon}</span><span class="metric-value">${value}</span><span class="metric-title">${title}</span><span class="metric-hint">${hint}</span></button>`;
 }
 
@@ -2002,7 +2027,11 @@ async function renderLoans(): Promise<string> {
 
 function loanCard(loan: Record<string, any>): string {
   const status = String(loan.estado || "Pendiente");
-  const statusClass = status === "Aprobada" ? "success" : status === "Pendiente" ? "warning" : "muted";
+  const dueDate = taskDueDate({ fechaLimite: loan.fechaDevolucion });
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const overdue = status === "Aprobada" && dueDate !== null && dueDate < today;
+  const statusClass = overdue ? "danger" : status === "Aprobada" ? "success" : status === "Pendiente" ? "warning" : "muted";
+  const statusLabel = overdue ? "Devolución atrasada" : status;
   let actions = "";
   if (isAdminInterface() && status === "Pendiente") actions = `<div class="card-actions"><button class="secondary-button compact" data-action="loan-reject" data-id="${esc(loan.id)}">Rechazar</button><button class="primary-button compact" data-action="loan-approve" data-id="${esc(loan.id)}">Aprobar</button></div>`;
   const requestPending = loan.estadoSolicitud === "Pendiente";
@@ -2010,7 +2039,7 @@ function loanCard(loan: Record<string, any>): string {
   if (isAdminInterface() && status === "Aprobada" && requestPending) actions = `<div class="notice-box info loan-request-note">Solicitud de ${requestKind}${loan.accionSolicitada === "Prorroga" ? ` hasta ${dateText(loan.fechaDevolucionPropuesta)}` : ""} · ${esc(loan.solicitanteNombre || "Estudiante")}</div><div class="card-actions"><button class="secondary-button compact" data-action="loan-request-reject" data-id="${esc(loan.id)}">Rechazar solicitud</button><button class="primary-button compact" data-action="loan-request-approve" data-id="${esc(loan.id)}">${loan.accionSolicitada === "Devolucion" ? "Registrar devolución" : "Aprobar prórroga"}</button></div>`;
   else if (isAdminInterface() && status === "Aprobada") actions = `<div class="card-actions"><button class="secondary-button compact" data-action="loan-return" data-id="${esc(loan.id)}">Registrar devolución</button></div>`;
   if (!isAdminInterface() && status === "Aprobada") actions = `<div class="card-actions"><button class="secondary-button compact" data-action="loan-detail" data-id="${esc(loan.id)}">Ver detalles y acciones</button>${requestPending ? `<span class="state-pill warning">Solicitud de ${requestKind} pendiente</span>` : loan.estadoSolicitud ? `<span class="state-pill ${loan.estadoSolicitud === "Aprobada" ? "success" : "muted"}">Última solicitud ${esc(loan.estadoSolicitud.toLowerCase())}</span>` : ""}</div>`;
-  return `<article class="loan-card"><div class="loan-icon">${icon("prestamos", 21)}</div><div class="loan-copy"><div class="loan-title-row"><h3>${esc(loan.recursoNombre || "Artículo")}</h3><span class="state-pill ${statusClass}">${esc(status)}</span></div><p>${esc(loan.solicitanteNombre || "Solicitante")} · ${Number(loan.cantidadSolicitada || 1)} unidad(es)</p><p class="loan-purpose">${esc(loan.motivo || "Sin propósito indicado")}</p><div class="loan-dates"><span>${icon("fecha", 14)} Inicio: ${dateText(loan.fechaInicioUso)}</span><span>${icon("fecha", 14)} Devolución: ${dateText(loan.fechaDevolucion)}</span></div>${actions}</div></article>`;
+  return `<article class="loan-card ${overdue ? "loan-overdue" : ""}"><div class="loan-icon">${icon("prestamos", 21)}</div><div class="loan-copy"><div class="loan-title-row"><h3>${esc(loan.recursoNombre || "Artículo")}</h3><span class="state-pill ${statusClass}">${esc(statusLabel)}</span></div><p>${esc(loan.solicitanteNombre || "Solicitante")} · ${Number(loan.cantidadSolicitada || 1)} unidad(es)</p><p class="loan-purpose">${esc(loan.motivo || "Sin propósito indicado")}</p><div class="loan-dates"><span>${icon("fecha", 14)} Inicio: ${dateText(loan.fechaInicioUso)}</span><span>${icon("fecha", 14)} Devolución: ${dateText(loan.fechaDevolucion)}</span></div>${overdue ? `<div class="notice-box warning loan-overdue-note">La fecha de devolución ya pasó. Coordina la devolución con administración.</div>` : ""}${actions}</div></article>`;
 }
 
 async function openLoanDetail(id: string): Promise<void> {
@@ -4045,7 +4074,7 @@ async function showProject(id: string): Promise<void> {
   const showcase = showcaseSnapshot?.exists() ? showcaseSnapshot.data() : null;
   const canRequestShowcase = (lead || canManageClub()) && !isStudentPreview();
   const showcaseBlock = showcase?.estado === "aprobada"
-    ? `<div class="notice-box info project-showcase-status">Este proyecto está en la muestra privada del club.</div>`
+    ? `<div class="notice-box info project-showcase-status">Este proyecto está publicado en la muestra para las cuentas del club.</div>`
     : showcase?.estado === "pendiente"
       ? `<div class="notice-box warning project-showcase-status">La solicitud de publicación espera revisión docente.</div>`
       : showcase?.estado === "rechazada"

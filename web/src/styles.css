@@ -288,6 +288,29 @@ html[data-theme="dark"] .admin-shortcut.notices{background:#39252b;border-color:
   .sidebar-collapsed .sidebar-brand-row .brand span,.sidebar-collapsed .nav-caption,.sidebar-collapsed .side-nav,.sidebar-collapsed .sidebar-bottom{display:none}
 }
 @media(max-width:680px){.admin-interface .topbar .student-menu-button{display:inline-flex}.sidebar-menu-toggle{display:none}}
+
+/* Mobile header stays on one line; account tools live in the drawer. */
+@media(max-width:680px){
+  .topbar{height:56px;min-height:56px;flex-wrap:nowrap;gap:7px;padding:0 10px;overflow:hidden}
+  .topbar .student-menu-button{flex:none}
+  .topbar .crumb{min-width:0;flex:1;overflow:hidden}
+  .topbar .crumb>span:first-child,.topbar .crumb .crumb-sep{display:none}
+  .topbar .crumb strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .topbar-right{flex:none;margin-left:auto;gap:4px}
+  .topbar-right>.connection,.topbar-right>.role-tag,.topbar-right>.student-preview-toggle,.topbar-right>.admin-layout-toggle,.topbar-right>.mobile-install{display:none!important}
+  .topbar-right>.icon-button{width:34px;height:34px;padding:0}
+  .mobile-nav-item span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px}
+}
+
+.metric-symbol.showcase{background:#fff6dc;color:#8b6400}
+.home-showcase-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.home-showcase-card{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:start;gap:6px 10px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);text-align:left}
+.home-showcase-card .project-mark{grid-row:span 2}
+.home-showcase-card strong{font-size:12px;overflow-wrap:anywhere}
+.home-showcase-card small{color:var(--muted);font-size:11px;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.loan-overdue{border-color:#e4b7bf!important;border-left:4px solid var(--school-red)!important}
+.loan-overdue-note{margin-top:10px}
+@media(max-width:680px){.home-showcase-grid{grid-template-columns:1fr}.home-showcase-card{min-height:68px}.metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 html[data-theme="dark"] .student-bell-button{background:#202329;border-color:var(--line);color:var(--ink)}
 html[data-theme="dark"] .student-bell-button.active{background:#39252b;border-color:#65323b;color:#ff9ba8}
 
