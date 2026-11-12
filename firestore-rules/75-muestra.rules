@@ -6,6 +6,40 @@
           && usuarioActual().data.get("tipoUsuario", "") == "docente";
       }
 
+      function fichaValida(data) {
+        return data.titulo is string
+          && data.titulo.size() > 0
+          && data.titulo.size() <= 100
+          && data.resumen is string
+          && data.resumen.size() > 0
+          && data.resumen.size() <= 600
+          && data.problema is string
+          && data.problema.size() > 0
+          && data.problema.size() <= 600
+          && data.funcionamiento is string
+          && data.funcionamiento.size() > 0
+          && data.funcionamiento.size() <= 1000
+          && data.tecnologias is string
+          && data.tecnologias.size() > 0
+          && data.tecnologias.size() <= 500
+          && data.pruebas is string
+          && data.pruebas.size() > 0
+          && data.pruebas.size() <= 1000
+          && data.aprendizajes is string
+          && data.aprendizajes.size() > 0
+          && data.aprendizajes.size() <= 1000
+          && data.areas is list
+          && data.areas.size() <= 3
+          && data.areas.hasOnly(["Electrónica", "Mecánica", "Programación"])
+          && data.materiales is string
+          && data.materiales.size() <= 800
+          && data.videoUrl is string
+          && data.videoUrl.size() <= 400
+          && (!data.keys().hasAny(["fotoPath"])
+            || (data.fotoPath is string
+              && data.fotoPath.matches("proyectos/" + proyectoId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
+      }
+
       allow read: if estaAutorizado()
         && (resource.data.estado == "aprobada"
           || resource.data.solicitadoPorUid == request.auth.uid
@@ -16,26 +50,19 @@
         && (esGestorClub() || esResponsableProyecto(proyectoId))
         && exists(/databases/$(database)/documents/proyectos/$(proyectoId))
         && request.resource.data.keys().hasOnly([
-          "proyectoId", "titulo", "resumen", "areas", "materiales", "estado",
+          "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
+          "pruebas", "aprendizajes", "areas", "materiales", "videoUrl", "fotoPath", "estado",
           "solicitadoPorUid", "solicitadoPorNombre", "fechaSolicitud",
           "revisadoPorUid", "fechaRevision", "comentarioRevision"
         ])
         && request.resource.data.keys().hasAll([
-          "proyectoId", "titulo", "resumen", "areas", "materiales", "estado",
+          "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
+          "pruebas", "aprendizajes", "areas", "materiales", "videoUrl", "estado",
           "solicitadoPorUid", "solicitadoPorNombre", "fechaSolicitud",
           "revisadoPorUid", "fechaRevision", "comentarioRevision"
         ])
         && request.resource.data.proyectoId == proyectoId
-        && request.resource.data.titulo is string
-        && request.resource.data.titulo.size() > 0
-        && request.resource.data.titulo.size() <= 100
-        && request.resource.data.resumen is string
-        && request.resource.data.resumen.size() > 0
-        && request.resource.data.resumen.size() <= 600
-        && request.resource.data.areas is list
-        && request.resource.data.areas.size() <= 3
-        && request.resource.data.materiales is string
-        && request.resource.data.materiales.size() <= 800
+        && fichaValida(request.resource.data)
         && request.resource.data.estado == "pendiente"
         && request.resource.data.solicitadoPorUid == request.auth.uid
         && request.resource.data.solicitadoPorNombre is string
@@ -64,9 +91,21 @@
           && resource.data.estado == "rechazada"
           && resource.data.solicitadoPorUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "estado", "solicitadoPorNombre", "fechaSolicitud", "revisadoPorUid",
+            "titulo", "resumen", "problema", "funcionamiento", "tecnologias", "pruebas",
+            "aprendizajes", "areas", "materiales", "videoUrl", "fotoPath", "estado",
+            "solicitadoPorNombre", "fechaSolicitud", "revisadoPorUid",
             "fechaRevision", "comentarioRevision"
           ])
+          && request.resource.data.keys().hasAll([
+            "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
+            "pruebas", "aprendizajes", "areas", "materiales", "videoUrl", "estado",
+            "solicitadoPorUid", "solicitadoPorNombre", "fechaSolicitud",
+            "revisadoPorUid", "fechaRevision", "comentarioRevision"
+          ])
+          && fichaValida(request.resource.data)
+          && request.resource.data.proyectoId == proyectoId
+          && request.resource.data.areas is list
+          && request.resource.data.areas.size() <= 3
           && request.resource.data.estado == "pendiente"
           && request.resource.data.solicitadoPorUid == request.auth.uid
           && request.resource.data.solicitadoPorNombre is string

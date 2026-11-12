@@ -1401,20 +1401,31 @@ function renderProjectMilestones(currentStage: string): string {
   return `<ol class="project-milestones" aria-label="Etapas del proyecto">${phases.map((phase, index) => `<li class="${index < active ? "complete" : index === active ? "current" : "upcoming"}" ${index === active ? 'aria-current="step"' : ""}><span class="milestone-dot" aria-hidden="true">${index < active ? icon("listo", 11) : ""}</span><small>${phase}</small></li>`).join("")}</ol>`;
 }
 
+function showcaseDetailsMarkup(item: Record<string, any>): string {
+  const detail = (title: string, value: unknown) => typeof value === "string" && value.trim() ? `<section class="showcase-detail"><h4>${title}</h4><p>${esc(value)}</p></section>` : "";
+  const videoUrl = safeShowcaseVideoUrl(item.videoUrl);
+  return `${detail("Problema u objetivo", item.problema)}${detail("Cómo funciona", item.funcionamiento)}${detail("Áreas y tecnologías", item.tecnologias || (Array.isArray(item.areas) ? item.areas.join(" · ") : ""))}${detail("Pruebas y resultados", item.pruebas)}${detail("Aprendizajes del equipo", item.aprendizajes)}${detail("Materiales principales", item.materiales)}${videoUrl ? `<a class="showcase-video-link" href="${esc(videoUrl)}" target="_blank" rel="noopener noreferrer">▶ Ver demostración en video</a>` : ""}`;
+}
+
 async function renderShowcase(): Promise<string> {
   if (!isAuthorized()) return pendingNotice();
   const canReview = canReviewShowcase();
   const [approved, pending] = await Promise.all([
     getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60))),
-    canReview ? getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(60))) : Promise.resolve(null),
+    canReview ? getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))) : Promise.resolve(null),
   ]);
-  const showcaseCards = (approved.docs.map((item) => ({ id: item.id, ...item.data() })));
+  const showcaseCards = approved.docs.map((item) => ({ id: item.id, ...item.data() }));
   showcaseCards.sort((a, b) => (b.fechaRevision?.toMillis?.() ?? 0) - (a.fechaRevision?.toMillis?.() ?? 0));
   const reviewCards = pending?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
-  return `${pageHeading("Muestra de proyectos", "Ideas aprobadas para compartir dentro del club.")}
-    <div class="notice-box info showcase-privacy">Esta muestra solo está disponible para cuentas autorizadas. No publica nombres ni correos de estudiantes.</div>
-    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión docente</h2><p>Aprueba proyectos antes de que aparezcan en la muestra del club.</p></div><span class="section-count">${reviewCards.length}</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => `<article class="showcase-card pending"><span class="state-pill warning">Pendiente de revisión</span><h3>${esc(item.titulo || "Proyecto")}</h3><p>${esc(item.resumen || "")}</p><small>${esc((item.areas || []).join(" · ") || "Club de Robótica")} · Solicita ${esc(item.solicitadoPorNombre || "el equipo")}</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Pedir cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar muestra</button></div></article>`).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
-    <section class="unframed-section"><div class="section-heading"><div><h2>Proyectos destacados</h2><p>${showcaseCards.length ? `${showcaseCards.length} publicados` : "Aún no hay proyectos aprobados"}</p></div></div>${showcaseCards.length ? `<div class="showcase-grid">${showcaseCards.map((item) => `<article class="showcase-card"><p class="project-area">${esc((item.areas || []).join(" · ") || "Club de Robótica")}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p>${esc(item.resumen || "")}</p>${item.materiales ? `<div class="showcase-materials"><strong>Materiales</strong><span>${esc(item.materiales)}</span></div>` : ""}<small>Compartido con aprobación docente</small></article>`).join("")}</div>` : emptyPanel("Todavía no hay proyectos en la muestra", "Desde la ficha de un proyecto, el responsable puede solicitar que se comparta con el club.")}</section>`;
+  const photos = new Map<string, string>();
+  await Promise.all([...showcaseCards, ...reviewCards].map(async (item) => {
+    if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
+    try { photos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* La ficha sigue visible aunque no cargue la foto. */ }
+  }));
+  return `${pageHeading("Muestra de proyectos", "Conoce qué problema resuelve cada prototipo, cómo funciona y qué aprendió el equipo.")}
+    <div class="notice-box info showcase-privacy">Muestra privada para cuentas autorizadas. No mostramos nombres ni correos de estudiantes. Las fichas y sus fotos pasan por revisión docente.</div>
+    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión docente</h2><p>Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club.</p></div><span class="section-count">${reviewCards.length}</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => `<article class="showcase-card pending">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : ""}<span class="state-pill warning">Pendiente de revisión</span><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-review-meta">${esc((item.areas || []).join(" · ") || "Club de Robótica")} · Solicitud del equipo</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Pedir cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar muestra</button></div></article>`).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
+    <section class="unframed-section"><div class="section-heading"><div><h2>Proyectos destacados</h2><p>${showcaseCards.length ? `${showcaseCards.length} publicados` : "Aún no hay proyectos aprobados"}</p></div></div>${showcaseCards.length ? `<div class="showcase-grid">${showcaseCards.map((item) => `<article class="showcase-card">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : `<div class="showcase-cover-placeholder">${icon("proyectos", 34)}<span>Proyecto de Robótica SIL</span></div>`}<p class="project-area">${esc((item.areas || []).join(" · ") || "Club de Robótica")}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-approved-label">Compartido con aprobación docente</small></article>`).join("")}</div>` : emptyPanel("Todavía no hay proyectos en la muestra", "Desde la ficha de un proyecto, el responsable puede completar la presentación y solicitar su revisión docente.")}</section>`;
 }
 
 async function renderTeacherProjectDashboard(): Promise<string> {
@@ -2324,6 +2335,7 @@ document.addEventListener("submit", (event) => {
   else if (type === "project-task") void submitProjectTask(form);
   else if (type === "project-decision") void submitProjectDecision(form);
   else if (type === "material-request") void submitMaterialRequest(form);
+  else if (type === "showcase-request") void submitShowcaseRequest(form);
   else if (type === "task-assignment") void submitTaskAssignment(form);
   else if (type === "project-responsible") void submitProjectResponsible(form);
 });
@@ -2496,6 +2508,10 @@ document.addEventListener("change", (event) => {
         (form.elements.namedItem("prioridad") as HTMLSelectElement).value = template.priority;
       }
     }
+  } else if (target.matches("[data-showcase-cover]") && target instanceof HTMLInputElement) {
+    const hint = target.closest("label")?.querySelector<HTMLElement>("[data-showcase-file-name]");
+    const file = target.files?.[0];
+    if (hint) hint.textContent = file ? `${file.name} · ${Math.ceil(file.size / 1024)} KB` : "JPG, PNG o WebP de hasta 4 MB.";
   } else if (target.id === "club-logo-input" && target instanceof HTMLInputElement) {
     void handleClubLogoUpload(target.files?.[0]);
   } else if (target.dataset.action === "change-user-role" && target instanceof HTMLSelectElement) {
@@ -3427,36 +3443,86 @@ async function submitProject(form: HTMLFormElement): Promise<void> {
   }
 }
 
-async function requestProjectShowcase(projectId: string, project: DocumentData, existing: DocumentData | null, dialog: HTMLDialogElement): Promise<void> {
-  if (!state.user || !isAuthorized()) return;
+async function requestProjectShowcase(projectId: string, project: DocumentData, existing: DocumentData | null, parentDialog: HTMLDialogElement): Promise<void> {
+  if (!state.user || !isAuthorized() || isStudentPreview()) return;
+  if (existing && existing.estado !== "rechazada") return notify("Este proyecto ya está publicado o esperando revisión.", "error");
+  const formDialog = document.createElement("dialog");
+  formDialog.className = "detail-dialog form-dialog showcase-request-dialog";
+  const previous = existing || {};
+  const summary = String(previous.resumen || project.objetivo || project.descripcion || "");
+  formDialog.innerHTML = `<form class="dialog-form" data-form="showcase-request" data-project="${esc(projectId)}" data-resubmit="${previous.estado === "rechazada"}">
+    <div class="dialog-head"><div><p class="eyebrow">MUESTRA DEL CLUB</p><h2>Presenta el proyecto</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div>
+    <p class="showcase-form-intro">La ficha será visible dentro del club cuando un docente la apruebe. No incluiremos nombres ni correos del equipo.</p>
+    <label>Nombre del proyecto<input name="titulo" value="${esc(previous.titulo || project.nombre || project.titulo || "")}" maxlength="100" required /></label>
+    <label>Resumen breve<textarea name="resumen" rows="2" maxlength="600" required placeholder="Qué construyeron y qué hace">${esc(summary)}</textarea></label>
+    <label>¿Qué problema busca resolver?<textarea name="problema" rows="2" maxlength="600" required placeholder="Describe la necesidad o pregunta que motivó el proyecto">${esc(previous.problema || "")}</textarea></label>
+    <label>¿Cómo funciona el prototipo?<textarea name="funcionamiento" rows="3" maxlength="1000" required placeholder="Explica cómo se usa y qué pasos sigue">${esc(previous.funcionamiento || "")}</textarea></label>
+    <label>Áreas y tecnologías<textarea name="tecnologias" rows="2" maxlength="500" required placeholder="Ej.: programación con Arduino, sensor ultrasónico y piezas impresas">${esc(previous.tecnologias || (Array.isArray(project.departamentos) ? project.departamentos.join(" · ") : ""))}</textarea></label>
+    <label>Pruebas y resultados<textarea name="pruebas" rows="2" maxlength="1000" required placeholder="Qué probaron, qué ocurrió y qué resultado obtuvieron">${esc(previous.pruebas || "")}</textarea></label>
+    <label>¿Qué aprendió el equipo?<textarea name="aprendizajes" rows="2" maxlength="1000" required placeholder="Dificultades, descubrimientos o mejoras pendientes">${esc(previous.aprendizajes || "")}</textarea></label>
+    <label>Materiales principales<textarea name="materiales" rows="2" maxlength="800" placeholder="Componentes y herramientas utilizados">${esc(previous.materiales || project.materiales || "")}</textarea></label>
+    <label>Video de demostración (opcional)<input name="videoUrl" type="url" value="${esc(previous.videoUrl || "")}" maxlength="400" placeholder="Enlace seguro de YouTube o Vimeo" /><small>Se mostrará como enlace; el video no se reproduce automáticamente.</small></label>
+    <label>Foto principal (opcional)<input name="foto" type="file" accept="image/jpeg,image/png,image/webp" data-showcase-cover /><small data-showcase-file-name>${previous.fotoPath ? "Ya hay una foto cargada; déjalo vacío para conservarla." : "JPG, PNG o WebP de hasta 4 MB. Si Firebase Storage no está disponible, puedes enviar la ficha sin foto."}</small></label>
+    <button class="primary-button" type="submit">${previous.estado === "rechazada" ? "Enviar de nuevo a revisión" : "Enviar a revisión docente"}</button>
+  </form>`;
+  document.body.append(formDialog);
+  formDialog.showModal();
+  formDialog.addEventListener("click", (event) => {
+    if (event.target === formDialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) formDialog.close();
+  });
+  formDialog.addEventListener("close", () => formDialog.remove(), { once: true });
+  formDialog.dataset.parentDialog = parentDialog.className;
+}
+
+function safeShowcaseVideoUrl(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "";
   try {
-    if (existing && existing.estado !== "rechazada") throw new Error("Este proyecto ya está publicado o esperando revisión.");
-    const summary = String(project.objetivo || project.descripcion || "").trim();
-    if (!summary) throw new Error("Completa el objetivo del proyecto antes de solicitar publicación.");
-    const request = {
-      estado: "pendiente",
-      solicitadoPorUid: state.user.uid,
-      solicitadoPorNombre: fullName(),
-      fechaSolicitud: serverTimestamp(),
-      revisadoPorUid: "",
-      fechaRevision: null,
-      comentarioRevision: "",
-    };
+    const url = new URL(value);
+    const allowedHosts = ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "vimeo.com", "www.vimeo.com", "player.vimeo.com"];
+    return url.protocol === "https:" && allowedHosts.includes(url.hostname.toLowerCase()) ? url.href : "";
+  } catch { return ""; }
+}
+
+async function submitShowcaseRequest(form: HTMLFormElement): Promise<void> {
+  const projectId = form.dataset.project;
+  if (!projectId || !state.user || !isAuthorized() || isStudentPreview()) return;
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const data = new FormData(form);
+  const videoUrl = String(data.get("videoUrl") || "").trim();
+  if (videoUrl && !safeShowcaseVideoUrl(videoUrl)) return notify("Usa un enlace HTTPS de YouTube o Vimeo.", "error");
+  const image = form.querySelector<HTMLInputElement>('input[name="foto"]')?.files?.[0];
+  if (image && (!/^image\/(jpeg|png|webp)$/.test(image.type) || image.size > 4 * 1024 * 1024)) return notify("La foto debe ser JPG, PNG o WebP y pesar hasta 4 MB.", "error");
+  const values = Object.fromEntries(["titulo", "resumen", "problema", "funcionamiento", "tecnologias", "pruebas", "aprendizajes", "materiales"].map((key) => [key, String(data.get(key) || "").trim()]));
+  if (Object.entries(values).some(([key, value]) => key !== "materiales" && !value)) return notify("Completa las secciones principales de la ficha.", "error");
+  setBusy(button, true, "Enviando");
+  let uploadedPath = "";
+  try {
     const publicationRef = doc(db, "muestras", projectId);
-    if (existing?.estado === "rechazada") await updateDoc(publicationRef, request);
-    else await setDoc(publicationRef, {
-      proyectoId: projectId,
-      titulo: String(project.nombre || project.titulo || "Proyecto").slice(0, 100),
-      resumen: summary.slice(0, 600),
-      areas: Array.isArray(project.departamentos) ? project.departamentos.slice(0, 3) : [],
-      materiales: String(project.materiales || "").slice(0, 800),
-      ...request,
-    });
-    notify("Solicitud enviada. Un docente debe aprobarla para mostrarla al club.");
-    dialog.close();
+    const [existingSnapshot, projectSnapshot] = await Promise.all([
+      getDoc(publicationRef),
+      getDoc(doc(db, "proyectos", projectId)),
+    ]);
+    const existing = existingSnapshot.exists() ? existingSnapshot.data() : null;
+    const projectData = projectSnapshot.data() || {};
+    if (existing && existing.estado !== "rechazada") throw new Error("Este proyecto ya está publicado o esperando revisión.");
+    let fotoPath = typeof existing?.fotoPath === "string" ? existing.fotoPath : "";
+    if (image) {
+      uploadedPath = `proyectos/${projectId}/evidencias/showcase-${state.user.uid}-${Date.now()}`;
+      await uploadBytes(ref(storage, uploadedPath), image, { contentType: image.type });
+      fotoPath = uploadedPath;
+    }
+    const content = { ...values, videoUrl, ...(fotoPath ? { fotoPath } : {}) };
+    const request = { estado: "pendiente", solicitadoPorUid: state.user.uid, solicitadoPorNombre: fullName(), fechaSolicitud: serverTimestamp(), revisadoPorUid: "", fechaRevision: null, comentarioRevision: "" };
+    if (form.dataset.resubmit === "true") await updateDoc(publicationRef, { ...content, ...request });
+    else await setDoc(publicationRef, { proyectoId, areas: Array.isArray(projectData.departamentos) ? projectData.departamentos.slice(0, 3) : [], ...content, ...request });
+    notify("Ficha enviada. Un docente debe aprobarla para mostrarla al club.");
+    form.closest("dialog")?.close();
+    document.querySelector<HTMLDialogElement>("dialog.detail-dialog[open]")?.close();
     await showProject(projectId);
   } catch (error) {
-    notify(errorMessage(error, "No se pudo enviar el proyecto a revisión."), "error");
+    if (uploadedPath) void deleteObject(ref(storage, uploadedPath)).catch(() => {});
+    setBusy(button, false);
+    notify(errorMessage(error, "No se pudo enviar la ficha a revisión."), "error");
   }
 }
 
