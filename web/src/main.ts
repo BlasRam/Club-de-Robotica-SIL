@@ -636,6 +636,19 @@ function setProfile(uid: string, data: DocumentData): void {
   render();
 }
 
+function clubDirectoryData(profile: DocumentData): DocumentData {
+  return {
+    nombreCompleto: String(profile.nombreCompleto || `${profile.nombre || ""} ${profile.apellido || ""}`).trim(),
+    tipoUsuario: profile.tipoUsuario === "docente" ? "docente" : "alumno",
+    rol: ["estudiante", "moderador", "admin"].includes(profile.rol) ? profile.rol : "estudiante",
+  };
+}
+
+async function syncOwnClubDirectory(uid: string, profile: DocumentData): Promise<void> {
+  if (profile.autorizado !== true) return;
+  await setDoc(doc(db, "directorioClub", uid), clubDirectoryData(profile));
+}
+
 async function loadProfile(user: User): Promise<void> {
   state.loading = true;
   render();
@@ -658,6 +671,7 @@ async function loadProfile(user: User): Promise<void> {
       profile.rol = "admin";
       profile.autorizado = true;
     }
+    if (profile.autorizado === true) await syncOwnClubDirectory(user.uid, profile).catch(() => {});
     setProfile(user.uid, profile);
   } catch (error) {
     state.loading = false;
@@ -1007,9 +1021,12 @@ window.setInterval(() => {
   if (state.user && (state.page === "inicio" || state.page === "acceso")) render();
 }, 30_000);
 
-function renderMemberFields(profile?: Profile): string {
+function renderMemberFields(profile?: Profile, allowTypeChange = true): string {
   const docente = profile?.tipoUsuario === "docente";
-  return `<label>Tipo de usuario<select name="tipoUsuario" data-member-type><option value="alumno" ${!docente ? "selected" : ""}>Alumno</option><option value="docente" ${docente ? "selected" : ""}>Docente</option></select></label>
+  const typeField = allowTypeChange
+    ? `<label>Tipo de usuario<select name="tipoUsuario" data-member-type><option value="alumno" ${!docente ? "selected" : ""}>Alumno</option><option value="docente" ${docente ? "selected" : ""}>Docente</option></select></label>`
+    : `<label>Tipo de cuenta<input value="${docente ? "Docente" : "Estudiante"}" readonly /></label>`;
+  return `${typeField}
     <label><span data-member-area-label>${docente ? "Asignatura o área de enseñanza" : "Área de interés"}</span><input name="carrera" value="${esc(profile?.carrera || "")}" maxlength="100" required placeholder="${docente ? "Ej. informática, ciencias, tecnología" : "Ej. electrónica, programación, diseño"}" /></label>
     <label data-member-grade ${docente ? "hidden" : ""}>Curso o grado<input name="semestre" value="${esc(profile?.semestre || "")}" maxlength="40" ${docente ? "disabled" : "required"} placeholder="Ej. 2.º curso" /></label>`;
 }
@@ -1193,7 +1210,7 @@ function renderProfile(): string {
   return `${pageHeading("Mi perfil", "Actualiza tus datos personales y académicos.")}
     <div class="profile-layout"><form class="profile-form" data-form="profile">
       <div class="profile-fields"><label>Nombre<input name="nombre" value="${esc(profile.nombre)}" autocomplete="given-name" maxlength="60" required /></label><label>Apellido<input name="apellido" value="${esc(profile.apellido)}" autocomplete="family-name" maxlength="60" required /></label>
-        ${renderMemberFields(profile)}</div>
+        ${renderMemberFields(profile, false)}</div>
       <div class="profile-readonly"><div class="profile-line"><span>Correo de la cuenta</span><strong>${esc(profile.correoInstitucional || state.user?.email)}</strong></div><div class="profile-line"><span>Tipo de cuenta</span><strong>${roleLabel()}</strong></div><div class="profile-line"><span>Estado de cuenta</span><strong>${isAdmin() ? "Administración" : profile.autorizado ? "Autorizada" : "Pendiente de revisión"}</strong></div><div class="profile-line"><span>Revisión de proyectos</span><strong>${canManageClub() ? "Habilitada como administrador" : canReviewShowcase() ? "Habilitada · revisor docente" : "No habilitada"}</strong></div></div>
       <p class="profile-note">El correo, el rol y la autorización no se pueden cambiar desde esta pantalla.</p><button class="primary-button" type="submit">Guardar cambios ${icon("listo", 16)}</button>
     </form></div>`;
@@ -2183,11 +2200,11 @@ async function requestLoanChange(id: string, action: "Devolucion" | "Prorroga", 
     let adminIds: string[] = [];
     const approvingAdminUid = String(loanSnapshot.get("aprobadoPorUid") || "");
     if (approvingAdminUid) {
-      const admin = await getDoc(doc(db, "usuarios", approvingAdminUid));
+      const admin = await getDoc(doc(db, "directorioClub", approvingAdminUid));
       if (admin.exists() && admin.get("rol") === "admin") adminIds = [approvingAdminUid];
     }
     if (!adminIds.length) {
-      const admins = await getDocs(query(collection(db, "usuarios"), where("rol", "==", "admin"), limit(100)));
+      const admins = await getDocs(query(collection(db, "directorioClub"), where("rol", "==", "admin"), limit(100)));
       adminIds = admins.docs.map((admin) => admin.id);
     }
     if (!adminIds.length) throw new Error("No se encontró una cuenta administradora para recibir la solicitud.");
@@ -2706,7 +2723,7 @@ async function submitProfile(form: HTMLFormElement): Promise<void> {
   const data = new FormData(form);
   const nombre = String(data.get("nombre") || "").trim();
   const apellido = String(data.get("apellido") || "").trim();
-  const tipoUsuario = data.get("tipoUsuario") === "docente" ? "docente" : "alumno";
+  const tipoUsuario = state.profile.tipoUsuario === "docente" ? "docente" : "alumno";
   const carrera = String(data.get("carrera") || "");
   const semestre = tipoUsuario === "docente" ? "" : String(data.get("semestre") || "");
   if (!nombre || !apellido) {
@@ -2716,8 +2733,12 @@ async function submitProfile(form: HTMLFormElement): Promise<void> {
   setBusy(button, true, "Guardando");
   try {
     const nombreCompleto = `${nombre} ${apellido}`;
-    await updateDoc(doc(db, "usuarios", state.user.uid), { nombre, apellido, nombreCompleto, carrera, semestre, tipoUsuario });
-    state.profile = { ...state.profile, nombre, apellido, nombreCompleto, carrera, semestre, tipoUsuario };
+    const updatedProfile = { ...state.profile, nombre, apellido, nombreCompleto, carrera, semestre };
+    const batch = writeBatch(db);
+    batch.update(doc(db, "usuarios", state.user.uid), { nombre, apellido, nombreCompleto, carrera, semestre });
+    if (state.profile.autorizado === true) batch.set(doc(db, "directorioClub", state.user.uid), clubDirectoryData(updatedProfile));
+    await batch.commit();
+    state.profile = { ...state.profile, nombre, apellido, nombreCompleto, carrera, semestre };
     notify("Perfil actualizado.");
     render();
   } catch (error) {
@@ -3714,11 +3735,17 @@ async function resolveShowcaseReview(button: HTMLButtonElement): Promise<void> {
 }
 
 async function projectResponsibleOptions(): Promise<Array<{ uid: string; name: string }>> {
-  const users = await getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(100)));
-  const options = users.docs.map((user) => ({
-    uid: user.id,
-    name: String(user.get("nombreCompleto") || `${user.get("nombre") || ""} ${user.get("apellido") || ""}`).trim(),
-  })).filter((user) => user.uid && user.name);
+  let options: Array<{ uid: string; name: string }>;
+  if (isAdminInterface()) {
+    const users = await getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(100)));
+    options = users.docs.map((user) => ({ uid: user.id, name: String(user.get("nombreCompleto") || `${user.get("nombre") || ""} ${user.get("apellido") || ""}`).trim() })).filter((user) => user.uid && user.name);
+    const batch = writeBatch(db);
+    users.docs.forEach((user) => batch.set(doc(db, "directorioClub", user.id), clubDirectoryData(user.data())));
+    await batch.commit().catch(() => {});
+  } else {
+    const members = await getDocs(query(collection(db, "directorioClub"), limit(100)));
+    options = members.docs.map((user) => ({ uid: user.id, name: String(user.get("nombreCompleto") || "").trim() })).filter((user) => user.uid && user.name);
+  }
   if (state.user && !options.some((user) => user.uid === state.user!.uid)) {
     options.push({ uid: state.user.uid, name: fullName() });
   }
@@ -4061,7 +4088,15 @@ async function toggleStudentAccess(uid: string, authorized: boolean, button: HTM
   if (!isAdmin()) return;
   setBusy(button, true);
   try {
-    await updateDoc(doc(db, "usuarios", uid), { autorizado: authorized });
+    const userRef = doc(db, "usuarios", uid);
+    const profile = await getDoc(userRef);
+    if (!profile.exists()) throw new Error("La cuenta ya no existe.");
+    const batch = writeBatch(db);
+    batch.update(userRef, { autorizado: authorized });
+    const directoryRef = doc(db, "directorioClub", uid);
+    if (authorized) batch.set(directoryRef, clubDirectoryData({ ...profile.data(), autorizado: true }));
+    else batch.delete(directoryRef);
+    await batch.commit();
     notify(authorized ? "Estudiante autorizado." : "Acceso bloqueado.");
     await loadPage();
   } catch (error) {
@@ -4095,10 +4130,20 @@ async function changeUserRole(select: HTMLSelectElement): Promise<void> {
   }
   select.disabled = true;
   try {
-    await updateDoc(doc(db, "usuarios", uid), {
+    const userRef = doc(db, "usuarios", uid);
+    const target = await getDoc(userRef);
+    if (!target.exists()) throw new Error("La cuenta ya no existe.");
+    const nextAuthorized = nextRole === "estudiante" ? select.dataset.authorized === "true" : true;
+    const nextProfile = { ...target.data(), rol: nextRole, autorizado: nextAuthorized };
+    const batch = writeBatch(db);
+    batch.update(userRef, {
       rol: nextRole,
-      autorizado: nextRole === "estudiante" ? select.dataset.authorized === "true" : true,
+      autorizado: nextAuthorized,
     });
+    const directoryRef = doc(db, "directorioClub", uid);
+    if (nextAuthorized) batch.set(directoryRef, clubDirectoryData(nextProfile));
+    else batch.delete(directoryRef);
+    await batch.commit();
     notify(`${name} ahora tiene el rol ${labels[nextRole]}.`);
     await loadPage();
   } catch (error) {
@@ -4138,10 +4183,9 @@ async function showProject(id: string): Promise<void> {
   const joined = (data.miembrosUids || []).includes(state.user?.uid);
   const memberProfiles = await Promise.all((Array.isArray(data.miembrosUids) ? data.miembrosUids : []).slice(0, 20).map(async (uid: string) => {
     try {
-      const member = await getDoc(doc(db, "usuarios", uid));
+      const member = await getDoc(doc(db, "directorioClub", uid));
       if (!member.exists()) return "";
-      const profile = member.data();
-      return String(profile.nombreCompleto || `${profile.nombre || ""} ${profile.apellido || ""}`).trim();
+      return String(member.get("nombreCompleto") || "").trim();
     } catch { return ""; }
   }));
   const lead = projectLead(data) === state.user?.uid;
@@ -4240,8 +4284,8 @@ function projectTaskRow(task: Record<string, any>, projectId: string, canManage:
 }
 
 async function openProjectTaskDialog(projectId: string, project: DocumentData): Promise<void> {
-  const users = await getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(100))).catch(() => null);
-  const options = (users?.docs ?? []).map((user) => ({ uid: user.id, name: String(user.get("nombreCompleto") || `${user.get("nombre") || ""} ${user.get("apellido") || ""}`).trim() })).filter((user) => user.uid);
+  const users = await getDocs(query(collection(db, "directorioClub"), limit(100))).catch(() => null);
+  const options = (users?.docs ?? []).map((user) => ({ uid: user.id, name: String(user.get("nombreCompleto") || "").trim() })).filter((user) => user.uid);
   const form = `<form class="dialog-form" data-form="project-task" data-project="${esc(projectId)}"><div class="dialog-head"><div><p class="eyebrow">${esc(project.nombre || "PROYECTO")}</p><h2>Nueva tarea</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Empezar desde una plantilla<select id="task-template"><option value="">Tarea en blanco</option><option value="pruebas">Pruebas de componente</option><option value="documentacion">Documentar avance</option><option value="investigacion">Investigación</option><option value="montaje">Montaje seguro</option></select></label><label>Título<input name="titulo" required maxlength="120" /></label><label>Descripción<textarea name="descripcion" rows="3" maxlength="1000"></textarea></label><div class="field-row"><label>Prioridad<select name="prioridad"><option>Normal</option><option>Alta</option><option>Baja</option></select></label><label>Fecha límite<input name="fechaLimite" type="date" /></label></div><fieldset><legend>Responsables (hasta 5)</legend>${options.map((user) => `<label class="check-label"><input type="checkbox" name="responsables" value="${esc(user.uid)}" data-name="${esc(user.name)}" />${esc(user.name)}</label>`).join("") || `<p class="empty-inline">No hay estudiantes autorizados para asignar.</p>`}</fieldset><button class="primary-button" type="submit">Crear tarea</button></form>`;
   const dialog = document.createElement("dialog");
   dialog.className = "detail-dialog form-dialog";
@@ -4259,8 +4303,8 @@ async function openProjectTaskDialog(projectId: string, project: DocumentData): 
 }
 
 async function openTaskAssignmentDialog(projectId: string, taskId: string, taskTitle: string, project: DocumentData): Promise<void> {
-  const users = await getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(100))).catch(() => null);
-  const options = (users?.docs ?? []).map((user) => ({ uid: user.id, name: String(user.get("nombreCompleto") || `${user.get("nombre") || ""} ${user.get("apellido") || ""}`).trim() }));
+  const users = await getDocs(query(collection(db, "directorioClub"), limit(100))).catch(() => null);
+  const options = (users?.docs ?? []).map((user) => ({ uid: user.id, name: String(user.get("nombreCompleto") || "").trim() }));
   const task = await getDoc(doc(db, "proyectos", projectId, "tareas", taskId));
   const existing = task.exists() ? task.get("responsableUids") || [] : [];
   const html = `<form class="dialog-form" data-form="task-assignment" data-project="${esc(projectId)}" data-task="${esc(taskId)}"><div class="dialog-head"><div><p class="eyebrow">${esc(project.nombre || "PROYECTO")}</p><h2>Cambiar responsables</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p>${esc(taskTitle)}</p><fieldset><legend>Selecciona hasta cinco personas</legend>${options.map((user) => `<label class="check-label"><input type="checkbox" name="responsables" value="${esc(user.uid)}" data-name="${esc(user.name)}" ${existing.includes(user.uid) ? "checked" : ""} />${esc(user.name)}</label>`).join("")}</fieldset><button class="primary-button" type="submit">Guardar responsables</button></form>`;
@@ -4323,7 +4367,7 @@ async function finishProject(projectId: string, button: HTMLButtonElement, dialo
     if (tasks.empty || tasks.docs.some((task) => task.get("estado") !== "Completada")) throw new Error("El proyecto ya no está al 100%. Actualiza y vuelve a intentar.");
     const prior = await getDoc(doc(db, "proyectos", projectId, "eventos", "completado-v1"));
     if (prior.exists()) throw new Error("Este proyecto ya fue cerrado.");
-    const admins = await getDocs(query(collection(db, "usuarios"), where("rol", "==", "admin"), limit(100)));
+    const admins = await getDocs(query(collection(db, "directorioClub"), where("rol", "==", "admin"), limit(100)));
     const recipients = [...new Set([...(project.get("miembrosUids") || []), String(project.get("responsableUid") || ""), ...admins.docs.map((admin) => admin.id)].filter(Boolean))];
     if (recipients.length > 499) throw new Error("Hay demasiados destinatarios para registrar el aviso en una sola operación.");
     const batch = writeBatch(db);

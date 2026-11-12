@@ -466,3 +466,32 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
       allow delete: if settingId == "branding" && esAdministrador();
     }
+
+    // Directorio mínimo para mostrar integrantes y asignar tareas sin dar
+    // acceso de lectura a los perfiles privados de estudiantes.
+    match /directorioClub/{userId} {
+      function perfilActivoDespuesDeLaOperacion() {
+        return existsAfter(/databases/$(database)/documents/usuarios/$(userId))
+          && getAfter(/databases/$(database)/documents/usuarios/$(userId)).data.get("autorizado", false) == true;
+      }
+
+      function datosPublicosCoincidenConPerfil() {
+        let perfil = getAfter(/databases/$(database)/documents/usuarios/$(userId)).data;
+        return perfilActivoDespuesDeLaOperacion()
+          && request.resource.data.nombreCompleto == perfil.nombreCompleto
+          && request.resource.data.tipoUsuario == perfil.get("tipoUsuario", "alumno")
+          && request.resource.data.rol == perfil.rol;
+      }
+
+      allow read: if estaAutorizado() || esAdministrador();
+      allow create, update: if request.resource.data.keys().hasOnly(["nombreCompleto", "tipoUsuario", "rol"])
+        && request.resource.data.keys().hasAll(["nombreCompleto", "tipoUsuario", "rol"])
+        && request.resource.data.nombreCompleto is string
+        && request.resource.data.nombreCompleto.size() > 0
+        && request.resource.data.nombreCompleto.size() <= 120
+        && request.resource.data.tipoUsuario in ["alumno", "docente"]
+        && request.resource.data.rol in ["estudiante", "moderador", "admin"]
+        && datosPublicosCoincidenConPerfil()
+        && (esAdministrador() || (esPropietario(userId) && estaAutorizado()));
+      allow delete: if esAdministrador();
+    }

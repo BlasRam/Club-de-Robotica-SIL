@@ -88,9 +88,9 @@
 
 
       // ===================================================
-      // LEER USUARIOS
-      //
-      // Necesario para los buscadores de responsables.
+      // LEER PERFILES PRIVADOS
+      // Solo el titular y administración acceden al perfil completo. El resto
+      // del club usa /directorioClub, que contiene únicamente datos visibles.
       // ===================================================
 
       allow read: if
@@ -101,8 +101,6 @@
           esPropietario(userId)
           ||
           esAdministrador()
-          ||
-          estaAutorizado()
         );
 
 
@@ -168,7 +166,7 @@
         || (
           esPropietario(userId)
           && request.resource.data.diff(resource.data)
-            .affectedKeys().hasOnly(["carrera", "semestre", "nombre", "apellido", "nombreCompleto", "tipoUsuario"])
+            .affectedKeys().hasOnly(["carrera", "semestre", "nombre", "apellido", "nombreCompleto"])
           && (
             !request.resource.data.diff(resource.data)
               .affectedKeys().hasAny(["nombre", "apellido", "nombreCompleto"])
