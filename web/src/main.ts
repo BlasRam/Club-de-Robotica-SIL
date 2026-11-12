@@ -175,7 +175,7 @@ type Profile = {
   semestre?: string;
 };
 
-type Page = "inicio" | "proyectos" | "muestra" | "cursos" | "tareas" | "acceso" | "avisos" | "sugerencias" | "prestamos" | "inventario" | "estudiantes" | "perfil" | "configuracion" | "calendario";
+type Page = "inicio" | "proyectos" | "muestra" | "cursos" | "tareas" | "acceso" | "avisos" | "sugerencias" | "prestamos" | "inventario" | "estudiantes" | "docentes" | "perfil" | "configuracion" | "calendario";
 type TaskFilter = "all" | "pending" | "overdue" | "week" | "undated" | "completed";
 type NoticeFilter = "all" | "unread" | "club";
 type SearchResult = { kind: "project" | "task" | "course"; id: string; title: string; detail: string; terms: string };
@@ -460,6 +460,7 @@ const icons: Record<string, string> = {
   prestamos: loanIcon,
   cursos: courseIcon,
   estudiantes: peopleIcon,
+  docentes: peopleIcon,
   perfil: profileIcon,
   menu: menuIcon,
   campana: bellIcon,
@@ -803,7 +804,7 @@ function navItems(): { id: Page; label: string }[] {
     { id: "prestamos", label: "Préstamos" },
     { id: "calendario", label: "Calendario" },
   ];
-  if (isAdminInterface()) items.push({ id: "inventario", label: "Inventario" }, { id: "estudiantes", label: "Estudiantes" });
+  if (isAdminInterface()) items.push({ id: "inventario", label: "Inventario" }, { id: "estudiantes", label: "Estudiantes" }, { id: "docentes", label: "Docentes" });
   items.push({ id: "configuracion", label: "Configuración" });
   return isAuthorized() ? items : items.filter((item) => canUseWhileAccessPending(item.id));
 }
@@ -833,7 +834,7 @@ function appShell(content: string): string {
     { label: "Mi espacio", ids: ["inicio", "tareas", "acceso"] },
     { label: "Proyectos y aprendizaje", ids: ["proyectos", "muestra", "cursos", "calendario"] },
     { label: "Comunidad y recursos", ids: ["avisos", "sugerencias", "prestamos"] },
-    { label: "Administración", ids: ["inventario", "estudiantes"] },
+    { label: "Administración", ids: ["inventario", "estudiantes", "docentes"] },
     { label: "Cuenta", ids: ["configuracion"] },
   ];
   const sideNavigation = navGroups.map((group) => {
@@ -1135,6 +1136,7 @@ async function pageContent(page: Page): Promise<string> {
     case "prestamos": return renderLoans();
     case "inventario": return isAdminInterface() ? renderInventory() : "";
     case "estudiantes": return isAdminInterface() ? renderStudents() : "";
+    case "docentes": return isAdminInterface() ? renderTeachers() : "";
     case "perfil": return renderProfile();
     case "configuracion": return renderSettings();
   }
@@ -1288,27 +1290,31 @@ async function renderHome(): Promise<string> {
       <section class="unframed-section"><h2>Tu perfil</h2><div class="profile-line"><span>Correo institucional</span><strong>${esc(state.profile?.correoInstitucional)}</strong></div><div class="profile-line"><span>Área de interés</span><strong>${esc(state.profile?.carrera || "Sin indicar")}</strong></div></section>`;
   }
   if (isAdminInterface()) {
-    const [students, pendingLoans, activeLoans, projects, pendingAccess, pendingShowcase] = await Promise.all([
+    const [studentRecords, pendingLoans, activeLoans, projects, pendingAccessRecords, pendingShowcase, teacherRecords] = await Promise.all([
       getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"))),
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Pendiente"))),
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Aprobada"))),
       getDocs(query(collection(db, "proyectos"), where("estado", "==", "Activo"))),
       getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"), where("autorizado", "==", false))),
       getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null),
+      getDocs(query(collection(db, "usuarios"), where("tipoUsuario", "==", "docente"), limit(100))),
     ]);
+    const students = studentRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
+    const pendingAccess = pendingAccessRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
     const recent = await getDocs(query(collection(db, "accesos"), orderBy("fechaHora", "desc"), limit(30)));
     const recentEntries = recent.docs.filter((item) => item.get("tipo") === "entrada").slice(0, 5);
     return `${pageHeading(`Buen día, ${esc(greeting)}`, "Resumen del club y pendientes de gestión.", `<button class="icon-button refresh-action" data-action="refresh" title="Actualizar" aria-label="Actualizar">${icon("actualizar")}</button>`)}
       ${!isAuthorized() ? `<section class="notice-box warning">${icon("alerta")}<span>Esta cuenta todavía no está autorizada como administradora.</span></section>` : ""}
       <section class="metrics-grid">
-        ${metric("Estudiantes", students.size, "Personas registradas", "estudiantes", "people")}
-        ${metric("Acceso pendiente", pendingAccess.size, "Requieren revisión", "estudiantes", "alert")}
+        ${metric("Estudiantes", students.length, "Personas registradas", "estudiantes", "people")}
+        ${metric("Docentes", teacherRecords.size, "Cuentas docentes", "docentes", "people")}
+        ${metric("Acceso pendiente", pendingAccess.length, "Estudiantes por revisar", "estudiantes", "alert")}
         ${metric("Muestra por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase")}
         ${metric("Préstamos pendientes", pendingLoans.size, "Solicitudes por resolver", "prestamos", "loan")}
         ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
         ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
       </section>
-      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos", "prestamos", "prestamos", "loans")}${adminQuickLink("Estudiantes", "estudiantes", "estudiantes", "people")}${adminQuickLink("Muestra", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
+      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos", "prestamos", "prestamos", "loans")}${adminQuickLink("Estudiantes", "estudiantes", "estudiantes", "people")}${adminQuickLink("Docentes", "docentes", "docentes", "people")}${adminQuickLink("Muestra", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
       <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
   }
   const [loans, presence, notices, calendar, assignedByOwner, assignedByList, featuredShowcase] = await Promise.all([
@@ -2170,17 +2176,40 @@ async function renderInventory(): Promise<string> {
 
 async function renderStudents(): Promise<string> {
   const snapshot = await getDocs(query(collection(db, "usuarios"), where("rol", "in", ["estudiante", "moderador", "admin"]), limit(100)));
-  const students: Array<Record<string, any>> = snapshot.docs.map((item) => ({ uid: item.id, ...item.data() }));
+  const students: Array<Record<string, any>> = snapshot.docs.filter((item) => item.get("tipoUsuario") !== "docente").map((item) => ({ uid: item.id, ...item.data() }));
   students.sort((a, b) => String(a.nombreCompleto || a.nombre || "").localeCompare(String(b.nombreCompleto || b.nombre || ""), "es"));
-  return `${pageHeading("Personas y roles", "Autoriza cuentas, asigna roles y habilita revisores docentes.", `<label class="search-field">${icon("buscar")}<input id="student-search" placeholder="Buscar persona" /></label>`)}
-    <div class="table-wrap"><table><thead><tr><th>Persona</th><th>Área de interés</th><th>Curso o grado</th><th>Acceso</th><th>Rol</th><th>Revisión docente</th><th></th></tr></thead><tbody id="student-rows">${students.map((student) => studentRow(student)).join("")}</tbody></table></div>`;
+  return `${pageHeading("Estudiantes", "Autoriza cuentas y asigna permisos de gestión a estudiantes.", `<label class="search-field">${icon("buscar")}<input id="student-search" placeholder="Buscar estudiante" /></label>`)}
+    <div class="table-wrap"><table><thead><tr><th>Estudiante</th><th>Área de interés</th><th>Curso o grado</th><th>Acceso</th><th>Rol</th><th>Revisión docente</th><th>Acciones</th></tr></thead><tbody id="student-rows">${students.map((student) => studentRow(student)).join("")}</tbody></table></div>${students.length ? "" : emptyInline("Aún no hay cuentas de estudiantes registradas.")}`;
+}
+
+async function renderTeachers(): Promise<string> {
+  const snapshot = await getDocs(query(collection(db, "usuarios"), where("tipoUsuario", "==", "docente"), limit(100)));
+  const teachers: Array<Record<string, any>> = snapshot.docs.map((item) => ({ uid: item.id, ...item.data() }));
+  teachers.sort((a, b) => String(a.nombreCompleto || a.nombre || "").localeCompare(String(b.nombreCompleto || b.nombre || ""), "es"));
+  const authorized = teachers.filter((teacher) => teacher.autorizado === true).length;
+  const reviewers = teachers.filter((teacher) => teacher.autorizado === true && teacher.docenteRevisor === true).length;
+  return `${pageHeading("Docentes", "Administra las cuentas docentes y quién puede revisar proyectos.", `<label class="search-field">${icon("buscar")}<input id="teacher-search" placeholder="Buscar docente" /></label>`)}
+    <section class="teacher-directory-summary" aria-label="Resumen de docentes"><span><strong>${teachers.length}</strong> registrados</span><span><strong>${authorized}</strong> autorizados</span><span><strong>${reviewers}</strong> revisores de proyectos</span></section>
+    ${teachers.length ? `<div class="table-wrap"><table><thead><tr><th>Docente</th><th>Área de enseñanza</th><th>Acceso</th><th>Rol en la PWA</th><th>Revisión de proyectos</th></tr></thead><tbody>${teachers.map((teacher) => teacherRow(teacher)).join("")}</tbody></table></div>` : emptyPanel("Aún no hay docentes registrados", "Las cuentas que elijan “Docente” al registrarse aparecerán aquí para que puedas autorizarlas y asignarles permisos.")}`;
+}
+
+function teacherRow(teacher: Record<string, any>): string {
+  const self = teacher.uid === state.user?.uid;
+  const role = ["estudiante", "moderador", "admin"].includes(teacher.rol) ? teacher.rol : "estudiante";
+  const roleLabels: Record<string, string> = { estudiante: "Docente", moderador: "Docente gestor", admin: "Administrador" };
+  const roleSelect = `<select class="role-select" data-action="change-user-role" data-type="docente" data-id="${esc(teacher.uid)}" data-role="${role}" data-authorized="${Boolean(teacher.autorizado)}" data-name="${esc(teacher.nombreCompleto || teacher.nombre || "este docente")}" aria-label="Rol de ${esc(teacher.nombreCompleto || teacher.nombre || "docente")}" ${self ? "disabled title=\"No puedes cambiar tu propio rol desde aquí\"" : ""}>${Object.entries(roleLabels).map(([value, label]) => `<option value="${value}" ${role === value ? "selected" : ""}>${label}</option>`).join("")}</select>`;
+  const access = role === "admin"
+    ? `<span class="state-pill success">Acceso administrativo</span>`
+    : `<button class="secondary-button compact" data-action="toggle-student" data-id="${esc(teacher.uid)}" data-authorized="${Boolean(teacher.autorizado)}" ${self ? "disabled" : ""}>${teacher.autorizado ? "Bloquear acceso" : "Autorizar"}</button>`;
+  const reviewer = `<button class="secondary-button compact" data-action="toggle-showcase-reviewer" data-id="${esc(teacher.uid)}" data-enabled="${Boolean(teacher.docenteRevisor)}" ${!teacher.autorizado || self ? "disabled" : ""}>${teacher.docenteRevisor ? "Quitar permiso" : "Habilitar revisión"}</button>`;
+  return `<tr data-teacher-row><td><strong>${esc(teacher.nombreCompleto || `${teacher.nombre || ""} ${teacher.apellido || ""}`)}</strong><small>${esc(teacher.correoInstitucional || "")}</small></td><td>${esc(teacher.carrera || "Sin área indicada")}</td><td><span class="state-pill ${teacher.autorizado ? "success" : "warning"}">${teacher.autorizado ? "Autorizado" : "Pendiente"}</span>${access}</td><td>${roleSelect}</td><td>${reviewer}</td></tr>`;
 }
 
 function studentRow(student: Record<string, any>): string {
   const role = ["estudiante", "moderador", "admin"].includes(student.rol) ? student.rol : "estudiante";
   const self = student.uid === state.user?.uid;
   const roleOptions = [["estudiante", "Estudiante"], ["moderador", "Moderador"], ["admin", "Administrador"]];
-  const roleSelect = `<select class="role-select" data-action="change-user-role" data-id="${esc(student.uid)}" data-role="${role}" data-authorized="${Boolean(student.autorizado)}" data-name="${esc(student.nombreCompleto || student.nombre || "esta persona")}" ${self ? "disabled title=\"No puedes cambiar tu propio rol desde aquí\"" : ""}>${roleOptions.map(([value, label]) => `<option value="${value}" ${role === value ? "selected" : ""}>${label}</option>`).join("")}</select>`;
+  const roleSelect = `<select class="role-select" data-action="change-user-role" data-type="alumno" data-id="${esc(student.uid)}" data-role="${role}" data-authorized="${Boolean(student.autorizado)}" data-name="${esc(student.nombreCompleto || student.nombre || "esta persona")}" ${self ? "disabled title=\"No puedes cambiar tu propio rol desde aquí\"" : ""}>${roleOptions.map(([value, label]) => `<option value="${value}" ${role === value ? "selected" : ""}>${label}</option>`).join("")}</select>`;
   const accessAction = role !== "admin"
     ? `<button class="secondary-button compact" data-action="toggle-student" data-id="${esc(student.uid)}" data-authorized="${Boolean(student.autorizado)}" ${self ? "disabled" : ""}>${student.autorizado ? "Bloquear" : "Autorizar"}</button>`
     : `<span class="state-pill success">Administrador</span>`;
@@ -2527,9 +2556,10 @@ function simulateStudentLoan(form: HTMLFormElement): void {
 
 root.addEventListener("input", (event) => {
   const target = event.target as HTMLInputElement;
-  if (target.id === "student-search") {
+  if (target.id === "student-search" || target.id === "teacher-search") {
     const search = target.value.trim().toLocaleLowerCase("es");
-    document.querySelectorAll<HTMLTableRowElement>("[data-student-row]").forEach((row) => {
+    const selector = target.id === "teacher-search" ? "[data-teacher-row]" : "[data-student-row]";
+    document.querySelectorAll<HTMLTableRowElement>(selector).forEach((row) => {
       row.hidden = !row.textContent?.toLocaleLowerCase("es").includes(search);
     });
   } else if (target.matches("[data-task-search-input]")) {
@@ -3979,13 +4009,16 @@ async function changeUserRole(select: HTMLSelectElement): Promise<void> {
     select.value = currentRole;
     return;
   }
-  const labels: Record<string, string> = { estudiante: "Estudiante", moderador: "Moderador", admin: "Administrador" };
+  const teacher = select.dataset.type === "docente";
+  const labels: Record<string, string> = teacher
+    ? { estudiante: "Docente", moderador: "Docente gestor", admin: "Administrador" }
+    : { estudiante: "Estudiante", moderador: "Moderador", admin: "Administrador" };
   const name = select.dataset.name || "esta persona";
   const prompt = nextRole === "admin"
     ? `¿Dar a ${name} permisos de Administrador? Tendrá control completo de la aplicación.`
     : nextRole === "moderador"
-      ? `¿Hacer moderador a ${name}? Podrá gestionar proyectos, tareas, avisos y actividades del club.`
-      : `¿Cambiar el rol de ${name} a Estudiante?`;
+      ? `¿Hacer ${teacher ? "docente gestor" : "moderador"} a ${name}? Podrá gestionar proyectos, tareas, avisos y actividades del club.`
+      : `¿Cambiar el rol de ${name} a ${labels.estudiante}?`;
   if (!window.confirm(prompt)) {
     select.value = currentRole;
     return;
