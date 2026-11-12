@@ -1,7 +1,11 @@
 const CACHE_NAME = "robotica-sil-pwa-__PWA_BUILD_ID__";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(["/", "/manifest.webmanifest", "/icons/sil-school-logo.png"])));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll([
+    "/", "/manifest.webmanifest", "/icons/sil-school-logo.png",
+    "/components/arduino.png", "/components/protoboard.png",
+    "/components/Led.png", "/components/resistencia.png",
+  ])));
 });
 
 self.addEventListener("message", (event) => {
@@ -27,7 +31,7 @@ self.addEventListener("fetch", (event) => {
     }).catch(() => caches.match("/")));
     return;
   }
-  if (url.pathname.startsWith("/assets/")) {
+  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/components/")) {
     event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
       const copy = response.clone();
       caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));

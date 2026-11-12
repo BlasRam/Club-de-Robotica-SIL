@@ -42,6 +42,18 @@ function wireColor(kind: string): string {
 
 function componentSymbol(target: string): string {
   const value = normalize(target);
+  if (value.includes('integrado')) {
+    return '<rect x="5" y="8" width="38" height="27" rx="5" fill="#1d3b4d" stroke="#132b3a" stroke-width="2"/><circle cx="35" cy="14" r="3" fill="#efba4b"/><text x="24" y="27" fill="#dce8eb" text-anchor="middle" font-size="7">LED D13</text>';
+  }
+  if (value.includes('220') && (value.includes('led') || value.includes('anodo') || /rojo|verde|amarillo/.test(value))) {
+    return '<image href="/components/resistencia.png" x="2" y="6" width="14" height="34" preserveAspectRatio="xMidYMid meet"/><image href="/components/Led.png" x="18" y="0" width="28" height="42" preserveAspectRatio="xMidYMid meet"/>';
+  }
+  if (value.includes('220') || value.includes('resistencia')) {
+    return '<image href="/components/resistencia.png" x="14" y="1" width="20" height="42" preserveAspectRatio="xMidYMid meet"/>';
+  }
+  if (value.includes('led') || value.includes('anodo') || value.includes('catodo')) {
+    return '<image href="/components/Led.png" x="9" y="0" width="30" height="44" preserveAspectRatio="xMidYMid meet"/>';
+  }
   if (value.includes('hc-sr04') || value.includes('trig') || value.includes('echo')) {
     return '<rect x="5" y="7" width="38" height="27" rx="4" fill="#236c70" stroke="#174c50" stroke-width="2"/><circle cx="16" cy="19" r="7" fill="#d9e6e2" stroke="#9cb9b1" stroke-width="2"/><circle cx="33" cy="19" r="7" fill="#d9e6e2" stroke="#9cb9b1" stroke-width="2"/><path d="M10 36v4m9-4v4m9-4v4m9-4v4" stroke="#d59b36" stroke-width="2"/>';
   }
@@ -69,14 +81,7 @@ function componentSymbol(target: string): string {
   if (value.includes('rgb') || value.includes('comun')) {
     return '<path d="M13 25a11 11 0 1 1 22 0v5H13z" fill="#df5972" stroke="#95405a" stroke-width="2"/><path d="M16 30v10m6-10v10m6-10v10m6-10v10" stroke="#c59642" stroke-width="2"/><path d="M16 10l-4-4m15 1V2m8 9 5-4" stroke="#e09b42" stroke-width="2"/>';
   }
-  if (value.includes('220') || value.includes('10 k') || value.includes('resistencia')) {
-    if (value.includes('led') || value.includes('anodo') || value.includes('catodo') || /rojo|verde|amarillo/.test(value)) {
-      const color = value.includes('rojo') ? '#ed6570' : value.includes('verde') ? '#4ebd89' : '#f2bd56';
-      return '<path d="M1 22h5m15 0h4m17 0h5" stroke="#65778a" stroke-width="2"/><path d="M6 22l2-5 3 10 3-10 3 10 4-5" fill="none" stroke="#b77938" stroke-width="2.5" stroke-linejoin="round"/><path d="M24 15a8 8 0 1 1 0 14" fill="' + color + '" stroke="#a96f23" stroke-width="2"/><path d="M25 14v16" stroke="#a96f23" stroke-width="1.8"/><path d="M31 12l6-6m-3 1 3-1-1 3m-4 10 6-6m-3 1 3-1-1 3" fill="none" stroke="#087bb5" stroke-width="1.7"/><path d="M28 30v9m8-9v9" stroke="#65778a" stroke-width="2"/>';
-    }
-    return '<path d="M3 20h7m28 0h7" stroke="#65778a" stroke-width="2"/><path d="M10 20l4-8 5 16 5-16 5 16 5-16 4 8" fill="none" stroke="#b77938" stroke-width="3" stroke-linejoin="round"/>';
-  }
-  if (value.includes('led') || value.includes('anodo') || value.includes('catodo') || value.includes('13') || /rojo|verde|amarillo/.test(value)) {
+  if (value.includes('13')) {
     const color = value.includes('rojo') ? '#ed6570' : value.includes('verde') ? '#4ebd89' : '#f6c457';
     return '<path d="M14 25a10 10 0 1 1 20 0v5H14z" fill="' + color + '" stroke="#ad7428" stroke-width="2"/><path d="M18 30v10m12-10v10m-8-25 1 5m5-4-2 5" stroke="#66788b" stroke-width="2"/><path d="M8 8l5 4m-8 4 6 1m28-9-5 4m8 4-6 1" stroke="#087bb5" stroke-width="1.7"/>';
   }
@@ -110,10 +115,15 @@ export function wiringMarkup(source: string): string {
   const top = 142;
   const rowGap = 50;
   const height = top + lines.length * rowGap + 20;
+  const protoX = 270;
+  const protoHeight = height - 60;
+  const protoWidth = Math.round(protoHeight * 975 / 657);
+  const componentX = protoX + protoWidth + 12;
+  const viewWidth = componentX + 242;
   const wires = lines.map(({ color }, i) => {
     const y = top + i * rowGap;
     if (lines[i].kind === 'sin cable') return '';
-    return '<path d="M252 ' + y + ' C365 ' + y + ' 515 ' + y + ' 656 ' + y + '" fill="none" stroke="' + color + '" stroke-width="4" stroke-linecap="round"/><circle cx="252" cy="' + y + '" r="5" fill="' + color + '"/><circle cx="656" cy="' + y + '" r="5" fill="' + color + '"/>';
+    return '<path d="M252 ' + y + ' C' + (protoX + 30) + ' ' + y + ' ' + (componentX - 70) + ' ' + y + ' ' + componentX + ' ' + y + '" fill="none" stroke="' + color + '" stroke-width="4" stroke-linecap="round"/><circle cx="252" cy="' + y + '" r="5" fill="' + color + '"/><circle cx="' + componentX + '" cy="' + y + '" r="5" fill="' + color + '"/>';
   }).join('');
   const pins = lines.map(({ from }, i) => {
     const y = top + i * rowGap;
@@ -122,18 +132,11 @@ export function wiringMarkup(source: string): string {
   const components = lines.map(({ to, kind }, i) => {
     const y = top + i * rowGap;
     const labels = wrapSvgLabel(to);
-    const label = labels.map((line, index) => '<tspan x="718" dy="' + (index === 0 ? 0 : 11) + '">' + esc(line) + '</tspan>').join('');
-    return '<g><rect x="666" y="' + (y - 20) + '" width="230" height="40" rx="9" fill="#ffffff" stroke="#d7e0e7"/><svg x="674" y="' + (y - 19) + '" width="38" height="36" viewBox="0 0 48 44">' + componentSymbol(to) + '</svg><text x="718" y="' + (y - (labels.length > 1 ? 6 : -2)) + '" fill="#18354d" font-size="11" font-weight="700">' + label + '</text><text x="718" y="' + (y + 17) + '" fill="' + wireColor(kind) + '" font-size="9">' + esc(kind) + '</text></g>';
+    const label = labels.map((line, index) => '<tspan x="' + (componentX + 52) + '" dy="' + (index === 0 ? 0 : 11) + '">' + esc(line) + '</tspan>').join('');
+    return '<g><rect x="' + componentX + '" y="' + (y - 20) + '" width="230" height="40" rx="9" fill="#ffffff" stroke="#d7e0e7"/><svg x="' + (componentX + 7) + '" y="' + (y - 19) + '" width="38" height="36" viewBox="0 0 48 44">' + componentSymbol(to) + '</svg><text x="' + (componentX + 52) + '" y="' + (y - (labels.length > 1 ? 6 : -2)) + '" fill="#18354d" font-size="11" font-weight="700">' + label + '</text><text x="' + (componentX + 52) + '" y="' + (y + 17) + '" fill="' + wireColor(kind) + '" font-size="9">' + esc(kind) + '</text></g>';
   }).join('');
-  const holes: string[] = [];
-  for (let y = 0; y < height - 170; y += 18) {
-    for (let x = 0; x < 5; x++) {
-      const hy = 96 + y;
-      holes.push('<circle cx="' + (375 + x * 14) + '" cy="' + hy + '" r="2.1" fill="#9daeb6"/><circle cx="' + (493 + x * 14) + '" cy="' + hy + '" r="2.1" fill="#9daeb6"/>');
-    }
-  }
-  const breadboard = '<g><rect x="350" y="30" width="280" height="' + (height - 60) + '" rx="12" fill="#fff" stroke="#bdcbd2" stroke-width="2"/><rect x="360" y="40" width="260" height="8" rx="4" fill="#e9edf0"/><rect x="360" y="54" width="260" height="3" fill="#d84649"/><rect x="360" y="' + (height - 57) + '" width="260" height="3" fill="#2879b9"/><rect x="360" y="' + (height - 44) + '" width="260" height="8" rx="4" fill="#e9edf0"/>' + holes.join('') + '<rect x="470" y="96" width="16" height="' + Math.max(10, height - 184) + '" fill="#f0f2f2"/><text x="365" y="70" fill="#ca3b42" font-size="8" font-weight="700">+ · ALIMENTACIÓN</text><text x="365" y="' + (height - 30) + '" fill="#286f9e" font-size="8" font-weight="700">− · TIERRA</text></g>';
-  const board = '<g><rect x="20" y="24" width="232" height="' + (height - 40) + '" rx="18" fill="#087c70" stroke="#07534e" stroke-width="3"/><circle cx="39" cy="43" r="5" fill="#d5c18b"/><circle cx="232" cy="43" r="5" fill="#d5c18b"/><circle cx="39" cy="' + (height - 35) + '" r="5" fill="#d5c18b"/><circle cx="232" cy="' + (height - 35) + '" r="5" fill="#d5c18b"/><rect x="2" y="63" width="33" height="42" rx="5" fill="#bdc8cd" stroke="#71818a" stroke-width="2"/><rect x="69" y="50" width="94" height="51" rx="7" fill="#19364a" stroke="#102333" stroke-width="2"/><text x="116" y="70" text-anchor="middle" fill="#f6fbfd" font-size="12" font-weight="700">ARDUINO</text><text x="116" y="87" text-anchor="middle" fill="#b8d7d5" font-size="10">UNO · R3</text><rect x="178" y="51" width="43" height="30" rx="4" fill="#183246"/><text x="199" y="69" text-anchor="middle" fill="#dcebf0" font-size="7">ATmega</text><rect x="179" y="88" width="34" height="15" rx="3" fill="#214258"/><circle cx="64" cy="115" r="7" fill="#b9c7ca" stroke="#536976" stroke-width="2"/><text x="76" y="119" fill="#d7f0e8" font-size="8">POWER</text><text x="37" y="137" fill="#d7f0e8" font-size="9" font-weight="700">PINES DE CONEXIÓN</text><rect x="36" y="' + (height - 68) + '" width="96" height="24" rx="4" fill="#1b5060"/><text x="84" y="' + (height - 52) + '" text-anchor="middle" fill="#e5f2f4" font-size="8">USB / ENERGÍA</text><rect x="155" y="' + (height - 70) + '" width="27" height="26" rx="4" fill="#344e58" stroke="#779197"/><text x="168" y="' + (height - 54) + '" text-anchor="middle" fill="#e5f2f4" font-size="7">DC</text><text x="29" y="' + (height - 35) + '" fill="#d8eeee" font-size="7">ARDUINO UNO · 5 V</text></g>';
+  const breadboard = '<image href="/components/protoboard.png" x="' + protoX + '" y="30" width="' + protoWidth + '" height="' + protoHeight + '" preserveAspectRatio="none"/>';
+  const board = '<image href="/components/arduino.png" x="-100" y="20" width="360" height="191" preserveAspectRatio="none"/>';
   const mobile = lines.map(({ from, to, kind, color }) => '<div class="gw-wire-row"><span class="gw-wire-from"><small>ARDUINO UNO</small><b>' + esc(from) + '</b></span><b class="gw-wire-arrow" aria-hidden="true" style="color:' + color + '">' + (kind === 'sin cable' ? '•' : '→') + '</b><span class="gw-wire-target">' + componentIcon(to) + '<span><small>COMPONENTE</small><b>' + esc(to) + '</b></span></span><small class="gw-wire-kind" style="color:' + color + '">' + esc(kind) + '</small></div>').join('');
-  return '<figure class="gl-wiring"><figcaption>Montaje del circuito · Arduino Uno, protoboard y componentes</figcaption><div class="gw-wiring-svg" tabindex="0" aria-label="Diagrama del circuito, desplazable horizontalmente"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Montaje ilustrado de Arduino Uno en protoboard con sus conexiones y componentes" viewBox="0 0 910 ' + height + '" style="font:13px sans-serif"><rect width="910" height="' + height + '" fill="#f5f8fa"/>' + breadboard + wires + board + pins + components + '</svg></div><div class="gw-wiring-mobile">' + mobile + '</div><div class="gw-wire-legend"><span><i class="power"></i>Alimentación</span><span><i class="ground"></i>Tierra</span><span><i class="signal"></i>Señal</span><span><i class="internal"></i>Componente integrado</span></div><small>Ilustración esquemática estilo simulador. Desconecta la placa antes de montar y confirma el pinout del componente.</small></figure>';
+  return '<figure class="gl-wiring"><figcaption>Montaje del circuito · Arduino Uno, protoboard y componentes</figcaption><div class="gw-wiring-svg" tabindex="0" aria-label="Diagrama del circuito, desplazable horizontalmente"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Montaje del circuito con imágenes de los componentes aportadas por el club" viewBox="0 0 ' + viewWidth + ' ' + height + '" style="font:13px sans-serif;width:' + viewWidth + 'px"><rect width="' + viewWidth + '" height="' + height + '" fill="#f5f8fa"/>' + breadboard + wires + board + pins + components + '</svg></div><div class="gw-wiring-mobile">' + mobile + '</div><div class="gw-wire-legend"><span><i class="power"></i>Alimentación</span><span><i class="ground"></i>Tierra</span><span><i class="signal"></i>Señal</span><span><i class="internal"></i>Componente integrado</span></div><small>Referencias visuales compartidas por el club. Las conexiones se basan en el mapa de cada guía; desconecta la placa antes de montar y confirma el pinout del componente.</small></figure>';
 }
