@@ -98,7 +98,7 @@
 
       allow update: if
         (
-          (esDocenteRevisor() || esGestorClub())
+          (esDocenteRevisor() || esGestorClub() || esAdministradorInicial())
           && resource.data.estado == "pendiente"
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "estado", "revisadoPorUid", "fechaRevision", "comentarioRevision"
