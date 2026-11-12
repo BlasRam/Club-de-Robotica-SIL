@@ -248,6 +248,8 @@ const state: AppState = {
   clubLogoPath: "",
 };
 
+let showcaseReviewEntries = new Map<string, Record<string, any>>();
+
 async function loadClubBranding(): Promise<void> {
   try {
     const snapshot = await getDoc(doc(db, "clubSettings", "branding"));
@@ -1367,7 +1369,7 @@ async function renderHome(): Promise<string> {
     renderHomeCalendar(),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", state.user!.uid), limit(20))).catch(() => null),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", state.user!.uid), limit(20))).catch(() => null),
-    getDocs(query(collection(db, "guiasClub"), where("estado", "==", "aprobada"), limit(3))).catch(() => null),
+    getDocs(query(collection(db, "guiasPublicadas"), limit(3))).catch(() => null),
     teacher ? Promise.resolve(null) : getDocs(query(collection(db, "proyectos"), limit(60))).catch(() => null),
   ]);
   const inside = presence.exists() && presenceIsCurrent(presence.data());
@@ -1586,7 +1588,7 @@ function applyShowcaseFilters(): void {
 
 async function renderShowcase(): Promise<string> {
   const canReview = canReviewShowcase();
-  const guideQuery = () => query(collection(db, "guiasClub"), where("estado", "==", "aprobada"), limit(60));
+  const guideQuery = () => query(collection(db, "guiasPublicadas"), limit(60));
   let approved;
   try {
     approved = await getDocs(guideQuery());
@@ -1622,9 +1624,9 @@ async function renderShowcase(): Promise<string> {
     ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "rechazada"), limit(30))).catch(() => null)
     : null;
   const showcaseCards = approved.docs.map((item) => ({ id: item.id, ...item.data() }));
-  showcaseCards.sort((a, b) => (b.fechaRevision?.toMillis?.() ?? 0) - (a.fechaRevision?.toMillis?.() ?? 0));
   const reviewCards = pending?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
   const rejectedCards = rejected?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
+  showcaseReviewEntries = new Map(reviewCards.map((item) => [item.id, item]));
   const photos = new Map<string, string>();
   await Promise.all([...showcaseCards, ...reviewCards, ...rejectedCards].map(async (item) => {
     if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
@@ -3790,21 +3792,40 @@ async function resolveShowcaseReview(button: HTMLButtonElement): Promise<void> {
   const projectId = button.dataset.id;
   const decision = button.dataset.decision;
   if (!projectId || !["aprobada", "rechazada"].includes(decision || "")) return;
+  const guide = showcaseReviewEntries.get(projectId);
+  if (decision === "aprobada" && !guide) return notify("Recarga la sección y vuelve a abrir la guía para aprobarla.", "error");
   setBusy(button, true, decision === "aprobada" ? "Publicando" : "Guardando revisión");
   try {
     const comment = button.closest<HTMLElement>(".showcase-card")?.querySelector<HTMLInputElement>("[data-review-comment]")?.value.trim() || "";
-    await updateDoc(doc(db, "guiasClub", projectId), {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "guiasClub", projectId), {
       estado: decision,
       revisadoPorUid: state.user.uid,
       fechaRevision: serverTimestamp(),
       comentarioRevision: decision === "rechazada" ? comment.slice(0, 500) : "",
     });
+    if (decision === "aprobada" && guide) {
+      batch.set(doc(db, "guiasPublicadas", projectId), publishedGuideData(projectId, guide));
+    }
+    await batch.commit();
     notify(decision === "aprobada" ? "Proyecto aprobado y publicado en Guías de proyectos." : "Se enviaron los comentarios al responsable.");
     await loadPage();
   } catch (error) {
     setBusy(button, false);
     notify(errorMessage(error, "No se pudo guardar la revisión."), "error");
   }
+}
+
+function publishedGuideData(projectId: string, guide: Record<string, any>): Record<string, unknown> {
+  const publicFields = [
+    "titulo", "resumen", "problema", "funcionamiento", "tecnologias", "pruebas", "aprendizajes",
+    "conexiones", "pasosImplementacion", "nivelDificultad", "tiempoEstimado", "codigoPrueba",
+    "seguridad", "areas", "materiales", "videoUrl",
+  ];
+  const publicData: Record<string, unknown> = { proyectoId: projectId, estado: "publicada" };
+  for (const field of publicFields) publicData[field] = guide[field] ?? (field === "areas" ? [] : "");
+  if (typeof guide.fotoPath === "string") publicData.fotoPath = guide.fotoPath;
+  return publicData;
 }
 
 async function projectResponsibleOptions(): Promise<Array<{ uid: string; name: string }>> {

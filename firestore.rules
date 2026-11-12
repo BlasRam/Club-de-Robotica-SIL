@@ -2350,6 +2350,58 @@ match /puertas/{puertaId} {
       allow delete: if false;
     }
 
+    // Catálogo depurado: solo se publican los campos didácticos, sin datos de
+    // solicitante ni comentarios privados. Su lectura autenticada no depende
+    // del perfil ni del estado de una solicitud.
+    match /guiasPublicadas/{guiaId} {
+      function esRevisorDeGuias() {
+        return estaAutorizado()
+          && usuarioActual().data.get("tipoUsuario", "") == "docente"
+          && usuarioActual().data.get("docenteRevisor", false) == true;
+      }
+
+      function guiaPublicaValida(data) {
+        return data.keys().hasOnly([
+            "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
+            "pruebas", "aprendizajes", "conexiones", "pasosImplementacion", "nivelDificultad",
+            "tiempoEstimado", "codigoPrueba", "seguridad", "areas", "materiales", "videoUrl",
+            "fotoPath", "estado"
+          ])
+          && data.keys().hasAll([
+            "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
+            "pruebas", "aprendizajes", "conexiones", "pasosImplementacion", "nivelDificultad",
+            "tiempoEstimado", "codigoPrueba", "seguridad", "areas", "materiales", "videoUrl", "estado"
+          ])
+          && data.proyectoId == guiaId
+          && data.titulo is string && data.titulo.size() > 0 && data.titulo.size() <= 100
+          && data.resumen is string && data.resumen.size() > 0 && data.resumen.size() <= 600
+          && data.problema is string && data.problema.size() > 0 && data.problema.size() <= 600
+          && data.funcionamiento is string && data.funcionamiento.size() > 0 && data.funcionamiento.size() <= 1000
+          && data.tecnologias is string && data.tecnologias.size() > 0 && data.tecnologias.size() <= 500
+          && data.pruebas is string && data.pruebas.size() > 0 && data.pruebas.size() <= 1000
+          && data.aprendizajes is string && data.aprendizajes.size() > 0 && data.aprendizajes.size() <= 1000
+          && data.conexiones is string && data.conexiones.size() > 0 && data.conexiones.size() <= 1200
+          && data.pasosImplementacion is string && data.pasosImplementacion.size() > 0 && data.pasosImplementacion.size() <= 3000
+          && data.nivelDificultad in ["Inicial", "Intermedio", "Avanzado"]
+          && data.tiempoEstimado in ["1-2 horas", "3-5 horas", "Más de 5 horas"]
+          && data.codigoPrueba is string && data.codigoPrueba.size() <= 6000
+          && data.seguridad is string && data.seguridad.size() <= 1000
+          && data.areas is list && data.areas.size() <= 3
+          && data.areas.hasOnly(["Electrónica", "Mecánica", "Programación"])
+          && data.materiales is string && data.materiales.size() <= 800
+          && data.videoUrl is string && data.videoUrl.size() <= 400
+          && data.estado == "publicada"
+          && (!data.keys().hasAny(["fotoPath"])
+            || (data.fotoPath is string
+              && data.fotoPath.matches("proyectos/" + guiaId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
+      }
+
+      allow read: if estaAutenticado();
+      allow create, update: if (esAdministradorInicial() || esGestorClub() || esRevisorDeGuias())
+        && guiaPublicaValida(request.resource.data);
+      allow delete: if esAdministradorInicial() || esGestorClub() || esRevisorDeGuias();
+    }
+
     }
   }
 }
