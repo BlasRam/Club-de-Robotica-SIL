@@ -649,6 +649,22 @@ async function syncOwnClubDirectory(uid: string, profile: DocumentData): Promise
   await setDoc(doc(db, "directorioClub", uid), clubDirectoryData(profile));
 }
 
+async function seedClubDirectoryFromAdmin(profiles: QueryDocumentSnapshot<DocumentData>[]): Promise<void> {
+  const marker = "cdr-club-directory-seeded-v1";
+  if (!isAdminInterface() || sessionStorage.getItem(marker) === "true") return;
+  try {
+    const existing = await getDocs(collection(db, "directorioClub"));
+    const existingIds = new Set(existing.docs.map((profile) => profile.id));
+    const missing = profiles.filter((profile) => profile.get("autorizado") === true && !existingIds.has(profile.id));
+    for (let offset = 0; offset < missing.length; offset += 400) {
+      const batch = writeBatch(db);
+      missing.slice(offset, offset + 400).forEach((profile) => batch.set(doc(db, "directorioClub", profile.id), clubDirectoryData(profile.data())));
+      await batch.commit();
+    }
+    sessionStorage.setItem(marker, "true");
+  } catch { /* El inicio sigue disponible; cada perfil también se sincroniza cuando su titular inicia sesión. */ }
+}
+
 async function loadProfile(user: User): Promise<void> {
   state.loading = true;
   render();
@@ -1314,7 +1330,7 @@ async function renderHome(): Promise<string> {
       <section class="unframed-section"><h2>Tu perfil</h2><div class="profile-line"><span>Correo institucional</span><strong>${esc(state.profile?.correoInstitucional)}</strong></div><div class="profile-line"><span>Área de interés</span><strong>${esc(state.profile?.carrera || "Sin indicar")}</strong></div></section>`;
   }
   if (isAdminInterface()) {
-    const [studentRecords, pendingLoans, activeLoans, projects, pendingAccessRecords, pendingShowcase, teacherRecords] = await Promise.all([
+    const [studentRecords, pendingLoans, activeLoans, projects, pendingAccessRecords, pendingShowcase, teacherRecords, approvedProfileRecords] = await Promise.all([
       getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"))),
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Pendiente"))),
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Aprobada"))),
@@ -1322,7 +1338,9 @@ async function renderHome(): Promise<string> {
       getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"), where("autorizado", "==", false))),
       getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null),
       getDocs(query(collection(db, "usuarios"), where("tipoUsuario", "==", "docente"), limit(100))),
+      getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(500))),
     ]);
+    await seedClubDirectoryFromAdmin(approvedProfileRecords.docs);
     const students = studentRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
     const pendingAccess = pendingAccessRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
     const recent = await getDocs(query(collection(db, "accesos"), orderBy("fechaHora", "desc"), limit(30)));
