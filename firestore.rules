@@ -2350,9 +2350,9 @@ match /puertas/{puertaId} {
       allow delete: if false;
     }
 
-    // Catálogo depurado: solo se publican los campos didácticos, sin datos de
-    // solicitante ni comentarios privados. Su lectura autenticada no depende
-    // del perfil ni del estado de una solicitud.
+    // Catálogo público depurado: solo contiene campos didácticos, sin datos de
+    // solicitante ni comentarios privados. Las solicitudes permanecen en
+    // guiasClub y conservan sus reglas privadas.
     match /guiasPublicadas/{guiaId} {
       function esRevisorDeGuias() {
         return estaAutorizado()
@@ -2396,7 +2396,7 @@ match /puertas/{puertaId} {
               && data.fotoPath.matches("proyectos/" + guiaId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
       }
 
-      allow read: if estaAutenticado();
+      allow read: if true;
       allow create, update: if (esAdministradorInicial() || esGestorClub() || esRevisorDeGuias())
         && guiaPublicaValida(request.resource.data);
       allow delete: if esAdministradorInicial() || esGestorClub() || esRevisorDeGuias();
