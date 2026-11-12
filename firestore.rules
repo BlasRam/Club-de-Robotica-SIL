@@ -2366,7 +2366,7 @@ match /puertas/{puertaId} {
             "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
             "pruebas", "aprendizajes", "conexiones", "pasosImplementacion", "nivelDificultad",
             "tiempoEstimado", "codigoPrueba", "seguridad", "areas", "materiales", "videoUrl",
-            "fotoPath", "estado"
+            "fotoPath", "estado", "archivada", "tipoGuia", "diagrama", "erroresFrecuentes", "inventarioIds", "revision"
           ])
           && data.keys().hasAll([
             "proyectoId", "titulo", "resumen", "problema", "funcionamiento", "tecnologias",
@@ -2392,6 +2392,12 @@ match /puertas/{puertaId} {
           && data.materiales is string && data.materiales.size() <= 800
           && data.videoUrl is string && data.videoUrl.size() <= 400
           && data.estado == "publicada"
+          && data.get("archivada", false) is bool
+          && data.get("tipoGuia", "proyecto") in ["practica", "proyecto"]
+          && data.get("diagrama", "") is string && data.get("diagrama", "").size() <= 3000
+          && data.get("erroresFrecuentes", "") is string && data.get("erroresFrecuentes", "").size() <= 3000
+          && data.get("inventarioIds", []) is list && data.get("inventarioIds", []).size() <= 20
+          && data.get("revision", 1) is int && data.get("revision", 1) >= 1
           && (!data.keys().hasAny(["fotoPath"])
             || (data.fotoPath is string
               && data.fotoPath.matches("proyectos/" + guiaId + "/evidencias/showcase-[A-Za-z0-9_-]+")));
@@ -2401,6 +2407,74 @@ match /puertas/{puertaId} {
       allow create, update: if (esAdministradorInicial() || esGestorClub() || esRevisorDeGuias())
         && guiaPublicaValida(request.resource.data);
       allow delete: if esAdministradorInicial() || esGestorClub() || esRevisorDeGuias();
+    }
+
+    // Avance privado por cuenta; solo su titular puede leer y escribir.
+    match /usuarios/{uid}/guiaProgreso/{guiaId} {
+      allow read: if esPropietario(uid) && correoInstitucionalVerificado();
+      allow create, update: if esPropietario(uid) && correoInstitucionalVerificado()
+        && request.resource.data.keys().hasOnly(["favorite", "steps", "updatedAt"])
+        && request.resource.data.get("favorite", false) is bool
+        && request.resource.data.get("steps", []) is list
+        && request.resource.data.get("steps", []).size() <= 100
+        && request.resource.data.get("steps", []).hasOnly([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99])
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if esPropietario(uid);
+    }
+
+    match /evidenciasGuias/{evidenciaId} {
+      function docenteValido(uid) {
+        let perfil = get(/databases/$(database)/documents/usuarios/$(uid)).data;
+        return perfil.autorizado == true
+          && (perfil.get("tipoUsuario", "") == "docente" || perfil.rol == "admin");
+      }
+      function puedeRevisar() {
+        return esGestorClub() || (estaAutorizado()
+          && resource.data.docenteUid == request.auth.uid && docenteValido(request.auth.uid));
+      }
+      allow read: if estaAutorizado()
+        && (resource.data.propietarioUid == request.auth.uid || puedeRevisar());
+      allow create: if estaAutorizado()
+        && request.resource.data.keys().hasOnly(["guiaId", "tituloGuia", "propietarioUid", "nombre", "docenteUid", "resultado", "foto", "comentario", "estado", "fecha", "fechaRevision"])
+        && request.resource.data.keys().hasAll(["guiaId", "tituloGuia", "propietarioUid", "nombre", "docenteUid", "resultado", "foto", "comentario", "estado", "fecha", "fechaRevision"])
+        && request.resource.data.propietarioUid == request.auth.uid
+        && request.resource.data.guiaId is string && request.resource.data.guiaId.size() <= 100
+        && request.resource.data.tituloGuia is string && request.resource.data.tituloGuia.size() <= 100
+        && request.resource.data.nombre is string && request.resource.data.nombre.size() <= 120
+        && request.resource.data.docenteUid is string && docenteValido(request.resource.data.docenteUid)
+        && request.resource.data.resultado is string && request.resource.data.resultado.size() > 0 && request.resource.data.resultado.size() <= 3000
+        && request.resource.data.foto is string && request.resource.data.foto.size() <= 280000
+        && (request.resource.data.foto == "" || request.resource.data.foto.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))
+        && request.resource.data.comentario == "" && request.resource.data.estado == "enviada"
+        && request.resource.data.fecha == request.time && request.resource.data.fechaRevision == null;
+      allow update: if puedeRevisar()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["comentario", "estado", "fechaRevision"])
+        && request.resource.data.comentario is string && request.resource.data.comentario.size() > 0 && request.resource.data.comentario.size() <= 2000
+        && request.resource.data.estado == "revisada" && request.resource.data.fechaRevision == request.time;
+      allow delete: if esGestorClub() || (estaAutorizado() && resource.data.propietarioUid == request.auth.uid);
+    }
+
+    match /propuestasGuias/{propuestaId} {
+      allow get: if estaAutorizado() && !exists(/databases/$(database)/documents/propuestasGuias/$(propuestaId));
+      allow read: if esGestorClub() || (estaAutorizado() && resource.data.propietarioUid == request.auth.uid);
+      allow create: if estaAutorizado()
+        && request.resource.data.keys().hasOnly(["guiaId", "tituloGuia", "propietarioUid", "nombre", "estado", "proyectoId", "fecha"])
+        && request.resource.data.keys().hasAll(["guiaId", "tituloGuia", "propietarioUid", "nombre", "estado", "proyectoId", "fecha"])
+        && request.resource.data.propietarioUid == request.auth.uid
+        && request.resource.data.guiaId is string && request.resource.data.guiaId.size() > 0 && request.resource.data.guiaId.size() <= 100
+        && propuestaId == request.auth.uid + "-" + request.resource.data.guiaId
+        && request.resource.data.tituloGuia is string && request.resource.data.tituloGuia.size() <= 100
+        && request.resource.data.nombre is string && request.resource.data.nombre.size() <= 120
+        && request.resource.data.estado == "pendiente" && request.resource.data.proyectoId == ""
+        && request.resource.data.fecha == request.time;
+      allow update: if esGestorClub() && resource.data.estado == "pendiente"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado", "proyectoId"])
+        && request.resource.data.estado in ["creada", "rechazada"]
+        && (request.resource.data.estado == "rechazada" && request.resource.data.proyectoId == ""
+          || request.resource.data.estado == "creada"
+            && request.resource.data.proyectoId is string
+            && getAfter(/databases/$(database)/documents/proyectos/$(request.resource.data.proyectoId)).data.creadoPorUid == request.auth.uid);
+      allow delete: if false;
     }
 
   }

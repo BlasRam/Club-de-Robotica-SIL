@@ -67,7 +67,10 @@ import lockIcon from "lucide-static/icons/lock-keyhole.svg?raw";
 import unlockIcon from "lucide-static/icons/lock-keyhole-open.svg?raw";
 import { firebaseConfig } from "./firebase-config";
 import { starterGuides } from "./starter-guides";
-import { renderGuideLibrary } from "./guide-library";
+import { renderGuideLibrary, refreshGuideLibrary } from "./guide-library";
+import { enrichGuide } from "./guide-content";
+import { createGuideWorkspace, type GuideWorkspace } from "./guide-workspace";
+let guideWorkspace: GuideWorkspace | null = null;
 import { CLUB_NAME, CLUB_SHORT_NAME, INITIAL_ADMIN_EMAIL, INSTITUTIONAL_EMAIL_DOMAIN, isInitialAdminEmail, isInstitutionalEmail } from "./club-config";
 import "./styles.css";
 import "./access-lock.css";
@@ -711,6 +714,10 @@ function errorMessage(error: unknown, fallback: string): string {
 let authSubmissionInProgress = false;
 
 onAuthStateChanged(auth, (user) => {
+  if (state.user?.uid !== user?.uid) {
+    guideWorkspace?.dispose(); guideWorkspace = null;
+    document.querySelectorAll<HTMLDialogElement>('.gl-reader').forEach(dialog => dialog.close());
+  }
   state.user = user;
   if (authSubmissionInProgress) return;
   if (user && state.authMode !== "register" &&
@@ -1371,7 +1378,7 @@ async function renderHome(): Promise<string> {
     renderHomeCalendar(),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", state.user!.uid), limit(20))).catch(() => null),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", state.user!.uid), limit(20))).catch(() => null),
-    getDocs(query(collection(db, "guiasPublicadas"), limit(3))).catch(() => null),
+    getDocs(query(collection(db, "guiasPublicadas"), limit(300))).catch(() => null),
     teacher ? Promise.resolve(null) : getDocs(query(collection(db, "proyectos"), limit(60))).catch(() => null),
   ]);
   const inside = presence.exists() && presenceIsCurrent(presence.data());
@@ -1389,7 +1396,9 @@ async function renderHome(): Promise<string> {
     ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
     : null;
   const pendingLoans = loans.docs.filter((loan) => loan.get("estado") === "Pendiente").length;
-  const featured = [...(featuredShowcase?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? []), ...starterGuides].slice(0, 3);
+  const homeGuides = featuredShowcase?.docs.map(item => ({ ...item.data(), id: item.id })) ?? [];
+  const homeGuideIds = new Set(homeGuides.map(item => item.id));
+  const featured = [...homeGuides, ...starterGuides.filter(item => !homeGuideIds.has(item.id))].filter(item => !item.archivada).slice(0, 3);
   const studentProjectNames = new Map((studentProjectRecords?.docs ?? []).map((project) => [project.id, String(project.get("nombre") || project.get("titulo") || "Proyecto del club")]));
   const featuredPhotos = new Map<string, string>();
   await Promise.all(featured.map(async (item) => {
@@ -1591,7 +1600,7 @@ function applyShowcaseFilters(): void {
 async function renderShowcase(): Promise<string> {
   const canReview = canReviewShowcase();
   let catalogUnavailable = false;
-  const approved = await getDocs(query(collection(db, "guiasPublicadas"), limit(60))).catch(() => {
+  const approved = await getDocs(query(collection(db, "guiasPublicadas"), limit(300))).catch(() => {
     catalogUnavailable = true;
     return null;
   });
@@ -1603,7 +1612,7 @@ async function renderShowcase(): Promise<string> {
   const rejected = canManageClub()
     ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "rechazada"), limit(30))).catch(() => null)
     : null;
-  const publishedCards = approved?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
+  const publishedCards = approved?.docs.map(item => enrichGuide({ ...starterGuides.find(guide => guide.id === item.id), ...item.data(), id: item.id, guiaInicial: item.get("tipoGuia") === "practica" })) ?? [];
   const publishedIds = new Set(publishedCards.map((item) => item.id));
   const showcaseCards = [...publishedCards, ...starterGuides.filter((item) => !publishedIds.has(item.id))];
   const reviewCards = pending?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
@@ -1614,9 +1623,14 @@ async function renderShowcase(): Promise<string> {
     if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
     try { photos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* La ficha sigue visible aunque no cargue la foto. */ }
   }));
+  const admin = canManageClub(), teacher = state.profile?.tipoUsuario === "docente", authorized = isAuthorized();
+  if (!guideWorkspace || guideWorkspace.uid !== state.user!.uid || guideWorkspace.admin !== admin || guideWorkspace.teacher !== teacher || guideWorkspace.authorized !== authorized) {
+    guideWorkspace?.dispose();
+    guideWorkspace = createGuideWorkspace({ db, uid: state.user!.uid, name: fullName(), admin, teacher, authorized, refresh: loadPage, openProject: showProject }, refreshGuideLibrary);
+  } else void guideWorkspace.progress.retry();
   return `${pageHeading("Guías de proyectos", "Ideas para experimentar, aprender y construir en equipo.")}
     ${catalogUnavailable ? `<div class="notice-box warning">No pudimos actualizar los proyectos del club. Puedes consultar las guías de práctica.<button class="secondary-button compact" data-action="refresh">Reintentar conexión</button></div>` : ""}
-    ${renderGuideLibrary(showcaseCards, photos, state.user!.uid)}
+    ${renderGuideLibrary(showcaseCards, photos, state.user!.uid, guideWorkspace)}
     ${canReview ? `<details class="gl-review" ${reviewCards.length || !pending ? "open" : ""}><summary>Revisión docente · ${pending ? reviewCards.length + " pendientes" : "sin conexión"}</summary>
     ${!pending ? `<p>No se pudo cargar la cola de revisión.</p><button class="secondary-button compact" data-action="refresh">Reintentar</button>` : reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => showcaseCardMarkup(item, photos, "pending")).join("")}</div>` : emptyInline("No hay guías pendientes de revisión.")}
     ${canManageClub() && rejectedCards.length ? `<h3>Guías con cambios solicitados</h3><div class="showcase-grid">${rejectedCards.map((item) => showcaseCardMarkup(item, photos, "rejected")).join("")}</div>` : ""}</details>` : ""}`;

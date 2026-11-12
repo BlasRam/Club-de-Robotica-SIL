@@ -62,7 +62,7 @@ async function buildRules() {
     parts.push(await readFile(path.join(sourceDir, filename), "utf8"));
   }
   const assembled = `${parts.map((part) => part.trim()).join("\n\n")}\n\n${closing}`;
-  const rootCollections = new Set([...sections.map(([collection]) => collection), "guiasPublicadas"]);
+  const rootCollections = new Set([...sections.map(([collection]) => collection), "guiasPublicadas", "evidenciasGuias", "propuestasGuias"]);
   let depth = 0;
   for (const line of assembled.split("\n")) {
     const match = line.match(/^\s*match \/([A-Za-z]+)\/\{/);

@@ -1,3 +1,4 @@
+import { enrichGuide } from "./guide-content";
 type Guide = {
   id: string; titulo: string; resumen: string; funcionamiento: string; aprendizajes: string;
   conexiones: string; pasosImplementacion: string;
@@ -119,7 +120,7 @@ const guides: Guide[] = [
   },
 ];
 
-export const starterGuides = guides.map((guide) => ({
+export const starterGuides = guides.map((guide) => enrichGuide({
   ...guide,
   guiaInicial: true,
   problema: `Objetivo: ${guide.resumen}`,
