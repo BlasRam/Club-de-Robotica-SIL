@@ -1586,9 +1586,7 @@ function applyShowcaseFilters(): void {
 
 async function renderShowcase(): Promise<string> {
   const canReview = canReviewShowcase();
-  const guideQuery = () => canManageClub()
-    ? query(collection(db, "guiasClub"), limit(100))
-    : query(collection(db, "guiasClub"), where("estado", "==", "aprobada"), limit(60));
+  const guideQuery = () => query(collection(db, "guiasClub"), where("estado", "==", "aprobada"), limit(60));
   let approved;
   try {
     approved = await getDocs(guideQuery());
@@ -1617,17 +1615,16 @@ async function renderShowcase(): Promise<string> {
   }
   // La cola de moderación es opcional: si sus reglas rechazan esta consulta,
   // los proyectos ya aprobados deben seguir visibles.
-  const allGuides = canManageClub() ? approved.docs : null;
-  const pending = canReview && !allGuides
+  const pending = canReview
     ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
     : null;
-  const rejected = canManageClub() ? null : canReview
+  const rejected = canManageClub()
     ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "rechazada"), limit(30))).catch(() => null)
     : null;
-  const showcaseCards = (allGuides ? allGuides.filter((item) => item.get("estado") === "aprobada") : approved.docs).map((item) => ({ id: item.id, ...item.data() }));
+  const showcaseCards = approved.docs.map((item) => ({ id: item.id, ...item.data() }));
   showcaseCards.sort((a, b) => (b.fechaRevision?.toMillis?.() ?? 0) - (a.fechaRevision?.toMillis?.() ?? 0));
-  const reviewCards = (allGuides ? allGuides.filter((item) => item.get("estado") === "pendiente") : pending?.docs ?? []).map((item) => ({ id: item.id, ...item.data() }));
-  const rejectedCards = (allGuides ? allGuides.filter((item) => item.get("estado") === "rechazada") : rejected?.docs ?? []).map((item) => ({ id: item.id, ...item.data() }));
+  const reviewCards = pending?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
+  const rejectedCards = rejected?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
   const photos = new Map<string, string>();
   await Promise.all([...showcaseCards, ...reviewCards, ...rejectedCards].map(async (item) => {
     if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
@@ -1636,7 +1633,7 @@ async function renderShowcase(): Promise<string> {
   const areas = [...new Set(showcaseCards.flatMap((item) => Array.isArray(item.areas) ? item.areas.filter((area: unknown) => typeof area === "string") : []))].sort((a, b) => a.localeCompare(b, "es"));
   return `${pageHeading("Guías de proyectos", "Explora ideas del club y aprende cómo construirlas paso a paso.")}
     <div class="notice-box info showcase-privacy">Visible para todas las cuentas con sesión iniciada. Solo se muestran proyectos aprobados; no mostramos nombres ni correos de estudiantes y las fotos pasan por revisión docente.</div>
-    ${canReview && !pending && !allGuides ? `<div class="notice-box danger">No se pudo cargar la cola de revisión. Las guías publicadas siguen disponibles; revisa las reglas de Firestore.</div>` : ""}
+    ${canReview && !pending ? `<div class="notice-box danger">No se pudo cargar la cola de revisión. Las guías publicadas siguen disponibles; revisa las reglas de Firestore.</div>` : ""}
     ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión de guías</h2><p>${canManageClub() ? "Tu cuenta de administración puede aprobar proyectos y solicitar cambios." : "Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club."}</p></div><span class="section-count">${reviewCards.length} pendientes</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => showcaseCardMarkup(item, photos, "pending")).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
     ${canManageClub() && rejectedCards.length ? `<section class="unframed-section"><div class="section-heading"><div><h2>Guías con cambios solicitados</h2><p>Historial de guías que esperan una nueva versión del responsable.</p></div><span class="section-count">${rejectedCards.length}</span></div><div class="showcase-grid">${rejectedCards.map((item) => showcaseCardMarkup(item, photos, "rejected")).join("")}</div></section>` : ""}
     <section class="unframed-section" data-showcase-library><div class="section-heading"><div><h2>Biblioteca de proyectos</h2><p>Explora ideas y sigue las guías para aprender construyendo.</p></div><span class="section-count" data-showcase-result-count>${showcaseCards.length} ${showcaseCards.length === 1 ? "guía" : "guías"}</span></div>${showcaseCards.length ? `<div class="showcase-filters"><label>Buscar guía<input type="search" data-showcase-search-input placeholder="Sensor, robot, Arduino…" /></label><label>Área<select data-showcase-area-filter><option value="">Todas las áreas</option>${areas.map((area) => `<option value="${esc(area)}">${esc(area)}</option>`).join("")}</select></label><label>Nivel<select data-showcase-level-filter><option value="">Todos los niveles</option><option>Inicial</option><option>Intermedio</option><option>Avanzado</option></select></label></div><p class="showcase-filter-empty" data-showcase-filter-empty hidden>No encontramos guías con esos filtros. Prueba otra búsqueda o cambia el área.</p><div class="showcase-grid">${showcaseCards.map((item) => showcaseCardMarkup(item, photos)).join("")}</div>` : emptyPanel("Todavía no hay guías de proyectos", "Desde un proyecto, el responsable puede preparar una guía y enviarla a revisión docente.")}</section>`;
