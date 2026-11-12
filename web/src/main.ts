@@ -1424,11 +1424,26 @@ async function renderShowcase(): Promise<string> {
   let approved;
   try {
     approved = await getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60)));
-  } catch (error) {
-    const accessHelp = state.user?.emailVerified
-      ? `Diagnóstico: cuenta inicial reconocida ${isInitialAdminEmail(state.user.email || "") ? "sí" : "no"}; perfil administrador ${isAdmin() ? "sí" : "no"}; perfil autorizado ${state.profile?.autorizado === true ? "sí" : "no"}. Si alguno de estos datos no corresponde, el administrador debe corregir el perfil en Usuarios.`
-      : "Verifica tu correo y vuelve a iniciar sesión para renovar el acceso.";
-    return `${pageHeading("Muestra de proyectos", "Conoce los prototipos destacados del club.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los proyectos</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(accessHelp)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
+  } catch {
+    let error: unknown;
+    let tokenResult: Awaited<ReturnType<User["getIdTokenResult"]>> | null = null;
+    try {
+      // La autorización de Firestore usa los claims del ID token, no solo el
+      // estado de correo verificado que muestra el cliente Auth.
+      await state.user?.getIdToken(true);
+      approved = await getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60)));
+    } catch (retryError) {
+      error = retryError;
+      tokenResult = await state.user?.getIdTokenResult().catch(() => null) ?? null;
+    }
+    if (!approved) {
+      const tokenEmail = String(tokenResult?.claims.email || "").trim().toLowerCase();
+      const profileEmail = String(state.profile?.correoInstitucional || "").trim().toLowerCase();
+      const claimVerified = tokenResult?.claims.email_verified === true;
+      const targetProject = db.app.options.projectId === "club-de-robotica-sil";
+      const diagnosis = `Diagnóstico Firebase: correo verificado en sesión ${state.user?.emailVerified ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; token de cuenta inicial ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con el token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}.`;
+      return `${pageHeading("Muestra de proyectos", "Conoce los prototipos destacados del club.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los proyectos</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
+    }
   }
   // La cola de moderación es opcional: si sus reglas rechazan esta consulta,
   // los proyectos ya aprobados deben seguir visibles.
