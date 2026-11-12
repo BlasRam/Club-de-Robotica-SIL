@@ -23,6 +23,15 @@ service firebase.storage {
           || project.get("creadoPorUid", "") == request.auth.uid);
     }
 
+    function isApprovedShowcaseImage(projectId, fileName) {
+      let showcase = firestore.get(/databases/(default)/documents/muestras/$(projectId)).data;
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && fileName.matches("showcase-[A-Za-z0-9_-]+")
+        && showcase.get("estado", "") == "aprobada"
+        && showcase.get("fotoPath", "") == "proyectos/" + projectId + "/evidencias/" + fileName;
+    }
+
     match /club-assets/branding/{fileName} {
       allow read: if true;
       allow create, update: if isClubAdministrator()
@@ -32,7 +41,7 @@ service firebase.storage {
     }
 
     match /proyectos/{projectId}/evidencias/{fileName} {
-      allow read: if isAuthorizedClubUser();
+      allow read: if isAuthorizedClubUser() || isApprovedShowcaseImage(projectId, fileName);
       allow create: if canManageProjectEvidence(projectId)
         && request.resource.size <= 4 * 1024 * 1024
         && request.resource.contentType.matches("image/(jpeg|png|webp)");

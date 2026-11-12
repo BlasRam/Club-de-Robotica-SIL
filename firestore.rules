@@ -2218,10 +2218,9 @@ match /puertas/{puertaId} {
       }
 
       allow read: if esGestorClub()
+        || (estaAutenticado() && resource.data.estado == "aprobada")
         || (estaAutorizado()
-        && (resource.data.estado == "aprobada"
-          || resource.data.solicitadoPorUid == request.auth.uid
-          || esDocenteRevisor()));
+          && (resource.data.solicitadoPorUid == request.auth.uid || esDocenteRevisor()));
 
       allow create: if exists(/databases/$(database)/documents/proyectos/$(proyectoId))
         && (esGestorClub() || (estaAutorizado() && esResponsableProyecto(proyectoId)))
