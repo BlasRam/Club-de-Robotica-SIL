@@ -350,7 +350,7 @@ function navigatePage(page: Page, taskFilter?: TaskFilter, searchTerm?: string):
   if (!isAuthorized() && !canUseWhileAccessPending(page)) {
     state.page = "inicio";
     state.menuOpen = false;
-    notify("Tu perfil sigue pendiente. Puedes consultar la muestra aprobada y tu cuenta.", "error");
+    notify("Tu cuenta está pendiente. Puedes consultar los proyectos aprobados y tu perfil.", "error");
     render();
     return;
   }
@@ -795,13 +795,13 @@ function navItems(): { id: Page; label: string }[] {
   const items: { id: Page; label: string }[] = [
     { id: "inicio", label: "Inicio" },
     { id: "tareas", label: "Tareas" },
-    { id: "acceso", label: "Acceso" },
+    { id: "acceso", label: "Entrada al laboratorio" },
     { id: "proyectos", label: "Proyectos" },
-    { id: "muestra", label: "Muestra de proyectos" },
+    { id: "muestra", label: "Proyectos destacados" },
     { id: "cursos", label: "Cursos" },
     { id: "avisos", label: "Avisos" },
-    { id: "sugerencias", label: "Sugerencias y reportes" },
-    { id: "prestamos", label: "Préstamos" },
+    { id: "sugerencias", label: "Ayuda y sugerencias" },
+    { id: "prestamos", label: "Préstamos de materiales" },
     { id: "calendario", label: "Calendario" },
   ];
   if (isAdminInterface()) items.push({ id: "inventario", label: "Inventario" }, { id: "estudiantes", label: "Estudiantes" }, { id: "docentes", label: "Docentes" });
@@ -827,7 +827,7 @@ function appShell(content: string): string {
   const onboardingSteps = isAdminInterface()
     ? [["Revisa pendientes", "Autoriza cuentas y responde solicitudes de préstamo."], ["Coordina equipos", "Consulta proyectos y actividad del club."], ["Mantén informada a la comunidad", "Publica avisos y revisa el inventario."]]
     : state.profile?.tipoUsuario === "docente"
-      ? [["Acompaña tus equipos", "Consulta avances y fechas de proyectos."], ["Organiza actividades", "Revisa tareas y el calendario del club."], ["Comparte aprendizajes", "Envía proyectos a la muestra o revísalos si tienes permiso."]]
+      ? [["Acompaña tus equipos", "Consulta avances y fechas de proyectos."], ["Organiza actividades", "Revisa tareas y el calendario del club."], ["Comparte aprendizajes", "Envía proyectos para revisión o revisa propuestas si tienes permiso."]]
       : [["Empieza por tus tareas", "Revisa fechas, prioridades y actividades asignadas."], ["Únete a proyectos", "Explora los equipos y sus etapas de trabajo."], ["Consulta recursos", "Encuentra cursos, avisos y solicita préstamos."]];
   const onboardingModal = state.showOnboarding ? `<div class="onboarding-backdrop"><section class="onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><div class="onboarding-head"><span class="onboarding-mark">${icon("inicio", 23)}</span><button class="icon-button" data-action="finish-onboarding" aria-label="Cerrar guía">×</button></div><p class="eyebrow">CLUB DE ROBÓTICA SIL</p><h2 id="onboarding-title">${onboardingTitle}</h2><p class="onboarding-intro">Tres ideas rápidas para empezar a usar la plataforma.</p><ol>${onboardingSteps.map(([title, detail], index) => `<li><span>${index + 1}</span><div><strong>${title}</strong><small>${detail}</small></div></li>`).join("")}</ol><button class="primary-button onboarding-start" data-action="finish-onboarding">Empezar</button></section></div>` : "";
   const navGroups: Array<{ label: string; ids: Page[] }> = [
@@ -872,7 +872,7 @@ function appShell(content: string): string {
       ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><div><strong>Nueva versión lista</strong><small>La aplicación se recargará para aplicar la actualización.</small></div><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
       ${onboardingModal}
       <nav class="mobile-nav" aria-label="Navegación móvil">
-        ${items.filter((item) => (isAuthorized() ? ["inicio", "tareas", "acceso", "proyectos", "avisos"] : ["inicio", "muestra", "sugerencias", "configuracion"]).includes(item.id)).map((item) => `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}">${icon(item.id, 19)}<span>${item.label}</span></button>`).join("")}
+        ${items.filter((item) => (isAuthorized() ? ["inicio", "tareas", "acceso", "proyectos", "avisos"] : ["inicio", "muestra", "sugerencias", "configuracion"]).includes(item.id)).map((item) => { const label = item.id === "acceso" ? "Entrada" : item.id === "sugerencias" ? "Ayuda" : item.label; return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}">${icon(item.id, 19)}<span>${label}</span></button>`; }).join("")}
       </nav>
       <div id="toast" class="toast" role="status"></div>
     </div>`;
@@ -1114,8 +1114,8 @@ async function pageContent(page: Page): Promise<string> {
     if (page === "perfil") return renderSandboxProfile();
     if (page === "configuracion") return renderSettings();
     if (page === "calendario") return renderCalendar();
-    if (page === "muestra") return `${pageHeading("Muestra de proyectos", "Prototipos destacados del club.")}<div class="showcase-grid"><article class="showcase-card"><p class="project-area">Electrónica · Programación</p><h3>Robot móvil</h3><p>Prototipo autónomo para explorar el aula y evitar obstáculos.</p><small>Compartido con aprobación docente</small></article></div>`;
-    if (page === "sugerencias") return `${pageHeading("Sugerencias y reportes", "Envía una sugerencia o reporta un error de la app.")}<div class="notice-box info">La vista de prueba no envía información real.</div>`;
+    if (page === "muestra") return `${pageHeading("Proyectos destacados", "Prototipos del club que ya fueron revisados.")}<div class="showcase-grid"><article class="showcase-card"><p class="project-area">Electrónica · Programación</p><h3>Robot móvil</h3><p>Prototipo autónomo para explorar el aula y evitar obstáculos.</p><small>Compartido con aprobación docente</small></article></div>`;
+    if (page === "sugerencias") return `${pageHeading("Ayuda y sugerencias", "Envía una idea o reporta un problema de la PWA.")}<div class="notice-box info">La vista de prueba no envía información real.</div>`;
     if (page === "inicio") {
       const sandboxHome = renderStudentSandbox(page);
       const noticeHeading = '<section class="unframed-section"><div class="section-heading"><h2>Avisos recientes</h2>';
@@ -1159,12 +1159,12 @@ function renderSettings(): string {
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("campana", 18)}</span><div><h2>Notificaciones</h2><p>${state.unreadNotifications ? `${state.unreadNotifications} sin leer` : "No tienes notificaciones sin leer."}</p></div></div>
         <button class="secondary-button" data-page="avisos">${icon("campana", 16)} Abrir bandeja</button>
         <p class="settings-note">Elige qué categorías mostrar en la bandeja de este dispositivo.</p>
-        ${[["task", "Tareas"], ["project", "Proyectos"], ["loan", "Préstamos"], ["club", "Avisos del club"]].map(([key, label]) => `<label class="settings-toggle"><span><strong>${label}</strong></span><input type="checkbox" data-setting="notification-pref" data-pref="${key}" ${noticePrefs[key] !== false ? "checked" : ""} /></label>`).join("")}
+        ${[["task", "Tareas"], ["project", "Proyectos"], ["loan", "Préstamos de materiales"], ["club", "Avisos del club"]].map(([key, label]) => `<label class="settings-toggle"><span><strong>${label}</strong></span><input type="checkbox" data-setting="notification-pref" data-pref="${key}" ${noticePrefs[key] !== false ? "checked" : ""} /></label>`).join("")}
       </section>
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("inicio", 18)}</span><div><h2>Guía de inicio</h2><p>Vuelve a consultar las recomendaciones para tu perfil.</p></div></div>
         <button class="secondary-button" data-action="show-onboarding">${icon("ir", 16)} Ver guía</button>
       </section>
-      <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("alerta", 18)}</span><div><h2>Ayuda rápida</h2><p>Proyectos: abre una tarjeta para ver etapas y tareas. Calendario: selecciona un día para ver su agenda y exportar el mes. Préstamos: consulta el estado desde la tarjeta del recurso.</p></div></div></section>
+      <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("alerta", 18)}</span><div><h2>Ayuda rápida</h2><p>Proyectos: abre una tarjeta para ver sus etapas y tareas. Calendario: selecciona un día para consultar la agenda y exportar el mes. Préstamos de materiales: revisa el estado y la fecha de devolución.</p></div></div></section>
       ${isAdmin() && !isStudentPreview() ? `<section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("perfil", 18)}</span><div><h2>Identidad del club</h2><p>El escudo actual es el del colegio. Puedes reemplazarlo por el logo del club cuando esté listo.</p></div></div><div class="club-logo-preview"><img src="${esc(state.clubLogoUrl)}" alt="Logo actual del colegio"/><span>Logo que verán las personas en la PWA</span></div><label class="logo-upload-label">Cambiar logo<input id="club-logo-input" type="file" accept="image/png,image/jpeg,image/webp" /></label>${state.clubLogoPath ? `<button class="secondary-button" data-action="reset-club-logo">Restablecer escudo del colegio</button>` : ""}</section>` : ""}
       <section class="settings-section settings-session"><div class="settings-section-heading"><span class="settings-icon">${icon("salir", 18)}</span><div><h2>Sesión</h2><p>Cierra tu sesión en este dispositivo.</p></div></div>
         <button class="danger-button" data-action="logout">${icon("salir", 16)} Cerrar sesión</button>
@@ -1187,7 +1187,7 @@ function renderProfile(): string {
     <div class="profile-layout"><form class="profile-form" data-form="profile">
       <div class="profile-fields"><label>Nombre<input name="nombre" value="${esc(profile.nombre)}" autocomplete="given-name" maxlength="60" required /></label><label>Apellido<input name="apellido" value="${esc(profile.apellido)}" autocomplete="family-name" maxlength="60" required /></label>
         ${renderMemberFields(profile)}</div>
-      <div class="profile-readonly"><div class="profile-line"><span>Correo de la cuenta</span><strong>${esc(profile.correoInstitucional || state.user?.email)}</strong></div><div class="profile-line"><span>Tipo de cuenta</span><strong>${roleLabel()}</strong></div><div class="profile-line"><span>Acceso</span><strong>${isAdmin() ? "Administrador" : profile.autorizado ? "Autorizado" : "Pendiente de autorización"}</strong></div><div class="profile-line"><span>Revisión de proyectos</span><strong>${canManageClub() ? "Habilitada como administrador" : canReviewShowcase() ? "Habilitada · revisor docente" : "No habilitada"}</strong></div></div>
+      <div class="profile-readonly"><div class="profile-line"><span>Correo de la cuenta</span><strong>${esc(profile.correoInstitucional || state.user?.email)}</strong></div><div class="profile-line"><span>Tipo de cuenta</span><strong>${roleLabel()}</strong></div><div class="profile-line"><span>Estado de cuenta</span><strong>${isAdmin() ? "Administración" : profile.autorizado ? "Autorizada" : "Pendiente de revisión"}</strong></div><div class="profile-line"><span>Revisión de proyectos</span><strong>${canManageClub() ? "Habilitada como administrador" : canReviewShowcase() ? "Habilitada · revisor docente" : "No habilitada"}</strong></div></div>
       <p class="profile-note">El correo, el rol y la autorización no se pueden cambiar desde esta pantalla.</p><button class="primary-button" type="submit">Guardar cambios ${icon("listo", 16)}</button>
     </form></div>`;
 }
@@ -1212,7 +1212,7 @@ function renderStudentSandbox(page: Page): string {
       <div class="task-list"><article class="task-row"><span class="task-check ${demo.taskDone ? "done" : ""}">${demo.taskDone ? icon("listo", 17) : ""}</span><div class="task-info"><span class="task-project">PROYECTO ROBOT MÓVIL</span><h3>Probar sensores ultrasónicos</h3><p>Verificar la distancia de detección y registrar resultados.</p><div class="task-meta"><span class="state-pill ${demo.taskDone ? "success" : "warning"}">${demo.taskDone ? "Completada" : "Pendiente"}</span></div></div>${demo.taskDone ? "" : `<button class="secondary-button compact" data-action="preview-complete-task">Marcar completada</button>`}</article><article class="task-row"><span class="task-check"></span><div class="task-info"><span class="task-project">PROYECTO ROBOT MÓVIL</span><h3>Documentar el montaje</h3><p>Agregar fotografías y notas del prototipo.</p><div class="task-meta"><span class="state-pill warning">Pendiente</span></div></div></article></div>`;
   }
   if (page === "acceso") {
-    return `${heading("Control de acceso", "Registra y consulta tus movimientos del laboratorio.")}
+    return `${heading("Entrada al laboratorio", "Registra y consulta tus entradas y salidas.")}
       <section class="access-panel ${demo.inside ? "inside" : "outside"}"><div class="access-panel-icon">${icon("acceso", 30)}</div><div class="access-panel-copy"><span class="status-label">TU ESTADO ACTUAL</span><h2>${demo.inside ? "Dentro del laboratorio" : "Fuera del laboratorio"}</h2><p>${demo.inside && demo.entryAt ? `Entrada registrada: ${dateText(demo.entryAt, true)}` : "Pulsa el candado para solicitar acceso."}</p></div>${accessLockButtonMarkup(demo.inside, "preview-register-entry", demo.inside)}</section>
       <section class="unframed-section"><div class="section-heading"><h2>Mi historial</h2><span class="section-count">${demo.entryAt ? 1 : 0}</span></div>${demo.entryAt ? `<div class="activity-list">${activityRow({ tipo: "entrada", nombreCompleto: fullName(), fechaHora: demo.entryAt })}</div>` : emptyInline("Todavía no tienes movimientos registrados.")}</section>`;
   }
@@ -1285,8 +1285,8 @@ function pageHeading(title: string, subtitle: string, action = ""): string {
 async function renderHome(): Promise<string> {
   const greeting = fullName().split(" ")[0];
   if (!isAuthorized()) {
-    return `${pageHeading(`Hola, ${esc(greeting)}`, "Tu perfil está pendiente de autorización.")}
-      <section class="pending-banner">${icon("alerta", 22)}<div><strong>Solicitud en revisión</strong><p>Mientras se revisa tu cuenta, puedes consultar proyectos aprobados y enviar una sugerencia. El administrador habilitará tareas, proyectos y préstamos al autorizarte.</p><div class="card-actions"><button class="secondary-button compact" data-page="muestra">Ver proyectos aprobados</button><button class="text-button" data-page="sugerencias">Enviar sugerencia</button></div></div></section>
+    return `${pageHeading(`Hola, ${esc(greeting)}`, "Tu cuenta está pendiente de revisión.")}
+      <section class="pending-banner">${icon("alerta", 22)}<div><strong>Cuenta pendiente de revisión</strong><p>Mientras se revisa tu cuenta, puedes consultar proyectos aprobados y enviar una sugerencia. Al autorizarla, podrás usar tareas, proyectos y préstamos.</p><div class="card-actions"><button class="secondary-button compact" data-page="muestra">Ver proyectos aprobados</button><button class="text-button" data-page="sugerencias">Enviar sugerencia</button></div></div></section>
       <section class="unframed-section"><h2>Tu perfil</h2><div class="profile-line"><span>Correo institucional</span><strong>${esc(state.profile?.correoInstitucional)}</strong></div><div class="profile-line"><span>Área de interés</span><strong>${esc(state.profile?.carrera || "Sin indicar")}</strong></div></section>`;
   }
   if (isAdminInterface()) {
@@ -1308,13 +1308,13 @@ async function renderHome(): Promise<string> {
       <section class="metrics-grid">
         ${metric("Estudiantes", students.length, "Personas registradas", "estudiantes", "people")}
         ${metric("Docentes", teacherRecords.size, "Cuentas docentes", "docentes", "people")}
-        ${metric("Acceso pendiente", pendingAccess.length, "Estudiantes por revisar", "estudiantes", "alert")}
+        ${metric("Cuentas pendientes", pendingAccess.length, "Estudiantes por revisar", "estudiantes", "alert")}
         ${metric("Muestra por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase")}
         ${metric("Préstamos pendientes", pendingLoans.size, "Solicitudes por resolver", "prestamos", "loan")}
         ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
         ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
       </section>
-      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos", "prestamos", "prestamos", "loans")}${adminQuickLink("Muestra", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
+      <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos de materiales", "prestamos", "prestamos", "loans")}${adminQuickLink("Proyectos destacados", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
       <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
   }
   const [loans, presence, notices, calendar, assignedByOwner, assignedByList, featuredShowcase] = await Promise.all([
@@ -1474,7 +1474,7 @@ async function renderShowcase(): Promise<string> {
       const sameFirebaseApp = auth.app === db.app;
       const firebaseCode = String((error as { code?: string })?.code || "desconocido");
       const diagnosis = `Diagnóstico Firebase: sesión activa ${state.user ? "sí" : "no"}; correo verificado en sesión ${state.user?.emailVerified ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; perfil inicial reconocido ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; Auth y Firestore usan la misma app ${sameFirebaseApp ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}; código ${firebaseCode}.`;
-      return `${pageHeading("Muestra de proyectos", "Conoce los prototipos destacados del club.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los proyectos</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
+      return `${pageHeading("Proyectos destacados", "Conoce los prototipos del club que ya fueron revisados.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los proyectos</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
     }
   }
   // La cola de moderación es opcional: si sus reglas rechazan esta consulta,
@@ -1490,11 +1490,11 @@ async function renderShowcase(): Promise<string> {
     if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
     try { photos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* La ficha sigue visible aunque no cargue la foto. */ }
   }));
-  return `${pageHeading("Muestra de proyectos", "Conoce qué problema resuelve cada prototipo, cómo funciona y qué aprendió el equipo.")}
+  return `${pageHeading("Proyectos destacados", "Conoce qué problema resuelve cada prototipo, cómo funciona y qué aprendió el equipo.")}
     <div class="notice-box info showcase-privacy">Visible para todas las cuentas con sesión iniciada. Solo se muestran proyectos aprobados; no mostramos nombres ni correos de estudiantes y las fotos pasan por revisión docente.</div>
     ${canReview && !pending ? `<div class="notice-box danger">No se pudo cargar la cola de revisión. Los proyectos aprobados siguen disponibles; revisa que las reglas de Firestore estén actualizadas.</div>` : ""}
-    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión de proyectos</h2><p>${canManageClub() ? "Tu cuenta de administración puede aprobar proyectos y solicitar cambios." : "Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club."}</p></div><span class="section-count">${reviewCards.length} pendientes</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => `<article class="showcase-card pending">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : ""}<span class="state-pill warning">Pendiente de revisión</span><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-review-meta">${esc((item.areas || []).join(" · ") || "Club de Robótica")} · Solicitud del equipo</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Pedir cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar muestra</button></div></article>`).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
-    <section class="unframed-section"><div class="section-heading"><div><h2>Proyectos destacados</h2><p>${showcaseCards.length ? `${showcaseCards.length} publicados` : "Aún no hay proyectos aprobados"}</p></div></div>${showcaseCards.length ? `<div class="showcase-grid">${showcaseCards.map((item) => `<article class="showcase-card">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : `<div class="showcase-cover-placeholder">${icon("proyectos", 34)}<span>Proyecto de Robótica SIL</span></div>`}<p class="project-area">${esc((item.areas || []).join(" · ") || "Club de Robótica")}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-approved-label">Compartido con aprobación docente</small></article>`).join("")}</div>` : emptyPanel("Todavía no hay proyectos en la muestra", "Desde la ficha de un proyecto, el responsable puede completar la presentación y solicitar su revisión docente.")}</section>`;
+    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión de proyectos</h2><p>${canManageClub() ? "Tu cuenta de administración puede aprobar proyectos y solicitar cambios." : "Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club."}</p></div><span class="section-count">${reviewCards.length} pendientes</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => `<article class="showcase-card pending">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : ""}<span class="state-pill warning">Pendiente de revisión</span><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-review-meta">${esc((item.areas || []).join(" · ") || "Club de Robótica")} · Solicitud del equipo</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Solicitar cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar proyecto</button></div></article>`).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
+    <section class="unframed-section"><div class="section-heading"><div><h2>Proyectos destacados</h2><p>${showcaseCards.length ? `${showcaseCards.length} publicados` : "Aún no hay proyectos aprobados"}</p></div></div>${showcaseCards.length ? `<div class="showcase-grid">${showcaseCards.map((item) => `<article class="showcase-card">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : `<div class="showcase-cover-placeholder">${icon("proyectos", 34)}<span>Proyecto de Robótica SIL</span></div>`}<p class="project-area">${esc((item.areas || []).join(" · ") || "Club de Robótica")}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-approved-label">Compartido con aprobación docente</small></article>`).join("")}</div>` : emptyPanel("Todavía no hay proyectos destacados", "Desde la ficha de un proyecto, el responsable puede completar la presentación y enviarla a revisión docente.")}</section>`;
 }
 
 async function renderTeacherProjectDashboard(): Promise<string> {
@@ -1590,7 +1590,7 @@ async function submitCourse(form: HTMLFormElement): Promise<void> {
 }
 
 function pendingNotice(): string {
-  return `${pageHeading("Acceso pendiente", "Esta sección se habilita cuando el administrador autorice tu perfil.")}<section class="pending-banner">${icon("alerta", 22)}<div><strong>Cuenta en revisión</strong><p>Tu perfil está creado. Un administrador debe habilitar el acceso al espacio de trabajo.</p></div></section>`;
+  return `${pageHeading("Cuenta pendiente de revisión", "Al autorizar tu cuenta se habilitarán estas funciones.")}<section class="pending-banner">${icon("alerta", 22)}<div><strong>Estamos revisando tu cuenta</strong><p>Mientras tanto, puedes consultar los proyectos aprobados y editar tu perfil.</p></div></section>`;
 }
 
 function taskDueDate(task: Record<string, any>): Date | null {
@@ -1702,8 +1702,8 @@ async function renderAccess(): Promise<string> {
       .filter((item) => item.get("tipo") === "entrada")
       .sort((a, b) => (b.get("fechaHora")?.toMillis?.() ?? 0) - (a.get("fechaHora")?.toMillis?.() ?? 0))[0];
     const recentEntries = recent.docs.filter((item) => item.get("tipo") === "entrada");
-    return `${pageHeading("Accesos", "Presencia actual e historial de entradas.")}
-      <section class="access-panel access-lock-panel outside"><div class="access-lock-panel-copy"><span class="status-label">CONTROL DE ACCESO</span><h2>Acceso al club</h2><p>${lastEntry ? `Última entrada registrada: ${dateText(lastEntry.get("fechaHora"), true)}` : ""}</p></div>${accessLockButtonMarkup(false, "register-admin-entry")}</section>
+      return `${pageHeading("Entrada al laboratorio", "Revisa quién está en el laboratorio y el historial de entradas.")}
+      <section class="access-panel access-lock-panel outside"><div class="access-lock-panel-copy"><span class="status-label">REGISTRO DE ENTRADAS</span><h2>Entrada al laboratorio</h2><p>${lastEntry ? `Última entrada registrada: ${dateText(lastEntry.get("fechaHora"), true)}` : ""}</p></div>${accessLockButtonMarkup(false, "register-admin-entry")}</section>
       <section class="metrics-grid two-metrics">${metric("Dentro del laboratorio", present.length, "Estudiantes presentes", "acceso", "green")}${metric("Estudiantes registrados", students.size, "Perfiles de estudiante", "estudiantes", "people")}</section>
       <section class="unframed-section"><div class="section-heading"><h2>Presentes ahora</h2><span class="section-count">${present.length}</span></div>${present.length ? `<div class="people-list">${present.map((item) => { const person = studentMap.get(item.id)!; return `<div class="person-row"><span class="avatar">${esc((person.nombre || person.nombreCompleto || "E").slice(0, 1).toUpperCase())}</span><span><strong>${esc(person.nombreCompleto || `${person.nombre || ""} ${person.apellido || ""}`)}</strong><small>${esc(person.correoInstitucional || "")}</small></span><span class="state-pill success">Dentro</span></div>`; }).join("")}</div>` : emptyInline("No hay estudiantes registrados dentro.")}</section>
       <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><span class="section-count">${recentEntries.length}</span></div>${recentEntries.length === 0 ? emptyInline("No hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
@@ -1722,7 +1722,7 @@ async function renderAccess(): Promise<string> {
   const recent = history.snapshot;
   const inside = presence.exists() && presenceIsCurrent(presence.data());
   const entries = recent?.docs.filter((item) => item.get("tipo") === "entrada") ?? [];
-  return `${pageHeading("Control de acceso", "Registra tu entrada al laboratorio.")}
+  return `${pageHeading("Entrada al laboratorio", "Registra tu entrada y salida del laboratorio.")}
     <section class="access-panel access-lock-panel ${inside ? "inside" : "outside"}"><div class="access-lock-panel-copy"><span class="status-label">TU ESTADO ACTUAL</span><h2>${inside ? "Dentro del laboratorio" : "Fuera del laboratorio"}</h2><p>${inside ? `Última actualización: ${dateText(presence.get("ultimaActualizacion"), true)}` : ""}</p></div>${accessLockButtonMarkup(inside)}</section>
     <section class="unframed-section"><div class="section-heading"><h2>Mi historial</h2>${recent ? `<span class="section-count">${entries.length}</span>` : ""}</div>${!recent ? `<div class="notice-box warning" role="status">${esc(history.warning)}</div><button class="secondary-button" data-action="refresh">${icon("actualizar")} Actualizar historial</button>` : entries.length === 0 ? emptyInline("Todavía no tienes entradas registradas.") : `<div class="activity-list">${entries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
 }
@@ -1782,8 +1782,8 @@ async function renderFeedback(): Promise<string> {
     const statusLabel = item.estado === "resuelto" ? "Resuelto" : item.estado === "en_revision" ? "En revisión" : "Recibido";
     return `<article class="feedback-card"><div class="feedback-card-top"><span class="state-pill ${item.tipo === "error" ? "warning" : "muted"}">${item.tipo === "error" ? "Reporte de error" : "Sugerencia"}</span><time>${dateText(item.fechaCreacion, true)}</time></div><div class="feedback-title-row"><h3>${esc(item.titulo)}</h3><span class="state-pill ${statusClass}">${statusLabel}</span></div><p>${esc(item.detalle)}</p><small class="feedback-author">${canManageClub() ? `Enviado por ${esc(item.nombre || "Estudiante")}` : "Enviado por ti"}</small>${item.respuesta ? `<div class="feedback-reply"><strong>Respuesta del club</strong><p>${esc(item.respuesta)}</p></div>` : ""}${canManageClub() ? `<form class="feedback-manage-form" data-form="feedback-response" data-id="${esc(item.id)}"><label>Estado<select name="estado"><option value="recibido" ${item.estado === "recibido" ? "selected" : ""}>Recibido</option><option value="en_revision" ${item.estado === "en_revision" ? "selected" : ""}>En revisión</option><option value="resuelto" ${item.estado === "resuelto" ? "selected" : ""}>Resuelto</option></select></label><label>Respuesta<textarea name="respuesta" rows="2" maxlength="1000" placeholder="Escribe una respuesta para la persona">${esc(item.respuesta || "")}</textarea></label><button class="secondary-button compact" type="submit">Guardar seguimiento</button></form>` : ""}</article>`;
   }).join("")}</div>` : emptyInline(canManageClub() ? "Todavía no hay sugerencias ni errores reportados." : "Todavía no enviaste sugerencias ni reportes.");
-  return `${pageHeading("Sugerencias y reportes", canManageClub() ? "Revisa los comentarios y errores reportados por el club." : "Cuéntanos qué podemos mejorar o qué error encontraste.")}
-    <form class="inline-form feedback-form" data-form="feedback"><h2>Enviar un comentario</h2><label>Tipo<select name="tipo"><option value="sugerencia">Sugerencia</option><option value="error">Reporte de error</option></select></label><label>Asunto<input name="titulo" required maxlength="100" placeholder="Resume tu idea o el problema" /></label><label>Detalle<textarea name="detalle" rows="4" required maxlength="2000" placeholder="Describe la sugerencia o los pasos para reproducir el error"></textarea></label><button class="primary-button" type="submit">Enviar</button></form>
+  return `${pageHeading("Ayuda y sugerencias", canManageClub() ? "Revisa las ideas y los problemas que reporta la comunidad." : "Envía una idea o reporta un problema de la PWA.")}
+    <form class="inline-form feedback-form" data-form="feedback"><h2>Cuéntanos tu idea o problema</h2><label>Tipo<select name="tipo"><option value="sugerencia">Sugerencia</option><option value="error">Reportar un problema</option></select></label><label>Asunto<input name="titulo" required maxlength="100" placeholder="Resume tu idea o el problema" /></label><label>Detalle<textarea name="detalle" rows="4" required maxlength="2000" placeholder="Cuéntanos qué pasó o cómo podemos mejorar"></textarea></label><button class="primary-button" type="submit">Enviar</button></form>
     <section class="unframed-section"><div class="section-heading"><h2>${canManageClub() ? "Enviados al club" : "Mis envíos"}</h2><span class="section-count">${reports.length}</span></div>${list}</section>`;
 }
 
@@ -2029,7 +2029,7 @@ async function renderLoans(): Promise<string> {
   loans.sort((a, b) => (b.fechaCreacion?.toMillis?.() ?? 0) - (a.fechaCreacion?.toMillis?.() ?? 0));
   const form = !isAdminInterface() && isAuthorized() ? `<form class="inline-form loan-form" data-form="loan"><h2>Solicitar préstamo</h2><div class="field-row"><label>Artículo<select name="recursoId" required><option value="">Cargando inventario…</option></select></label><label>Cantidad<input name="cantidad" type="number" min="1" value="1" required /></label></div><label>Propósito<input name="motivo" maxlength="300" required placeholder="¿Para qué necesitas el artículo?" /></label><div class="field-row"><label>Inicio<input name="inicio" type="date" required /></label><label>Devolución prevista<input name="devolucion" type="date" required /></label></div><button class="primary-button" type="submit">Enviar solicitud</button></form>` : "";
   if (form) void loadInventoryOptions();
-  return `${pageHeading(isAdminInterface() ? "Préstamos" : "Mis préstamos", isAdminInterface() ? "Solicitudes, artículos prestados y devoluciones." : "Controla artículos a tu cargo y fechas de devolución.")}
+  return `${pageHeading(isAdminInterface() ? "Préstamos de materiales" : "Mis préstamos", isAdminInterface() ? "Solicitudes, materiales prestados y devoluciones." : "Consulta los materiales a tu cargo y sus fechas de devolución.")}
     ${form}${loans.length ? `<div class="loan-list">${loans.map((loan) => loanCard(loan)).join("")}</div>` : emptyPanel("Sin préstamos", isAdminInterface() ? "Las solicitudes y préstamos aparecerán aquí." : "Cuando solicites un artículo, podrás seguirlo desde esta pantalla.")}`;
 }
 
@@ -2203,7 +2203,7 @@ function teacherRow(teacher: Record<string, any>): string {
   const access = role === "admin"
     ? `<span class="state-pill success">Acceso administrativo</span>`
     : `<button class="secondary-button compact" data-action="toggle-student" data-id="${esc(teacher.uid)}" data-authorized="${Boolean(teacher.autorizado)}" ${self ? "disabled" : ""}>${teacher.autorizado ? "Bloquear acceso" : "Autorizar"}</button>`;
-  const reviewer = `<button class="secondary-button compact" data-action="toggle-showcase-reviewer" data-id="${esc(teacher.uid)}" data-enabled="${Boolean(teacher.docenteRevisor)}" ${!teacher.autorizado || self ? "disabled" : ""}>${teacher.docenteRevisor ? "Quitar permiso" : "Habilitar revisión"}</button>`;
+  const reviewer = `<button class="secondary-button compact" data-action="toggle-showcase-reviewer" data-id="${esc(teacher.uid)}" data-enabled="${Boolean(teacher.docenteRevisor)}" ${!teacher.autorizado || self ? "disabled" : ""}>${teacher.docenteRevisor ? "Retirar permiso" : "Habilitar como revisor"}</button>`;
   return `<tr data-teacher-row><td><strong>${esc(teacher.nombreCompleto || `${teacher.nombre || ""} ${teacher.apellido || ""}`)}</strong><small>${esc(teacher.correoInstitucional || "")}</small></td><td>${esc(teacher.carrera || "Sin área indicada")}</td><td><span class="state-pill ${teacher.autorizado ? "success" : "warning"}">${teacher.autorizado ? "Autorizado" : "Pendiente"}</span>${access}</td><td>${roleSelect}</td><td>${reviewer}</td></tr>`;
 }
 
@@ -3637,7 +3637,7 @@ async function resolveShowcaseReview(button: HTMLButtonElement): Promise<void> {
       fechaRevision: serverTimestamp(),
       comentarioRevision: decision === "rechazada" ? comment.slice(0, 500) : "",
     });
-    notify(decision === "aprobada" ? "Proyecto aprobado y publicado en la muestra." : "Se enviaron los comentarios al responsable.");
+    notify(decision === "aprobada" ? "Proyecto aprobado y publicado en Proyectos destacados." : "Se enviaron los comentarios al responsable.");
     await loadPage();
   } catch (error) {
     setBusy(button, false);
@@ -4047,15 +4047,15 @@ async function toggleShowcaseReviewer(button: HTMLButtonElement): Promise<void> 
   if (!uid || uid === state.user?.uid) return;
   const target = await getDoc(doc(db, "usuarios", uid));
   if (!target.exists() || !target.get("autorizado") || target.get("tipoUsuario") !== "docente") {
-    notify("Solo se puede habilitar a una cuenta docente autorizada.", "error");
+    notify("Solo puedes habilitar como revisor a un docente con cuenta autorizada.", "error");
     return;
   }
   const name = String(target.get("nombreCompleto") || "esta persona");
-  if (!window.confirm(`${enable ? "¿Habilitar" : "¿Quitar"} a ${name} para revisar y aprobar proyectos de la muestra?`)) return;
+  if (!window.confirm(enable ? `¿Habilitar a ${name} como revisor de proyectos?` : `¿Retirar a ${name} el permiso para revisar proyectos?`)) return;
   setBusy(button, true);
   try {
     await updateDoc(doc(db, "usuarios", uid), { docenteRevisor: enable });
-    notify(enable ? "Permiso de revisión docente habilitado." : "Permiso de revisión docente quitado.");
+    notify(enable ? "Docente habilitado como revisor de proyectos." : "Se retiró el permiso de revisión.");
     await loadPage();
   } catch (error) {
     setBusy(button, false);
@@ -4109,12 +4109,12 @@ async function showProject(id: string): Promise<void> {
   const showcase = showcaseSnapshot?.exists() ? showcaseSnapshot.data() : null;
   const canRequestShowcase = (lead || canManageClub()) && !isStudentPreview();
   const showcaseBlock = showcase?.estado === "aprobada"
-    ? `<div class="notice-box info project-showcase-status">Este proyecto está publicado en la muestra para las cuentas del club.</div>`
+    ? `<div class="notice-box info project-showcase-status">Este proyecto aparece en Proyectos destacados para las cuentas del club.</div>`
     : showcase?.estado === "pendiente"
       ? `<div class="notice-box warning project-showcase-status">La solicitud de publicación espera revisión docente.</div>`
       : showcase?.estado === "rechazada"
         ? `<div class="notice-box warning project-showcase-status">Se solicitaron ajustes${showcase.comentarioRevision ? `: ${esc(showcase.comentarioRevision)}` : "."}</div>${canRequestShowcase ? `<button class="secondary-button compact" data-action="request-project-showcase" data-id="${esc(id)}">Volver a solicitar publicación</button>` : ""}`
-        : canRequestShowcase ? `<button class="secondary-button compact project-showcase-request" data-action="request-project-showcase" data-id="${esc(id)}">Solicitar publicación en la muestra</button>` : "";
+        : canRequestShowcase ? `<button class="secondary-button compact project-showcase-request" data-action="request-project-showcase" data-id="${esc(id)}">Solicitar publicación en Proyectos destacados</button>` : "";
   let decisionLog: QueryDocumentSnapshot<DocumentData>[] = [];
   let materialRequests: QueryDocumentSnapshot<DocumentData>[] = [];
   if (joined || lead || canManageClub()) {
