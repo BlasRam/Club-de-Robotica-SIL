@@ -151,7 +151,8 @@ service cloud.firestore {
     function esAdministradorInicial() {
       return estaAutenticado()
         && request.auth.token.email_verified == true
-        && request.auth.token.email in ["plataformapy.oficial@gmail.com", "bramirez@sil.edu.py"];
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('(?i)^(plataformapy\\.oficial@gmail\\.com|bramirez@sil\\.edu\\.py)$');
     }
 
 
@@ -160,7 +161,7 @@ service cloud.firestore {
         && request.auth.token.email_verified == true
         && request.auth.token.email is string
         && (
-          request.auth.token.email in ["plataformapy.oficial@gmail.com", "bramirez@sil.edu.py"]
+          request.auth.token.email.matches('(?i)^(plataformapy\\.oficial@gmail\\.com|bramirez@sil\\.edu\\.py)$')
           || request.auth.token.email.matches('^[^@]+@__DOMINIO_INSTITUCIONAL__$')
         );
     }
