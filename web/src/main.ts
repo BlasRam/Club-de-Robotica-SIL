@@ -16,7 +16,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocFromServer,
   getDocs,
   limit,
   onSnapshot,
@@ -68,6 +67,7 @@ import lockIcon from "lucide-static/icons/lock-keyhole.svg?raw";
 import unlockIcon from "lucide-static/icons/lock-keyhole-open.svg?raw";
 import { firebaseConfig } from "./firebase-config";
 import { starterGuides } from "./starter-guides";
+import { renderGuideLibrary } from "./guide-library";
 import { CLUB_NAME, CLUB_SHORT_NAME, INITIAL_ADMIN_EMAIL, INSTITUTIONAL_EMAIL_DOMAIN, isInitialAdminEmail, isInstitutionalEmail } from "./club-config";
 import "./styles.css";
 import "./access-lock.css";
@@ -1590,48 +1590,11 @@ function applyShowcaseFilters(): void {
 
 async function renderShowcase(): Promise<string> {
   const canReview = canReviewShowcase();
-  const guideQuery = () => query(collection(db, "guiasPublicadas"), limit(60));
-  let approved;
-  try {
-    approved = await getDocs(guideQuery());
-  } catch {
-    let error: unknown;
-    let tokenResult: Awaited<ReturnType<User["getIdTokenResult"]>> | null = null;
-    try {
-      // La autorización de Firestore usa los claims del ID token, no solo el
-      // estado de correo verificado que muestra el cliente Auth.
-      await state.user?.getIdToken(true);
-      approved = await getDocs(guideQuery());
-    } catch (retryError) {
-      error = retryError;
-      tokenResult = await state.user?.getIdTokenResult().catch(() => null) ?? null;
-    }
-    if (!approved) {
-      const directRead = await getDocFromServer(doc(db, "guiasPublicadas", "diagnostico-acceso"))
-        .then(() => "permitida")
-        .catch((probeError: unknown) => String((probeError as { code?: string })?.code || "error desconocido"));
-      const profileRead = state.user
-        ? await getDocFromServer(doc(db, "usuarios", state.user.uid))
-          .then(() => "permitida")
-          .catch((probeError: unknown) => String((probeError as { code?: string })?.code || "error desconocido"))
-        : "sin sesión";
-      const restRead = await fetch(`https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/guiasPublicadas?pageSize=1&key=${firebaseConfig.apiKey}`, { cache: "no-store" })
-        .then(async (response) => {
-          if (response.ok) return "permitida";
-          const body = await response.json().catch(() => null);
-          return `${response.status} ${String(body?.error?.status || "error")}`;
-        })
-        .catch(() => "sin conexión");
-      const tokenEmail = String(tokenResult?.claims.email || "").trim().toLowerCase();
-      const profileEmail = String(state.profile?.correoInstitucional || "").trim().toLowerCase();
-      const claimVerified = tokenResult?.claims.email_verified === true;
-      const targetProject = db.app.options.projectId === "club-de-robotica-sil";
-      const sameFirebaseApp = auth.app === db.app;
-      const firebaseCode = String((error as { code?: string })?.code || "desconocido");
-      const diagnosis = `Versión guias-diag-4; ruta guiasPublicadas; lista ${firebaseCode}; lectura directa ${directRead}; perfil desde servidor ${profileRead}; API pública ${restRead}; sesión activa ${state.user ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; perfil inicial reconocido ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; Auth y Firestore usan la misma app ${sameFirebaseApp ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}.`;
-      return `${pageHeading("Guías de proyectos", "Explora proyectos del club y aprende a construirlos.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar las guías</h2><p>Firebase no permitió leer el catálogo de guías.</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
-    }
-  }
+  let catalogUnavailable = false;
+  const approved = await getDocs(query(collection(db, "guiasPublicadas"), limit(60))).catch(() => {
+    catalogUnavailable = true;
+    return null;
+  });
   // La cola de moderación es opcional: si sus reglas rechazan esta consulta,
   // los proyectos ya aprobados deben seguir visibles.
   const pending = canReview
@@ -1640,7 +1603,7 @@ async function renderShowcase(): Promise<string> {
   const rejected = canManageClub()
     ? await getDocs(query(collection(db, "guiasClub"), where("estado", "==", "rechazada"), limit(30))).catch(() => null)
     : null;
-  const publishedCards = approved.docs.map((item) => ({ id: item.id, ...item.data() }));
+  const publishedCards = approved?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
   const publishedIds = new Set(publishedCards.map((item) => item.id));
   const showcaseCards = [...publishedCards, ...starterGuides.filter((item) => !publishedIds.has(item.id))];
   const reviewCards = pending?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
@@ -1651,13 +1614,12 @@ async function renderShowcase(): Promise<string> {
     if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
     try { photos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* La ficha sigue visible aunque no cargue la foto. */ }
   }));
-  const areas = [...new Set(showcaseCards.flatMap((item) => Array.isArray(item.areas) ? item.areas.filter((area: unknown) => typeof area === "string") : []))].sort((a, b) => a.localeCompare(b, "es"));
-  return `${pageHeading("Guías de proyectos", "Explora ideas del club y aprende cómo construirlas paso a paso.")}
-    <div class="notice-box info showcase-privacy">Guías de práctica para Arduino Uno de 5 V y proyectos compartidos tras revisión docente. No se muestran nombres ni correos de estudiantes.</div>
-    ${canReview && !pending ? `<div class="notice-box danger">No se pudo cargar la cola de revisión. Las guías publicadas siguen disponibles; revisa las reglas de Firestore.</div>` : ""}
-    ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión de guías</h2><p>${canManageClub() ? "Tu cuenta de administración puede aprobar proyectos y solicitar cambios." : "Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club."}</p></div><span class="section-count">${reviewCards.length} pendientes</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => showcaseCardMarkup(item, photos, "pending")).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
-    ${canManageClub() && rejectedCards.length ? `<section class="unframed-section"><div class="section-heading"><div><h2>Guías con cambios solicitados</h2><p>Historial de guías que esperan una nueva versión del responsable.</p></div><span class="section-count">${rejectedCards.length}</span></div><div class="showcase-grid">${rejectedCards.map((item) => showcaseCardMarkup(item, photos, "rejected")).join("")}</div></section>` : ""}
-    <section class="unframed-section" data-showcase-library><div class="section-heading"><div><h2>Biblioteca de proyectos</h2><p>Explora ideas y sigue las guías para aprender construyendo.</p></div><span class="section-count" data-showcase-result-count>${showcaseCards.length} ${showcaseCards.length === 1 ? "guía" : "guías"}</span></div>${showcaseCards.length ? `<div class="showcase-filters"><label>Buscar guía<input type="search" data-showcase-search-input placeholder="Sensor, robot, Arduino…" /></label><label>Área<select data-showcase-area-filter><option value="">Todas las áreas</option>${areas.map((area) => `<option value="${esc(area)}">${esc(area)}</option>`).join("")}</select></label><label>Nivel<select data-showcase-level-filter><option value="">Todos los niveles</option><option>Inicial</option><option>Intermedio</option><option>Avanzado</option></select></label></div><p class="showcase-filter-empty" data-showcase-filter-empty hidden>No encontramos guías con esos filtros. Prueba otra búsqueda o cambia el área.</p><div class="showcase-grid">${showcaseCards.map((item) => showcaseCardMarkup(item, photos)).join("")}</div>` : emptyPanel("Todavía no hay guías de proyectos", "Desde un proyecto, el responsable puede preparar una guía y enviarla a revisión docente.")}</section>`;
+  return `${pageHeading("Guías de proyectos", "Ideas para experimentar, aprender y construir en equipo.")}
+    ${catalogUnavailable ? `<div class="notice-box warning">No pudimos actualizar los proyectos del club. Puedes consultar las guías de práctica.<button class="secondary-button compact" data-action="refresh">Reintentar conexión</button></div>` : ""}
+    ${renderGuideLibrary(showcaseCards, photos, state.user!.uid)}
+    ${canReview ? `<details class="gl-review" ${reviewCards.length || !pending ? "open" : ""}><summary>Revisión docente · ${pending ? reviewCards.length + " pendientes" : "sin conexión"}</summary>
+    ${!pending ? `<p>No se pudo cargar la cola de revisión.</p><button class="secondary-button compact" data-action="refresh">Reintentar</button>` : reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => showcaseCardMarkup(item, photos, "pending")).join("")}</div>` : emptyInline("No hay guías pendientes de revisión.")}
+    ${canManageClub() && rejectedCards.length ? `<h3>Guías con cambios solicitados</h3><div class="showcase-grid">${rejectedCards.map((item) => showcaseCardMarkup(item, photos, "rejected")).join("")}</div>` : ""}</details>` : ""}`;
 }
 
 async function renderTeacherProjectDashboard(): Promise<string> {
