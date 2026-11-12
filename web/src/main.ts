@@ -16,6 +16,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   limit,
   onSnapshot,
@@ -1605,16 +1606,28 @@ async function renderShowcase(): Promise<string> {
       tokenResult = await state.user?.getIdTokenResult().catch(() => null) ?? null;
     }
     if (!approved) {
-      const directRead = await getDoc(doc(db, "guiasPublicadas", "diagnostico-acceso"))
+      const directRead = await getDocFromServer(doc(db, "guiasPublicadas", "diagnostico-acceso"))
         .then(() => "permitida")
         .catch((probeError: unknown) => String((probeError as { code?: string })?.code || "error desconocido"));
+      const profileRead = state.user
+        ? await getDocFromServer(doc(db, "usuarios", state.user.uid))
+          .then(() => "permitida")
+          .catch((probeError: unknown) => String((probeError as { code?: string })?.code || "error desconocido"))
+        : "sin sesión";
+      const restRead = await fetch(`https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/guiasPublicadas?pageSize=1&key=${firebaseConfig.apiKey}`, { cache: "no-store" })
+        .then(async (response) => {
+          if (response.ok) return "permitida";
+          const body = await response.json().catch(() => null);
+          return `${response.status} ${String(body?.error?.status || "error")}`;
+        })
+        .catch(() => "sin conexión");
       const tokenEmail = String(tokenResult?.claims.email || "").trim().toLowerCase();
       const profileEmail = String(state.profile?.correoInstitucional || "").trim().toLowerCase();
       const claimVerified = tokenResult?.claims.email_verified === true;
       const targetProject = db.app.options.projectId === "club-de-robotica-sil";
       const sameFirebaseApp = auth.app === db.app;
       const firebaseCode = String((error as { code?: string })?.code || "desconocido");
-      const diagnosis = `Versión guias-diag-3; ruta guiasPublicadas; lista ${firebaseCode}; lectura directa ${directRead}; sesión activa ${state.user ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; perfil inicial reconocido ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; Auth y Firestore usan la misma app ${sameFirebaseApp ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}.`;
+      const diagnosis = `Versión guias-diag-4; ruta guiasPublicadas; lista ${firebaseCode}; lectura directa ${directRead}; perfil desde servidor ${profileRead}; API pública ${restRead}; sesión activa ${state.user ? "sí" : "no"}; correo verificado en token ${claimVerified ? "sí" : "no"}; perfil inicial reconocido ${isInitialAdminEmail(tokenEmail) ? "sí" : "no"}; correo del perfil coincide con token ${Boolean(tokenEmail && profileEmail === tokenEmail) ? "sí" : "no"}; Auth y Firestore usan la misma app ${sameFirebaseApp ? "sí" : "no"}; proyecto correcto ${targetProject ? "sí" : "no"}.`;
       return `${pageHeading("Guías de proyectos", "Explora proyectos del club y aprende a construirlos.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar las guías</h2><p>Firebase no permitió leer el catálogo de guías.</p><p>${esc(diagnosis)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
     }
   }
