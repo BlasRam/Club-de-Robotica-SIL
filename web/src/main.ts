@@ -516,7 +516,9 @@ function canManageClub(): boolean {
 }
 
 function canReviewShowcase(): boolean {
-  return canManageClub() || (isAuthorized() && state.profile?.docenteRevisor === true);
+  return canManageClub() || (isAuthorized()
+    && state.profile?.tipoUsuario === "docente"
+    && state.profile?.docenteRevisor === true);
 }
 
 function roleLabel(): string {
@@ -1410,10 +1412,20 @@ function showcaseDetailsMarkup(item: Record<string, any>): string {
 async function renderShowcase(): Promise<string> {
   if (!isAuthorized()) return pendingNotice();
   const canReview = canReviewShowcase();
-  const [approved, pending] = await Promise.all([
-    getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60))),
-    canReview ? getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))) : Promise.resolve(null),
-  ]);
+  let approved;
+  try {
+    approved = await getDocs(query(collection(db, "muestras"), where("estado", "==", "aprobada"), limit(60)));
+  } catch (error) {
+    const accessHelp = state.user?.emailVerified
+      ? "Si ya tienes un perfil de administrador autorizado, las reglas de Firestore del proyecto deben incluir el permiso para gestores y estar desplegadas. Luego, cierra sesión y vuelve a entrar para renovar el acceso."
+      : "Verifica tu correo y vuelve a iniciar sesión para renovar el acceso.";
+    return `${pageHeading("Muestra de proyectos", "Conoce los prototipos destacados del club.")}<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los proyectos</h2><p>${esc(errorMessage(error, "Firebase rechazó la consulta."))}</p><p>${esc(accessHelp)}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
+  }
+  // La cola de moderación es opcional: si sus reglas rechazan esta consulta,
+  // los proyectos ya aprobados deben seguir visibles.
+  const pending = canReview
+    ? await getDocs(query(collection(db, "muestras"), where("estado", "==", "pendiente"), limit(30))).catch(() => null)
+    : null;
   const showcaseCards = approved.docs.map((item) => ({ id: item.id, ...item.data() }));
   showcaseCards.sort((a, b) => (b.fechaRevision?.toMillis?.() ?? 0) - (a.fechaRevision?.toMillis?.() ?? 0));
   const reviewCards = pending?.docs.map((item) => ({ id: item.id, ...item.data() })) ?? [];
@@ -1424,6 +1436,7 @@ async function renderShowcase(): Promise<string> {
   }));
   return `${pageHeading("Muestra de proyectos", "Conoce qué problema resuelve cada prototipo, cómo funciona y qué aprendió el equipo.")}
     <div class="notice-box info showcase-privacy">Muestra privada para cuentas autorizadas. No mostramos nombres ni correos de estudiantes. Las fichas y sus fotos pasan por revisión docente.</div>
+    ${canReview && !pending ? `<div class="notice-box danger">No se pudo cargar la cola de revisión. Los proyectos aprobados siguen disponibles; revisa que las reglas de Firestore estén actualizadas.</div>` : ""}
     ${canReview ? `<section class="unframed-section"><div class="section-heading"><div><h2>Revisión docente</h2><p>Comprueba que la explicación y las imágenes sean apropiadas antes de compartirlas con el club.</p></div><span class="section-count">${reviewCards.length}</span></div>${reviewCards.length ? `<div class="showcase-grid">${reviewCards.map((item) => `<article class="showcase-card pending">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : ""}<span class="state-pill warning">Pendiente de revisión</span><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-review-meta">${esc((item.areas || []).join(" · ") || "Club de Robótica")} · Solicitud del equipo</small><label class="showcase-review-note">Comentario para el equipo (opcional)<input data-review-comment maxlength="500" placeholder="Qué podría mejorar antes de publicarse" /></label><div class="showcase-actions"><button class="secondary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="rechazada">Pedir cambios</button><button class="primary-button compact" data-action="review-showcase" data-id="${esc(item.id)}" data-decision="aprobada">Aprobar muestra</button></div></article>`).join("")}</div>` : emptyInline("No hay proyectos pendientes de revisión.")}</section>` : ""}
     <section class="unframed-section"><div class="section-heading"><div><h2>Proyectos destacados</h2><p>${showcaseCards.length ? `${showcaseCards.length} publicados` : "Aún no hay proyectos aprobados"}</p></div></div>${showcaseCards.length ? `<div class="showcase-grid">${showcaseCards.map((item) => `<article class="showcase-card">${photos.has(item.id) ? `<img class="showcase-cover" src="${esc(photos.get(item.id)!)}" alt="Foto del prototipo ${esc(item.titulo || "del proyecto")}" loading="lazy" />` : `<div class="showcase-cover-placeholder">${icon("proyectos", 34)}<span>Proyecto de Robótica SIL</span></div>`}<p class="project-area">${esc((item.areas || []).join(" · ") || "Club de Robótica")}</p><h3>${esc(item.titulo || "Proyecto")}</h3><p class="showcase-summary">${esc(item.resumen || "")}</p><div class="showcase-details">${showcaseDetailsMarkup(item)}</div><small class="showcase-approved-label">Compartido con aprobación docente</small></article>`).join("")}</div>` : emptyPanel("Todavía no hay proyectos en la muestra", "Desde la ficha de un proyecto, el responsable puede completar la presentación y solicitar su revisión docente.")}</section>`;
 }
