@@ -32,7 +32,6 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
-import { deleteObject, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import homeIcon from "lucide-static/icons/house.svg?raw";
 import projectIcon from "lucide-static/icons/folder-kanban.svg?raw";
 import showcaseIcon from "lucide-static/icons/trophy.svg?raw";
@@ -57,6 +56,7 @@ import arrowIcon from "lucide-static/icons/arrow-right.svg?raw";
 import calendarIcon from "lucide-static/icons/calendar-days.svg?raw";
 import courseIcon from "lucide-static/icons/book-open-check.svg?raw";
 import inventoryIcon from "lucide-static/icons/package-search.svg?raw";
+import componentIcon from "lucide-static/icons/circuit-board.svg?raw";
 import chevronLeftIcon from "lucide-static/icons/chevron-left.svg?raw";
 import chevronRightIcon from "lucide-static/icons/chevron-right.svg?raw";
 import eyeIcon from "lucide-static/icons/eye.svg?raw";
@@ -66,10 +66,9 @@ import smartphoneIcon from "lucide-static/icons/smartphone.svg?raw";
 import lockIcon from "lucide-static/icons/lock-keyhole.svg?raw";
 import unlockIcon from "lucide-static/icons/lock-keyhole-open.svg?raw";
 import { firebaseConfig } from "./firebase-config";
-import { starterGuides } from "./starter-guides";
-import { renderGuideLibrary, refreshGuideLibrary } from "./guide-library";
-import { enrichGuide } from "./guide-content";
-import { createGuideWorkspace, type GuideWorkspace } from "./guide-workspace";
+import { featuredGuides } from "./featured-guides";
+import { componentCatalog } from "./component-catalog";
+import type { GuideWorkspace } from "./guide-workspace";
 let guideWorkspace: GuideWorkspace | null = null;
 import { CLUB_NAME, CLUB_SHORT_NAME, INITIAL_ADMIN_EMAIL, INSTITUTIONAL_EMAIL_DOMAIN, isInitialAdminEmail, isInstitutionalEmail } from "./club-config";
 import "./styles.css";
@@ -78,7 +77,20 @@ import "./access-lock.css";
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-const storage = getStorage(firebaseApp);
+async function uploadClubFile(path: string, file: Blob, metadata?: { contentType?: string; cacheControl?: string }): Promise<void> {
+  const { getStorage, ref, uploadBytes } = await import("firebase/storage");
+  await uploadBytes(ref(getStorage(firebaseApp), path), file, metadata);
+}
+
+async function getClubFileUrl(path: string): Promise<string> {
+  const { getDownloadURL, getStorage, ref } = await import("firebase/storage");
+  return getDownloadURL(ref(getStorage(firebaseApp), path));
+}
+
+async function deleteClubFile(path: string): Promise<void> {
+  const { deleteObject, getStorage, ref } = await import("firebase/storage");
+  await deleteObject(ref(getStorage(firebaseApp), path));
+}
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const NOTIFICATION_WORKER_URL = "https://TU-WORKER.workers.dev";
 type EntryDeliveryPhase = "waiting" | "released" | "failed";
@@ -180,7 +192,7 @@ type Profile = {
   semestre?: string;
 };
 
-type Page = "inicio" | "proyectos" | "muestra" | "cursos" | "tareas" | "acceso" | "avisos" | "sugerencias" | "prestamos" | "inventario" | "estudiantes" | "docentes" | "perfil" | "configuracion" | "calendario";
+type Page = "inicio" | "proyectos" | "muestra" | "cursos" | "tareas" | "acceso" | "componentes" | "avisos" | "sugerencias" | "prestamos" | "inventario" | "estudiantes" | "docentes" | "perfil" | "configuracion" | "calendario";
 type TaskFilter = "all" | "pending" | "overdue" | "week" | "undated" | "completed";
 type NoticeFilter = "all" | "unread" | "club";
 type SearchResult = { kind: "project" | "task" | "course"; id: string; title: string; detail: string; terms: string };
@@ -263,7 +275,6 @@ async function loadClubBranding(): Promise<void> {
       state.clubLogoUrl = branding.logoUrl;
       state.clubLogoPath = typeof branding.logoPath === "string" ? branding.logoPath : "";
       syncClubLogoLinks();
-      render();
     }
   } catch {
     // La imagen local del colegio sigue disponible si no hay configuración remota.
@@ -274,6 +285,8 @@ function syncClubLogoLinks(): void {
   document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((link) => {
     link.href = state.clubLogoUrl;
   });
+  document.querySelectorAll<HTMLImageElement>("#app .brand img, #app .auth-brand img, #app .auth-mobile-brand img, #app .loading-screen img")
+    .forEach((image) => { image.src = state.clubLogoUrl; });
 }
 
 void loadClubBranding();
@@ -297,9 +310,8 @@ async function handleClubLogoUpload(file?: File): Promise<void> {
     image.close();
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("No se pudo convertir la imagen.")), "image/webp", 0.9));
     uploadedPath = `club-assets/branding/logo-${Date.now()}.webp`;
-    const logoRef = ref(storage, uploadedPath);
-    await uploadBytes(logoRef, blob, { contentType: "image/webp", cacheControl: "public,max-age=31536000" });
-    const logoUrl = await getDownloadURL(logoRef);
+    await uploadClubFile(uploadedPath, blob, { contentType: "image/webp", cacheControl: "public,max-age=31536000" });
+    const logoUrl = await getClubFileUrl(uploadedPath);
     await setDoc(doc(db, "clubSettings", "branding"), { logoUrl, logoPath: uploadedPath, updatedAt: serverTimestamp() }, { merge: true });
     const oldPath = state.clubLogoPath;
     state.clubLogoUrl = logoUrl;
@@ -308,9 +320,9 @@ async function handleClubLogoUpload(file?: File): Promise<void> {
     uploadedPath = "";
     render();
     notify("Logo del club actualizado.");
-    if (oldPath && oldPath !== state.clubLogoPath) void deleteObject(ref(storage, oldPath)).catch(() => {});
+    if (oldPath && oldPath !== state.clubLogoPath) void deleteClubFile(oldPath).catch(() => {});
   } catch (error) {
-    if (uploadedPath) void deleteObject(ref(storage, uploadedPath)).catch(() => {});
+    if (uploadedPath) void deleteClubFile(uploadedPath).catch(() => {});
     notify(errorMessage(error, "No se pudo cambiar el logo."), "error");
   }
 }
@@ -325,7 +337,7 @@ async function resetClubLogo(): Promise<void> {
     syncClubLogoLinks();
     render();
     notify("Se restableció el escudo del colegio.");
-    if (oldPath) void deleteObject(ref(storage, oldPath)).catch(() => {});
+    if (oldPath) void deleteClubFile(oldPath).catch(() => {});
   } catch (error) {
     notify(errorMessage(error, "No se pudo restablecer el escudo."), "error");
   }
@@ -346,6 +358,8 @@ colorScheme.addEventListener?.("change", () => {
 });
 
 let pageTrail: Page[] = [state.page];
+let lastRenderedPage: Page | null = null;
+let adminHomeRequest = 0;
 let exitArmed = false;
 let exitInProgress = false;
 let exitTimer = 0;
@@ -462,6 +476,7 @@ const icons: Record<string, string> = {
   muestra: showcaseIcon,
   tareas: taskIcon,
   acceso: accessIcon,
+  componentes: componentIcon,
   avisos: noticeIcon,
   sugerencias: suggestionIcon,
   prestamos: loanIcon,
@@ -564,7 +579,7 @@ function isAuthorized(): boolean {
 }
 
 function canUseWhileAccessPending(page: Page): boolean {
-  return ["inicio", "muestra", "perfil", "configuracion", "sugerencias"].includes(page);
+  return ["inicio", "muestra", "componentes", "perfil", "configuracion", "sugerencias"].includes(page);
 }
 
 function dateText(value: unknown, withTime = false): string {
@@ -613,6 +628,8 @@ function notify(message: string, kind: "ok" | "error" = "ok"): void {
   if (!toast) return;
   toast.textContent = message;
   toast.dataset.kind = kind;
+  toast.setAttribute("role", kind === "error" ? "alert" : "status");
+  toast.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
   toast.classList.add("visible");
   window.setTimeout(() => toast.classList.remove("visible"), 3400);
 }
@@ -635,6 +652,7 @@ function setProfile(uid: string, data: DocumentData): void {
   watchUnreadNotifications(uid);
   state.loading = false;
   state.page = "inicio";
+  lastRenderedPage = null;
   pageTrail = ["inicio"];
   exitArmed = false;
   exitInProgress = false;
@@ -694,7 +712,7 @@ async function loadProfile(user: User): Promise<void> {
       profile.rol = "admin";
       profile.autorizado = true;
     }
-    if (profile.autorizado === true) await syncOwnClubDirectory(user.uid, profile).catch(() => {});
+    if (profile.autorizado === true) void syncOwnClubDirectory(user.uid, profile).catch(() => {});
     setProfile(user.uid, profile);
   } catch (error) {
     state.loading = false;
@@ -825,7 +843,7 @@ function updateNetworkStatus(): void {
   });
   const column = document.querySelector<HTMLElement>(".main-column");
   const banner = document.querySelector<HTMLElement>(".offline-banner");
-  if (!online && column && !banner) document.querySelector(".topbar")?.insertAdjacentHTML("afterend", `<div class="offline-banner" role="status">Sin conexión a internet. Espera a reconectarte antes de guardar cambios.</div>`);
+  if (!online && column && !banner) document.querySelector(".topbar")?.insertAdjacentHTML("afterend", `<div class="offline-banner" role="status" aria-live="polite">Sin conexión. No se puede consultar ni guardar en Firebase ahora; confirma el estado de los cambios al recuperar conexión.</div>`);
   if (online) banner?.remove();
 }
 
@@ -836,7 +854,7 @@ function navItems(): { id: Page; label: string }[] {
   const items: { id: Page; label: string }[] = [
     { id: "inicio", label: "Inicio" },
     { id: "tareas", label: "Tareas" },
-    { id: "acceso", label: "Entrada al laboratorio" },
+    { id: "componentes", label: "Componentes y módulos" },
     { id: "proyectos", label: "Proyectos" },
     { id: "muestra", label: "Guías de proyectos" },
     { id: "cursos", label: "Cursos" },
@@ -872,8 +890,8 @@ function appShell(content: string): string {
       : [["Empieza por tus tareas", "Revisa fechas, prioridades y actividades asignadas."], ["Únete a proyectos", "Explora los equipos y sus etapas de trabajo."], ["Consulta recursos", "Encuentra cursos, avisos y solicita préstamos."]];
   const onboardingModal = state.showOnboarding ? `<div class="onboarding-backdrop"><section class="onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><div class="onboarding-head"><span class="onboarding-mark">${icon("inicio", 23)}</span><button class="icon-button" data-action="finish-onboarding" aria-label="Cerrar guía">×</button></div><p class="eyebrow">CLUB DE ROBÓTICA SIL</p><h2 id="onboarding-title">${onboardingTitle}</h2><p class="onboarding-intro">Tres ideas rápidas para empezar a usar la plataforma.</p><ol>${onboardingSteps.map(([title, detail], index) => `<li><span>${index + 1}</span><div><strong>${title}</strong><small>${detail}</small></div></li>`).join("")}</ol><button class="primary-button onboarding-start" data-action="finish-onboarding">Empezar</button></section></div>` : "";
   const navGroups: Array<{ label: string; ids: Page[] }> = [
-    { label: "Mi espacio", ids: ["inicio", "tareas", "acceso"] },
-    { label: "Proyectos y aprendizaje", ids: ["proyectos", "muestra", "cursos", "calendario"] },
+    { label: "Mi espacio", ids: ["inicio", "tareas"] },
+    { label: "Proyectos y aprendizaje", ids: ["proyectos", "muestra", "componentes", "cursos", "calendario"] },
     { label: "Comunidad y recursos", ids: ["avisos", "sugerencias", "prestamos"] },
     { label: "Administración", ids: ["inventario", "estudiantes", "docentes"] },
     { label: "Cuenta", ids: ["configuracion"] },
@@ -883,6 +901,7 @@ function appShell(content: string): string {
     return groupItems.length ? `<section class="nav-group"><h2>${group.label}</h2>${groupItems.map((item) => `<button class="nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" ${state.page === item.id ? 'aria-current="page"' : ""}><span class="nav-symbol ${item.id}">${icon(item.id, 18)}</span><span>${item.label}</span></button>`).join("")}</section>` : "";
   }).join("");
   return `
+    <a class="skip-link" href="#page-content">Saltar al contenido principal</a>
     <div class="app-shell ${isAdmin() && state.desktopPreview ? "desktop-preview" : ""} ${isStudentPreview() ? "student-preview" : ""} ${!canManageClub() ? "student-interface" : "admin-interface"} ${state.sidebarCollapsed ? "sidebar-collapsed" : ""} ${state.menuOpen ? "menu-open" : ""}">
       <button class="drawer-backdrop" data-action="close-menu" aria-label="Cerrar menú"></button>
       <aside class="sidebar">
@@ -907,20 +926,20 @@ function appShell(content: string): string {
           <div class="crumb"><span>${CLUB_SHORT_NAME}</span><span class="crumb-sep">/</span><strong>${esc(state.page === "perfil" ? "Perfil" : items.find((item) => item.id === state.page)?.label ?? "Inicio")}</strong></div>
           <div class="topbar-right"><span class="connection ${navigator.onLine ? "" : "offline"}" title="${navigator.onLine ? "Conexión a internet disponible" : "Sin conexión a internet; las funciones en línea están pausadas"}"><i></i>${navigator.onLine ? "En línea" : "Sin conexión"}</span><span class="role-tag">${isStudentPreview() ? "VISTA ESTUDIANTE" : isAdmin() ? "ADMIN" : isModerator() ? "MODERADOR" : state.profile?.tipoUsuario === "docente" ? "DOCENTE" : "ESTUDIANTE"}</span>${isAdmin() ? `<button class="secondary-button student-preview-toggle" data-action="toggle-student-preview" aria-label="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}" title="${isStudentPreview() ? "Volver a la interfaz de administrador" : "Previsualizar interfaz de estudiante"}">${icon("estudiantes", 16)}<span>${isStudentPreview() ? "Volver a admin" : "Ver como estudiante"}</span></button><button class="secondary-button admin-layout-toggle" data-action="toggle-admin-layout" aria-pressed="${state.desktopPreview}" title="Cambiar vista de administración">${icon(state.desktopPreview ? "vistaMovil" : "vistaEscritorio", 16)}<span>${state.desktopPreview ? "Vista móvil" : "Vista escritorio"}</span></button>` : ""}${mobileInstallButton("secondary-button mobile-install")}${isAuthorized() && !isStudentPreview() ? `<button class="icon-button global-search-trigger" data-action="global-search" title="Buscar en la plataforma" aria-label="Buscar en la plataforma">${icon("buscar")}</button>` : ""}<button class="icon-button student-bell-button ${state.page === "avisos" ? "active" : ""}" data-page="avisos" title="Notificaciones" aria-label="Notificaciones, ${state.unreadNotifications} sin leer">${icon("campana")}<span class="notification-badge" ${state.unreadNotifications ? "" : "hidden"}>${state.unreadNotifications > 99 ? "99+" : state.unreadNotifications}</span></button><button class="icon-button profile-shortcut" data-page="perfil" title="Mi perfil" aria-label="Abrir mi perfil">${icon("perfil")}</button></div>
         </header>
-        ${!navigator.onLine ? `<div class="offline-banner" role="status">Sin conexión a internet. Espera a reconectarte antes de guardar cambios.</div>` : ""}
-        <main id="page-content" class="page-content">${content}</main>
+        ${!navigator.onLine ? `<div class="offline-banner" role="status" aria-live="polite">Sin conexión. No se puede consultar ni guardar en Firebase ahora; confirma el estado de los cambios al recuperar conexión.</div>` : ""}
+        <main id="page-content" class="page-content" tabindex="-1" aria-label="Contenido principal">${content}</main>
       </div>
       ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><div><strong>Nueva versión lista</strong><small>La aplicación se recargará para aplicar la actualización.</small></div><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
       ${onboardingModal}
       <nav class="mobile-nav" aria-label="Navegación móvil">
         ${items.filter((item) => {
           const mobilePages = !isAuthorized()
-            ? ["inicio", "muestra", "sugerencias", "configuracion"]
+            ? ["inicio", "muestra", "componentes", "sugerencias", "configuracion"]
             : state.profile?.tipoUsuario === "docente" && !isStudentPreview()
-              ? ["inicio", "proyectos", "tareas", "muestra", "calendario"]
-              : ["inicio", "tareas", "acceso", "proyectos", "avisos"];
+              ? ["inicio", "proyectos", "tareas", "muestra", "componentes"]
+              : ["inicio", "tareas", "componentes", "proyectos", "avisos"];
           return mobilePages.includes(item.id);
-        }).map((item) => { const label = item.id === "acceso" ? "Entrada" : item.id === "sugerencias" ? "Ayuda" : item.id === "calendario" ? "Agenda" : item.id === "muestra" ? "Guías" : item.label; return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}">${icon(item.id, 19)}<span>${label}</span></button>`; }).join("")}
+        }).map((item) => { const label = item.id === "componentes" ? "Componentes" : item.id === "sugerencias" ? "Ayuda" : item.id === "calendario" ? "Agenda" : item.id === "muestra" ? "Guías" : item.label; return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}">${icon(item.id, 19)}<span>${label}</span></button>`; }).join("")}
       </nav>
       <div id="toast" class="toast" role="status"></div>
     </div>`;
@@ -1090,6 +1109,10 @@ function restorePendingRegistration(): void {
 }
 
 document.addEventListener("input", (event) => {
+  if (event.target instanceof HTMLInputElement && event.target.matches("[data-component-search]")) {
+    applyComponentFilters();
+    return;
+  }
   const form = (event.target as HTMLElement).closest<HTMLFormElement>('[data-form="auth"]');
   if (!form || state.authMode !== "register") return;
   const data = new FormData(form);
@@ -1134,10 +1157,20 @@ function renderAuth(): string {
 
 async function loadPage(): Promise<void> {
   if (!state.user || !state.profile) return;
+  const requestedPage = state.page;
   try {
-    const content = await pageContent(state.page);
+    const content = await pageContent(requestedPage);
     const page = document.querySelector<HTMLDivElement>("#page-content");
-    if (page) page.innerHTML = content;
+    if (page && state.page === requestedPage) {
+      page.innerHTML = content;
+      const title = page.querySelector<HTMLElement>("h1");
+      if (title) {
+        document.title = `${title.textContent?.trim() || "Robótica SIL"} · Club de Robótica SIL`;
+        if (lastRenderedPage !== requestedPage) title.focus({ preventScroll: true });
+      }
+      lastRenderedPage = requestedPage;
+      if (requestedPage === "inicio" && isAdminInterface() && state.user) void loadAdminHomeDashboard(state.user.uid);
+    }
   if (page && state.page === "cursos" && state.courseFocusId) {
       const course = [...page.querySelectorAll<HTMLElement>("[data-course-id]")].find((item) => item.dataset.courseId === state.courseFocusId);
       state.courseFocusId = "";
@@ -1165,6 +1198,7 @@ async function pageContent(page: Page): Promise<string> {
     if (page === "perfil") return renderSandboxProfile();
     if (page === "configuracion") return renderSettings();
     if (page === "calendario") return renderCalendar();
+    if (page === "componentes") return renderComponentCatalog();
     if (page === "muestra") return `${pageHeading("Guías de proyectos", "Prototipos del club que ya fueron revisados.")}<div class="showcase-grid"><article class="showcase-card"><p class="project-area">Electrónica · Programación</p><h3>Robot móvil</h3><p>Prototipo autónomo para explorar el aula y evitar obstáculos.</p><small>Guía compartida con el club</small></article></div>`;
     if (page === "sugerencias") return `${pageHeading("Ayuda y sugerencias", "Envía una idea o reporta un problema de la PWA.")}<div class="notice-box info">La vista de prueba no envía información real.</div>`;
     if (page === "inicio") {
@@ -1181,6 +1215,7 @@ async function pageContent(page: Page): Promise<string> {
     case "cursos": return renderCourses();
     case "tareas": return renderTasks();
     case "acceso": return renderAccess();
+    case "componentes": return renderComponentCatalog();
     case "avisos": return renderNotices();
     case "sugerencias": return renderFeedback();
     case "calendario": return renderCalendar();
@@ -1191,6 +1226,46 @@ async function pageContent(page: Page): Promise<string> {
     case "perfil": return renderProfile();
     case "configuracion": return renderSettings();
   }
+}
+
+function renderComponentCatalog(): string {
+  const entries = componentCatalog.map((item) => {
+    const search = `${item.name} ${item.type} ${item.summary} ${item.operation} ${item.connections.join(" ")}`;
+    return `<article class="component-card" data-component-card data-type="${item.type}" data-search="${esc(search)}">
+      <div class="component-card-top"><span class="component-mark">${icon("componentes", 23)}</span><span class="component-type ${item.type.toLowerCase()}">${item.type}</span></div>
+      <h2>${esc(item.name)}</h2><p class="component-summary">${esc(item.summary)}</p>
+      <section><h3>¿Cómo funciona?</h3><p>${esc(item.operation)}</p></section>
+      <details><summary>Ver conexión individual</summary><p>Conecta cada pin siguiendo esta guía:</p><ul>${item.connections.map((connection) => `<li><code>${esc(connection)}</code></li>`).join("")}</ul></details>
+      <p class="component-care"><strong>Consejo:</strong> ${esc(item.care)}</p>
+    </article>`;
+  }).join("");
+  return `${pageHeading("Componentes y módulos", "Conoce cada sensor y actuador: qué hace, cómo funciona y cómo conectarlo por separado.")}
+    <section class="component-intro notice-box info"><span>${icon("alerta", 20)}</span><p>Las conexiones de referencia usan Arduino Uno. Revisa el voltaje y el pinout impresos en cada módulo antes de conectarlo; algunos modelos cambian según el fabricante.</p></section>
+    <section class="component-catalog" aria-labelledby="component-catalog-title">
+      <div class="component-tools"><label>Buscar componente<input type="search" data-component-search placeholder="Ej. ultrasonido, luz, motor…" autocomplete="off" /></label>
+        <label>Tipo<select data-component-type-filter><option value="">Todos</option><option value="Sensor">Sensores</option><option value="Actuador">Actuadores</option><option value="Control">Controles</option></select></label></div>
+      <p class="component-result-count" data-component-count role="status" aria-live="polite">${componentCatalog.length} componentes</p>
+      <div class="component-grid">${entries}</div>
+      <p class="component-empty" data-component-empty hidden>No hay componentes que coincidan. Prueba otra palabra o tipo.</p>
+    </section>`;
+}
+
+function applyComponentFilters(): void {
+  const catalog = document.querySelector<HTMLElement>(".component-catalog");
+  if (!catalog) return;
+  const search = normalizeSearchText(catalog.querySelector<HTMLInputElement>("[data-component-search]")?.value || "").trim();
+  const type = catalog.querySelector<HTMLSelectElement>("[data-component-type-filter]")?.value || "";
+  let visible = 0;
+  catalog.querySelectorAll<HTMLElement>("[data-component-card]").forEach((card) => {
+    const matches = (!type || card.dataset.type === type)
+      && (!search || normalizeSearchText(card.dataset.search || "").includes(search));
+    card.hidden = !matches;
+    if (matches) visible++;
+  });
+  const count = catalog.querySelector<HTMLElement>("[data-component-count]");
+  if (count) count.textContent = `${visible} ${visible === 1 ? "componente" : "componentes"}`;
+  const empty = catalog.querySelector<HTMLElement>("[data-component-empty]");
+  if (empty) empty.hidden = visible > 0;
 }
 
 function renderSettings(): string {
@@ -1209,7 +1284,7 @@ function renderSettings(): string {
       </section>
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("campana", 18)}</span><div><h2>Notificaciones</h2><p>${state.unreadNotifications ? `${state.unreadNotifications} sin leer` : "No tienes notificaciones sin leer."}</p></div></div>
         <button class="secondary-button" data-page="avisos">${icon("campana", 16)} Abrir bandeja</button>
-        <p class="settings-note">Elige qué categorías mostrar en la bandeja de este dispositivo.</p>
+        <p class="settings-note">Elige qué categorías mostrar en la bandeja de este dispositivo. Estas opciones no activan notificaciones push del sistema.</p>
         ${[["task", "Tareas"], ["project", "Proyectos"], ["loan", "Préstamos de materiales"], ["club", "Avisos del club"]].map(([key, label]) => `<label class="settings-toggle"><span><strong>${label}</strong></span><input type="checkbox" data-setting="notification-pref" data-pref="${key}" ${noticePrefs[key] !== false ? "checked" : ""} /></label>`).join("")}
       </section>
       <section class="settings-section"><div class="settings-section-heading"><span class="settings-icon">${icon("inicio", 18)}</span><div><h2>Guía de inicio</h2><p>Vuelve a consultar las recomendaciones para tu perfil.</p></div></div>
@@ -1252,9 +1327,10 @@ function renderSandboxProfile(): string {
 function renderStudentSandbox(page: Page): string {
   const demo = state.studentSandbox;
   const heading = (title: string, subtitle: string, action = "") => pageHeading(title, subtitle, action);
+  if (page === "componentes") return renderComponentCatalog();
   if (page === "inicio") {
     return `${heading(`Hola, ${esc(fullName().split(" ")[0])}`, "Aquí tienes lo que requiere tu atención hoy.")}
-      <section class="student-overview"><div class="access-status ${demo.inside ? "inside" : "outside"}"><div class="status-top"><span class="status-dot"></span>${demo.inside ? "Dentro del laboratorio" : "Fuera del laboratorio"}</div><div class="status-label">ESTADO DE ACCESO</div><button class="status-action" data-page="acceso">Abrir control de acceso${icon("ir", 16)}</button><span class="status-watermark">${icon("acceso", 120)}</span></div></section>
+      <section class="component-home-card"><span class="component-mark">${icon("componentes", 24)}</span><div><span class="eyebrow">GUÍA DE ELECTRÓNICA</span><h2>Conoce tus componentes</h2><p>Aprende para qué sirve cada sensor o actuador y cómo conectarlo.</p></div><button class="secondary-button" data-page="componentes">Explorar el catálogo ${icon("ir", 15)}</button></section>${renderSandboxShortcuts()}
       <section class="unframed-section"><div class="section-heading"><h2>Avisos recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${sandboxNotice("aviso-lab", "Reunión del club", "Nos reunimos el jueves a las 15:00 en el laboratorio.")}</section>`;
   }
   if (page === "tareas") {
@@ -1308,8 +1384,8 @@ function renderStudentShortcuts(pendingTasks?: number, pendingLoans?: number): s
   return `<section class="student-overview-links"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="student-shortcut-rail" role="group" aria-label="Accesos rápidos del estudiante"><button class="student-shortcut tasks" data-page="tareas" data-task-filter="pending" aria-label="Mis tareas"><span class="quick-icon coral">${icon("tareas", 22)}</span><strong>Mis tareas</strong>${pendingTasks !== undefined ? `<small>${pendingTasks ? `${pendingTasks} pendientes` : "Al día"}</small>` : ""}</button><button class="student-shortcut loans" data-page="prestamos" aria-label="Mis préstamos"><span class="quick-icon green">${icon("prestamos", 22)}</span><strong>Mis préstamos</strong>${pendingLoans !== undefined ? `<small>${pendingLoans ? `${pendingLoans} solicitudes` : "Sin solicitudes"}</small>` : ""}</button><button class="student-shortcut projects" data-page="proyectos" aria-label="Proyectos"><span class="quick-icon blue">${icon("proyectos", 22)}</span><strong>Proyectos</strong></button><button class="student-shortcut courses" data-page="cursos" aria-label="Cursos"><span class="quick-icon amber">${icon("cursos", 22)}</span><strong>Cursos</strong></button></div></section>`;
 }
 
-function renderStudentHomeModules(inside: boolean, pendingTasks: number, pendingLoans: number): string {
-  return `<section class="student-overview"><div class="access-status ${inside ? "inside" : "outside"}"><div class="status-top"><span class="status-dot"></span>${inside ? "Dentro del laboratorio" : "Fuera del laboratorio"}</div><div class="status-label">ESTADO DE ACCESO</div><button class="status-action" data-page="acceso">Abrir control de acceso${icon("ir", 16)}</button><span class="status-watermark">${icon("acceso", 120)}</span></div></section>${renderStudentShortcuts(pendingTasks, pendingLoans)}`;
+function renderStudentHomeModules(pendingTasks: number, pendingLoans: number): string {
+  return `<section class="component-home-card"><span class="component-mark">${icon("componentes", 24)}</span><div><span class="eyebrow">GUÍA DE ELECTRÓNICA</span><h2>Conoce tus componentes</h2><p>Aprende para qué sirve cada sensor o actuador y cómo conectarlo.</p></div><button class="secondary-button" data-page="componentes">Explorar el catálogo ${icon("ir", 15)}</button></section>${renderStudentShortcuts(pendingTasks, pendingLoans)}`;
 }
 
 function renderSandboxCalendar(): string {
@@ -1330,7 +1406,48 @@ function sandboxNotice(id: string, title: string, message: string): string {
 }
 
 function pageHeading(title: string, subtitle: string, action = ""): string {
-  return `<div class="page-heading"><div><p class="eyebrow">${canManageClub() ? "GESTIÓN DEL CLUB" : "MI ESPACIO"}</p><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`;
+  return `<div class="page-heading"><div><p class="eyebrow">${canManageClub() ? "GESTIÓN DEL CLUB" : "MI ESPACIO"}</p><h1 tabindex="-1">${title}</h1><p>${subtitle}</p></div>${action}</div>`;
+}
+
+async function loadAdminHomeDashboard(uid: string): Promise<void> {
+  const requestId = ++adminHomeRequest;
+  const container = document.querySelector<HTMLElement>("#admin-home-data");
+  if (!container) return;
+  try {
+    const [studentRecords, pendingLoans, activeLoans, projects, pendingShowcase, teacherRecords, recent] = await Promise.all([
+      getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"))),
+      getDocs(query(collection(db, "reservas"), where("estado", "==", "Pendiente"))),
+      getDocs(query(collection(db, "reservas"), where("estado", "==", "Aprobada"))),
+      getDocs(query(collection(db, "proyectos"), where("estado", "==", "Activo"))),
+      getDocs(query(collection(db, "guiasClub"), where("estado", "==", "pendiente"), limit(30))).catch(() => null),
+      getDocs(query(collection(db, "usuarios"), where("tipoUsuario", "==", "docente"), limit(100))),
+      getDocs(query(collection(db, "accesos"), orderBy("fechaHora", "desc"), limit(30))),
+    ]);
+    if (requestId !== adminHomeRequest || state.page !== "inicio" || state.user?.uid !== uid) return;
+    const students = studentRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
+    const pendingAccess = students.filter((item) => item.get("autorizado") === false);
+    const recentEntries = recent.docs.filter((item) => item.get("tipo") === "entrada").slice(0, 5);
+    container.innerHTML = `<section class="metrics-grid">
+      ${metric("Estudiantes", students.length, "Personas registradas", "estudiantes", "people")}
+      ${metric("Docentes", teacherRecords.size, "Cuentas docentes", "docentes", "people")}
+      ${metric("Cuentas pendientes", pendingAccess.length, "Estudiantes por revisar", "estudiantes", "alert")}
+      ${metric("Guías por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase")}
+      ${metric("Préstamos pendientes", pendingLoans.size, "Solicitudes por resolver", "prestamos", "loan")}
+      ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
+      ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
+    </section>
+    <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
+    container.setAttribute("aria-busy", "false");
+
+    // Mantiene la sincronización del directorio fuera del camino que dibuja el inicio.
+    void getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(500)))
+      .then((profiles) => seedClubDirectoryFromAdmin(profiles.docs))
+      .catch(() => {});
+  } catch (error) {
+    if (requestId !== adminHomeRequest || state.page !== "inicio" || state.user?.uid !== uid) return;
+    container.setAttribute("aria-busy", "false");
+    container.innerHTML = `<section class="empty-state error-state">${icon("alerta", 22)}<h2>No se pudieron cargar los indicadores</h2><p>${esc(errorMessage(error, "Comprueba tu conexión e inténtalo nuevamente."))}</p><button class="secondary-button" data-action="refresh">${icon("actualizar")} Reintentar</button></section>`;
+  }
 }
 
 async function renderHome(): Promise<string> {
@@ -1341,39 +1458,14 @@ async function renderHome(): Promise<string> {
       <section class="unframed-section"><h2>Tu perfil</h2><div class="profile-line"><span>Correo institucional</span><strong>${esc(state.profile?.correoInstitucional)}</strong></div><div class="profile-line"><span>Área de interés</span><strong>${esc(state.profile?.carrera || "Sin indicar")}</strong></div></section>`;
   }
   if (isAdminInterface()) {
-    const [studentRecords, pendingLoans, activeLoans, projects, pendingAccessRecords, pendingShowcase, teacherRecords, approvedProfileRecords] = await Promise.all([
-      getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"))),
-      getDocs(query(collection(db, "reservas"), where("estado", "==", "Pendiente"))),
-      getDocs(query(collection(db, "reservas"), where("estado", "==", "Aprobada"))),
-      getDocs(query(collection(db, "proyectos"), where("estado", "==", "Activo"))),
-      getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"), where("autorizado", "==", false))),
-      getDocs(query(collection(db, "guiasClub"), where("estado", "==", "pendiente"), limit(30))).catch(() => null),
-      getDocs(query(collection(db, "usuarios"), where("tipoUsuario", "==", "docente"), limit(100))),
-      getDocs(query(collection(db, "usuarios"), where("autorizado", "==", true), limit(500))),
-    ]);
-    await seedClubDirectoryFromAdmin(approvedProfileRecords.docs);
-    const students = studentRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
-    const pendingAccess = pendingAccessRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
-    const recent = await getDocs(query(collection(db, "accesos"), orderBy("fechaHora", "desc"), limit(30)));
-    const recentEntries = recent.docs.filter((item) => item.get("tipo") === "entrada").slice(0, 5);
     return `${pageHeading(`Buen día, ${esc(greeting)}`, "Resumen del club y pendientes de gestión.", `<button class="icon-button refresh-action" data-action="refresh" title="Actualizar" aria-label="Actualizar">${icon("actualizar")}</button>`)}
       ${!isAuthorized() ? `<section class="notice-box warning">${icon("alerta")}<span>Esta cuenta todavía no está autorizada como administradora.</span></section>` : ""}
-      <section class="metrics-grid">
-        ${metric("Estudiantes", students.length, "Personas registradas", "estudiantes", "people")}
-        ${metric("Docentes", teacherRecords.size, "Cuentas docentes", "docentes", "people")}
-        ${metric("Cuentas pendientes", pendingAccess.length, "Estudiantes por revisar", "estudiantes", "alert")}
-        ${metric("Guías por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase")}
-        ${metric("Préstamos pendientes", pendingLoans.size, "Solicitudes por resolver", "prestamos", "loan")}
-        ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
-        ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
-      </section>
       <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos de materiales", "prestamos", "prestamos", "loans")}${adminQuickLink("Guías de proyectos", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
-      <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
+      <div id="admin-home-data" role="status" aria-live="polite" aria-busy="true"><div class="loading-block"><span class="spinner"></span><span>Cargando indicadores y accesos recientes…</span></div></div>`;
   }
   const teacher = state.profile?.tipoUsuario === "docente";
-  const [loans, presence, notices, calendar, assignedByOwner, assignedByList, featuredShowcase, studentProjectRecords] = await Promise.all([
+  const [loans, notices, calendar, assignedByOwner, assignedByList, featuredShowcase, studentProjectRecords] = await Promise.all([
     getDocs(query(collection(db, "reservas"), where("solicitanteUid", "==", state.user!.uid))),
-    getDoc(doc(db, "presencias", state.user!.uid)),
     getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(10))),
     renderHomeCalendar(),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", state.user!.uid), limit(20))).catch(() => null),
@@ -1381,7 +1473,6 @@ async function renderHome(): Promise<string> {
     getDocs(query(collection(db, "guiasPublicadas"), limit(300))).catch(() => null),
     teacher ? Promise.resolve(null) : getDocs(query(collection(db, "proyectos"), limit(60))).catch(() => null),
   ]);
-  const inside = presence.exists() && presenceIsCurrent(presence.data());
   const tasks = new Map<string, QueryDocumentSnapshot<DocumentData>>();
   for (const task of [...(assignedByOwner?.docs ?? []), ...(assignedByList?.docs ?? [])]) {
     if (task.get("estado") !== "Completada") tasks.set(task.ref.path, task);
@@ -1398,21 +1489,39 @@ async function renderHome(): Promise<string> {
   const pendingLoans = loans.docs.filter((loan) => loan.get("estado") === "Pendiente").length;
   const homeGuides = featuredShowcase?.docs.map(item => ({ ...item.data(), id: item.id })) ?? [];
   const homeGuideIds = new Set(homeGuides.map(item => item.id));
-  const featured = [...homeGuides, ...starterGuides.filter(item => !homeGuideIds.has(item.id))].filter(item => !item.archivada).slice(0, 3);
+  const featured = [...homeGuides, ...featuredGuides.filter(item => !homeGuideIds.has(item.id))].filter(item => !item.archivada).slice(0, 3);
   const studentProjectNames = new Map((studentProjectRecords?.docs ?? []).map((project) => [project.id, String(project.get("nombre") || project.get("titulo") || "Proyecto del club")]));
-  const featuredPhotos = new Map<string, string>();
-  await Promise.all(featured.map(async (item) => {
-    if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
-    try { featuredPhotos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* El resumen sigue visible si el almacenamiento no está listo. */ }
-  }));
+  void loadHomeGuidePhotos(featured, state.user!.uid);
   return `${pageHeading(`Hola, ${esc(greeting)}`, teacher ? "Panel docente · equipos, actividades y revisiones." : "Panel del estudiante · tareas, proyectos y actividad del club.")}
     ${teacher ? `<section class="teacher-quick-panel"><div><span class="eyebrow">DOCENTE</span><h2>¡Hola, profe ${esc(greeting)}!</h2><p>Da seguimiento a tus equipos y orienta sus guías para el club.</p></div><div class="teacher-quick-links"><button data-page="proyectos">${icon("proyectos", 20)} Mis equipos</button><button data-page="tareas" data-task-filter="pending">${icon("tareas", 20)} Actividades pendientes</button><button data-page="calendario">${icon("calendario", 20)} Agenda</button>${canReviewShowcase() ? `<button data-page="muestra">${icon("muestra", 20)} Revisar guías <span class="teacher-link-count">${pendingShowcase?.size ?? 0}</span></button>` : `<button data-page="muestra">${icon("muestra", 20)} Guías de proyectos</button>`}</div></section>` : ""}
     ${overdueHomeTasks.length ? `<div class="notice-box warning home-overdue-alert"><strong>Hay ${overdueHomeTasks.length} tarea${overdueHomeTasks.length === 1 ? " atrasada" : "s atrasadas"}.</strong><span>${teacher ? "Coordina con el equipo una fecha para completar cada una." : "Revisa las fechas y acuerda con tu equipo un nuevo plan."}</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver tareas atrasadas</button></div>` : ""}
     ${nextTasks.length ? `<section class="unframed-section home-priority-section"><div class="section-heading"><div><h2>${teacher ? "Actividades próximas" : "Qué sigue"}</h2><p>${teacher ? `${tasks.size} actividad${tasks.size === 1 ? " pendiente" : "es pendientes"} asignada${tasks.size === 1 ? "" : "s"} a tu cuenta.` : `${tasks.size} tarea${tasks.size === 1 ? " pendiente" : "s pendientes"}.`}</p></div><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${nextTasks.map((item) => homeTaskCard(item, studentProjectNames)).join("")}</div></section>` : !teacher ? `<section class="unframed-section home-priority-section"><div class="section-heading"><h2>Qué sigue</h2></div><div class="home-empty-next"><span class="state-pill success">Al día</span><p>No tienes tareas pendientes. Revisa tus proyectos o los avisos del club.</p><button class="secondary-button compact" data-page="proyectos">Ver mis proyectos</button></div></section>` : `<section class="unframed-section home-priority-section"><div class="section-heading"><h2>Actividades próximas</h2></div><div class="home-empty-next"><span class="state-pill success">Sin tareas asignadas</span><p>Las tareas de tus equipos aparecerán aquí cuando se asignen a tu cuenta.</p><button class="secondary-button compact" data-page="proyectos">Ver mis equipos</button></div></section>`}
-    ${teacher ? teacherProjects : `${studentProjects}${renderStudentHomeModules(inside, tasks.size, pendingLoans)}`}
+    ${teacher ? teacherProjects : `${studentProjects}${renderStudentHomeModules(tasks.size, pendingLoans)}`}
     ${calendar}
-    ${renderHomeShowcase(featured, featuredPhotos)}
+    ${renderHomeShowcase(featured, new Map())}
     <section class="unframed-section"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${importantNotices.length ? `<div class="notice-list">${importantNotices.map((item) => noticeCard(item.id, item.data, false)).join("")}</div>` : emptyInline("No hay avisos publicados.")}</section>`;
+}
+
+async function loadHomeGuidePhotos(items: Array<{ id: string; fotoPath?: unknown }>, uid: string): Promise<void> {
+  const photos = await Promise.all(items.map(async (item) => {
+    if (typeof item.fotoPath !== "string" || !item.fotoPath) return null;
+    try { return { id: item.id, url: await getClubFileUrl(item.fotoPath) }; }
+    catch { return null; }
+  }));
+  if (state.page !== "inicio" || state.user?.uid !== uid) return;
+  for (const photo of photos) {
+    if (!photo) continue;
+    const card = [...document.querySelectorAll<HTMLButtonElement>("[data-home-guide-id]")]
+      .find((item) => item.dataset.homeGuideId === photo.id);
+    if (!card || card.querySelector("img")) continue;
+    const image = document.createElement("img");
+    image.className = "home-showcase-photo";
+    image.src = photo.url;
+    image.alt = `Imagen del proyecto ${card.querySelector("strong")?.textContent || "destacado"}`;
+    image.loading = "lazy";
+    image.decoding = "async";
+    card.prepend(image);
+  }
 }
 
 function homeTaskCard(item: QueryDocumentSnapshot<DocumentData>, projectNames: Map<string, string>): string {
@@ -1469,7 +1578,7 @@ async function renderStudentProjectDashboard(records: { docs: QueryDocumentSnaps
 
 function renderHomeShowcase(items: Array<{ id: string; titulo?: string; resumen?: string; problema?: string; aprendizajes?: string }>, photos: Map<string, string>): string {
   if (!items.length) return "";
-  return `<section class="unframed-section home-showcase"><div class="section-heading"><div><h2>Ideas para construir</h2><p>Guías de práctica y proyectos compartidos por el club.</p></div><button class="text-button" data-page="muestra">Ver guías de proyectos ${icon("ir", 14)}</button></div><div class="home-showcase-grid">${items.map((item) => `<button class="home-showcase-card" data-page="muestra">${photos.has(item.id) ? `<img class="home-showcase-photo" src="${esc(photos.get(item.id)!)}" alt="Imagen del proyecto ${esc(item.titulo || "destacado")}" loading="lazy" />` : `<span class="project-mark">${icon("muestra", 20)}</span>`}<strong>${esc(item.titulo || "Proyecto destacado")}</strong><small>${esc(item.problema || item.resumen || "Conoce el prototipo.")}</small>${item.aprendizajes ? `<span class="home-showcase-learning"><b>Aprendizaje:</b> ${esc(item.aprendizajes)}</span>` : ""}</button>`).join("")}</div></section>`;
+  return `<section class="unframed-section home-showcase"><div class="section-heading"><div><h2>Ideas para construir</h2><p>Guías de práctica y proyectos compartidos por el club.</p></div><button class="text-button" data-page="muestra">Ver guías de proyectos ${icon("ir", 14)}</button></div><div class="home-showcase-grid">${items.map((item) => `<button class="home-showcase-card" data-home-guide-id="${esc(item.id)}" data-page="muestra">${photos.has(item.id) ? `<img class="home-showcase-photo" src="${esc(photos.get(item.id)!)}" alt="Imagen del proyecto ${esc(item.titulo || "destacado")}" loading="lazy" />` : `<span class="project-mark">${icon("muestra", 20)}</span>`}<strong>${esc(item.titulo || "Proyecto destacado")}</strong><small>${esc(item.problema || item.resumen || "Conoce el prototipo.")}</small>${item.aprendizajes ? `<span class="home-showcase-learning"><b>Aprendizaje:</b> ${esc(item.aprendizajes)}</span>` : ""}</button>`).join("")}</div></section>`;
 }
 
 function metric(title: string, value: number, hint: string, page: Page, tone = "plain"): string {
@@ -1598,6 +1707,16 @@ function applyShowcaseFilters(): void {
 }
 
 async function renderShowcase(): Promise<string> {
+  const [guideCatalog, guideLibrary, guideContent, guideWorkspaceModule] = await Promise.all([
+    import("./starter-guides"),
+    import("./guide-library"),
+    import("./guide-content"),
+    import("./guide-workspace"),
+  ]);
+  const { starterGuides } = guideCatalog;
+  const { renderGuideLibrary, refreshGuideLibrary } = guideLibrary;
+  const { enrichGuide } = guideContent;
+  const { createGuideWorkspace } = guideWorkspaceModule;
   const canReview = canReviewShowcase();
   let catalogUnavailable = false;
   const approved = await getDocs(query(collection(db, "guiasPublicadas"), limit(300))).catch(() => {
@@ -1621,7 +1740,7 @@ async function renderShowcase(): Promise<string> {
   const photos = new Map<string, string>();
   await Promise.all([...showcaseCards, ...reviewCards, ...rejectedCards].map(async (item) => {
     if (typeof item.fotoPath !== "string" || !item.fotoPath) return;
-    try { photos.set(item.id, await getDownloadURL(ref(storage, item.fotoPath))); } catch { /* La ficha sigue visible aunque no cargue la foto. */ }
+    try { photos.set(item.id, await getClubFileUrl(item.fotoPath)); } catch { /* La ficha sigue visible aunque no cargue la foto. */ }
   }));
   const admin = canManageClub(), teacher = state.profile?.tipoUsuario === "docente", authorized = isAuthorized();
   if (!guideWorkspace || guideWorkspace.uid !== state.user!.uid || guideWorkspace.admin !== admin || guideWorkspace.teacher !== teacher || guideWorkspace.authorized !== authorized) {
@@ -2736,7 +2855,9 @@ document.addEventListener("keydown", (event) => {
 
 document.addEventListener("change", (event) => {
   const target = event.target as HTMLInputElement | HTMLSelectElement;
-  if (target.matches("[data-showcase-area-filter], [data-showcase-level-filter]")) {
+  if (target.matches("[data-component-type-filter]")) {
+    applyComponentFilters();
+  } else if (target.matches("[data-showcase-area-filter], [data-showcase-level-filter]")) {
     applyShowcaseFilters();
   } else if (target.id === "task-template" && target instanceof HTMLSelectElement) {
     const templates: Record<string, { title: string; description: string; priority: string }> = {
@@ -3764,7 +3885,7 @@ async function submitShowcaseRequest(form: HTMLFormElement): Promise<void> {
     let fotoPath = typeof existing?.fotoPath === "string" ? existing.fotoPath : "";
     if (image) {
       uploadedPath = `proyectos/${projectId}/evidencias/showcase-${state.user.uid}-${Date.now()}`;
-      await uploadBytes(ref(storage, uploadedPath), image, { contentType: image.type });
+      await uploadClubFile(uploadedPath, image, { contentType: image.type });
       fotoPath = uploadedPath;
     }
     const content = { ...values, videoUrl, ...(fotoPath ? { fotoPath } : {}) };
@@ -3776,7 +3897,7 @@ async function submitShowcaseRequest(form: HTMLFormElement): Promise<void> {
     document.querySelector<HTMLDialogElement>("dialog.detail-dialog[open]")?.close();
     await showProject(projectId);
   } catch (error) {
-    if (uploadedPath) void deleteObject(ref(storage, uploadedPath)).catch(() => {});
+    if (uploadedPath) void deleteClubFile(uploadedPath).catch(() => {});
     setBusy(button, false);
     notify(errorMessage(error, "No se pudo enviar la ficha a revisión."), "error");
   }
@@ -4022,7 +4143,7 @@ async function submitProjectStage(form: HTMLFormElement): Promise<void> {
     if (image) {
       const candidatePath = `proyectos/${projectId}/evidencias/${state.user.uid}-${Date.now()}`;
       try {
-        await uploadBytes(ref(storage, candidatePath), image, { contentType: image.type });
+        await uploadClubFile(candidatePath, image, { contentType: image.type });
         uploadedPath = candidatePath;
       } catch {
         photoWarning = true;
@@ -4042,7 +4163,7 @@ async function submitProjectStage(form: HTMLFormElement): Promise<void> {
     closeDialog();
     await showProject(projectId);
   } catch (error) {
-    if (uploadedPath) void deleteObject(ref(storage, uploadedPath)).catch(() => {});
+    if (uploadedPath) void deleteClubFile(uploadedPath).catch(() => {});
     setBusy(button, false);
     notify(errorMessage(error, "No se pudo guardar la etapa."), "error");
   }
@@ -4289,7 +4410,7 @@ async function showProject(id: string): Promise<void> {
   await Promise.all(stages.map(async (stage) => {
     const path = String(stage.get("fotoPath") || "");
     if (!path) return;
-    try { stagePhotoUrls.set(stage.id, await getDownloadURL(ref(storage, path))); } catch { /* Keep the stage visible if its photo is unavailable. */ }
+    try { stagePhotoUrls.set(stage.id, await getClubFileUrl(path)); } catch { /* Keep the stage visible if its photo is unavailable. */ }
   }));
   if ((lead || canManageClub()) && !isStudentPreview()) {
     try { requests = (await getDocs(query(collection(db, "proyectos", id, "solicitudes"), where("estado", "==", "pendiente"), limit(50)))).docs; } catch { /* Only the project lead can review requests. */ }
