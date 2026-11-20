@@ -1229,14 +1229,15 @@ async function pageContent(page: Page): Promise<string> {
 }
 
 function renderComponentCatalog(): string {
+  const view = localStorage.getItem("cdr-component-view") === "list" ? "list" : "grid";
   const entries = componentCatalog.map((item, index) => {
     const search = `${item.name} ${item.type} ${item.summary} ${item.operation} ${item.connections.join(" ")}`;
     return `<article class="component-card" data-component-card data-type="${item.type}" data-search="${esc(search)}">
       <div class="component-product-image" style="--component-column:${index % 5};--component-row:${Math.floor(index / 5)}" role="img" aria-label="Ilustración del componente ${esc(item.name)}"></div>
       <div class="component-card-top"><span class="component-mark">${icon("componentes", 23)}</span><span class="component-type ${item.type.toLowerCase()}">${item.type}</span></div>
       <h2>${esc(item.name)}</h2><p class="component-summary">${esc(item.summary)}</p>
-      <section><h3>¿Cómo funciona?</h3><p>${esc(item.operation)}</p></section>
-      <details><summary>Ver conexión individual</summary><p>Conecta cada pin siguiendo esta guía:</p><ul>${item.connections.map((connection) => `<li><code>${esc(connection)}</code></li>`).join("")}</ul></details>
+      <section class="component-explanation"><h3>¿Cómo funciona?</h3><p>${esc(item.operation)}</p></section>
+      <details class="component-wiring"><summary>Ver conexión individual</summary><p>Conecta cada pin siguiendo esta guía:</p><ul>${item.connections.map((connection) => `<li><code>${esc(connection)}</code></li>`).join("")}</ul></details>
       <p class="component-care"><strong>Consejo:</strong> ${esc(item.care)}</p>
     </article>`;
   }).join("");
@@ -1244,9 +1245,10 @@ function renderComponentCatalog(): string {
     <section class="component-intro notice-box info"><span>${icon("alerta", 20)}</span><p>Las imágenes son ilustraciones para reconocer cada pieza; el aspecto puede variar según el fabricante. Las conexiones de referencia usan Arduino Uno: revisa el voltaje y el pinout de tu módulo antes de conectarlo.</p></section>
     <section class="component-catalog" aria-labelledby="component-catalog-title">
       <div class="component-tools"><label>Buscar componente<input type="search" data-component-search placeholder="Ej. ultrasonido, luz, motor…" autocomplete="off" /></label>
-        <label>Tipo<select data-component-type-filter><option value="">Todos</option><option value="Sensor">Sensores</option><option value="Actuador">Actuadores</option><option value="Control">Controles</option></select></label></div>
+        <label>Tipo<select data-component-type-filter><option value="">Todos</option><option value="Sensor">Sensores</option><option value="Actuador">Actuadores</option><option value="Control">Controles</option></select></label>
+        <div class="component-view-toggle" role="group" aria-label="Vista del catálogo"><span>Ver como</span><button type="button" class="secondary-button compact" data-component-view="grid" aria-pressed="${view === "grid"}">Tarjetas</button><button type="button" class="secondary-button compact" data-component-view="list" aria-pressed="${view === "list"}">Lista</button></div></div>
       <p class="component-result-count" data-component-count role="status" aria-live="polite">${componentCatalog.length} componentes</p>
-      <div class="component-grid">${entries}</div>
+      <div class="component-grid ${view === "list" ? "is-list" : ""}">${entries}</div>
       <p class="component-empty" data-component-empty hidden>No hay componentes que coincidan. Prueba otra palabra o tipo.</p>
     </section>`;
 }
@@ -1268,6 +1270,19 @@ function applyComponentFilters(): void {
   const empty = catalog.querySelector<HTMLElement>("[data-component-empty]");
   if (empty) empty.hidden = visible > 0;
 }
+
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest<HTMLButtonElement>("[data-component-view]");
+  if (!button) return;
+  const view = button.dataset.componentView === "list" ? "list" : "grid";
+  localStorage.setItem("cdr-component-view", view);
+  document.querySelector(".component-grid")?.classList.toggle("is-list", view === "list");
+  document.querySelectorAll<HTMLButtonElement>("[data-component-view]").forEach((item) => {
+    item.setAttribute("aria-pressed", String(item.dataset.componentView === view));
+  });
+});
 
 function renderSettings(): string {
   const profile = state.profile!;

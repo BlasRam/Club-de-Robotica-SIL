@@ -622,9 +622,20 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-tools{display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px;padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
 .component-tools label{display:grid;gap:7px;font-size:12px;font-weight:700;color:var(--ink)}
 .component-tools input,.component-tools select{width:100%;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink)}
+.component-view-toggle{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:7px;color:var(--muted);font-size:12px}
+.component-view-toggle button[aria-pressed="true"]{border-color:var(--red);background:var(--pink);color:var(--red)}
 .component-result-count{margin:16px 0 10px;color:var(--muted);font-size:13px;font-weight:700}
 .component-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:14px;align-items:start}
+.component-grid.is-list{grid-template-columns:minmax(0,1fr);gap:9px}
 .component-card{display:grid;align-content:start;gap:11px;min-width:0;padding:16px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink)}
+.component-grid.is-list .component-card{grid-template-columns:minmax(110px,150px) minmax(0,1fr);grid-template-areas:"image top" "image title" "image summary" "image operation" "image wiring" "image care";column-gap:17px;row-gap:6px;align-items:start}
+.component-grid.is-list .component-product-image{grid-area:image;width:100%;max-width:150px;margin:0;align-self:center}
+.component-grid.is-list .component-card-top{grid-area:top}
+.component-grid.is-list .component-card>h2{grid-area:title}
+.component-grid.is-list .component-summary{grid-area:summary}
+.component-grid.is-list .component-explanation{grid-area:operation}
+.component-grid.is-list .component-wiring{grid-area:wiring}
+.component-grid.is-list .component-care{grid-area:care}
 .component-card[hidden]{display:none}
 .component-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .component-product-image{width:min(100%,190px);aspect-ratio:1;margin:0 auto 3px;background-image:url("/components/component-atlas.webp");background-repeat:no-repeat;background-size:500% 400%;background-position:calc(var(--component-column)*25%) calc(var(--component-row)*33.333333%)}
@@ -648,4 +659,4 @@ html[data-theme="dark"] .component-type{background:#26394a;color:#d1e8ff}
 html[data-theme="dark"] .component-type.actuador{background:#20372e;color:#b6e3c9}
 html[data-theme="dark"] .component-type.control{background:#3a3021;color:#f0d49a}
 @media(max-width:680px){.component-home-card{grid-template-columns:auto minmax(0,1fr);gap:10px;padding:14px}.component-home-card .secondary-button{grid-column:1/-1;width:100%}}
-@media(max-width:600px){.component-tools{grid-template-columns:1fr;padding:12px;gap:10px}.component-grid{grid-template-columns:1fr;gap:10px}.component-card{padding:14px}}
+@media(max-width:600px){.component-tools{grid-template-columns:1fr;padding:12px;gap:10px}.component-view-toggle{justify-content:flex-start;flex-wrap:wrap}.component-grid{grid-template-columns:1fr;gap:10px}.component-card{padding:14px}.component-grid.is-list .component-card{grid-template-columns:minmax(88px,105px) minmax(0,1fr);column-gap:11px;row-gap:5px;padding:11px}.component-grid.is-list .component-product-image{max-width:105px}}
