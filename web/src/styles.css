@@ -627,6 +627,7 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-card{display:grid;align-content:start;gap:11px;min-width:0;padding:16px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink)}
 .component-card[hidden]{display:none}
 .component-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.component-product-image{width:min(100%,190px);aspect-ratio:1;margin:0 auto 3px;background-image:url("/components/component-atlas.webp");background-repeat:no-repeat;background-size:500% 400%;background-position:calc(var(--component-column)*25%) calc(var(--component-row)*33.333333%)}
 .component-mark{display:grid;place-items:center;width:40px;height:40px;border-radius:8px;background:var(--pink);color:var(--red)}
 .component-type{padding:5px 9px;border-radius:999px;background:#eaf5ff;color:#104877;font-size:11px;font-weight:700}
 .component-type.actuador{background:#e9f6f0;color:#176347}.component-type.control{background:#fff3df;color:#785010}
