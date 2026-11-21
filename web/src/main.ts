@@ -1342,6 +1342,25 @@ document.addEventListener("click", (event) => {
   });
 });
 
+function componentWiringSvg(item: typeof componentCatalog[number]): string {
+  const rows = item.connections.map((connection) => {
+    const pins = connection.split("→").map((part) => part.trim());
+    return { source: pins[0] || "Pin", destination: pins.slice(1).join(" → ") || "Consulta el módulo" };
+  });
+  const height = Math.max(190, rows.length * 40 + 95);
+  const colors = ["#c34a34", "#263746", "#d5a526", "#3277bd"];
+  const wires = rows.map((row, index) => {
+    const y = 82 + index * 40;
+    const color = colors[index % colors.length];
+    return `<path d="M164 ${y} H218 M502 ${y} H544" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"/><circle cx="164" cy="${y}" r="5" fill="${color}"/><circle cx="544" cy="${y}" r="5" fill="${color}"/><text x="178" y="${y - 7}" fill="#263746" font-size="10">${index + 1}</text><text x="555" y="${y + 4}" fill="#263746" font-size="10">${esc(row.source.length > 18 ? `${row.source.slice(0, 17)}…` : row.source)}</text>`;
+  }).join("");
+  const holes = rows.map((_, index) => {
+    const y = 82 + index * 40;
+    return `<circle cx="250" cy="${y}" r="3" fill="#8795a2"/><circle cx="275" cy="${y}" r="3" fill="#8795a2"/><circle cx="300" cy="${y}" r="3" fill="#8795a2"/><circle cx="430" cy="${y}" r="3" fill="#8795a2"/><circle cx="455" cy="${y}" r="3" fill="#8795a2"/><circle cx="480" cy="${y}" r="3" fill="#8795a2"/>`;
+  }).join("");
+  return `<svg viewBox="0 0 760 ${height}" role="img" aria-label="Diagrama de cableado de ${esc(item.name)}"><rect x="8" y="48" width="158" height="${height - 64}" rx="12" fill="#276b8e"/><text x="87" y="34" text-anchor="middle" fill="#24313c" font-size="13" font-weight="700">Arduino Uno</text><text x="87" y="70" text-anchor="middle" fill="white" font-size="11">Pines destino</text><rect x="218" y="48" width="284" height="${height - 64}" rx="10" fill="#f7f5ef" stroke="#c6ccd2" stroke-width="2"/><text x="360" y="34" text-anchor="middle" fill="#24313c" font-size="13" font-weight="700">Protoboard</text><line x1="228" y1="65" x2="492" y2="65" stroke="#c34a34" stroke-width="3"/><line x1="228" y1="74" x2="492" y2="74" stroke="#3277bd" stroke-width="3"/><line x1="228" y1="${height - 28}" x2="492" y2="${height - 28}" stroke="#c34a34" stroke-width="3"/><line x1="228" y1="${height - 19}" x2="492" y2="${height - 19}" stroke="#3277bd" stroke-width="3"/>${holes}${wires}<rect x="544" y="48" width="208" height="${height - 64}" rx="12" fill="#364552"/><text x="648" y="34" text-anchor="middle" fill="#24313c" font-size="13" font-weight="700">${esc(item.name.length > 24 ? `${item.name.slice(0, 23)}…` : item.name)}</text><text x="648" y="70" text-anchor="middle" fill="white" font-size="11">Pines del componente</text></svg>`;
+}
+
 function openComponentGuide(id: string): void {
   const item = componentCatalog.find((component) => component.id === id);
   const dialog = document.querySelector<HTMLDialogElement>("[data-component-dialog]");
@@ -1352,8 +1371,8 @@ function openComponentGuide(id: string): void {
   const steps = componentUsage[item.id] || [];
   const extra = componentExtras[item.id];
   const wiring = item.connections.map((connection, wireIndex) => {
-    const [componentPin, boardPin] = connection.split("→").map((part) => part.trim());
-    return `<div class="component-wire-row"><i class="wire-color-${wireIndex % 4}"></i><span><strong>${esc(componentPin || "Pin")}</strong><b aria-hidden="true">→</b><code>${esc(boardPin || "Revisar conexión")}</code></span></div>`;
+    const [componentPin, ...destinations] = connection.split("→").map((part) => part.trim());
+    return `<div class="component-wire-row"><i class="wire-color-${wireIndex % 4}"></i><span><strong>${esc(componentPin || "Pin")}</strong><b aria-hidden="true">→</b><code>${esc(destinations.join(" → ") || "Revisar conexión")}</code></span></div>`;
   }).join("");
   const code = componentTestCode[item.id] || "";
   const breadboardTip = ["ldr", "led", "rgb", "pulsador"].includes(item.id)
@@ -1361,9 +1380,14 @@ function openComponentGuide(id: string): void {
     : ["motor-dc", "servo-sg90", "stepper", "l293d", "rele"].includes(item.id)
       ? "Coloca el driver o módulo en filas separadas. Lleva la alimentación del actuador a la fuente indicada; comparte GND con Arduino cuando el circuito lo requiera. No alimentes motores desde un pin."
       : "Coloca el módulo sobre la protoboard de modo que cada pin quede en una fila eléctrica distinta. Usa los rieles laterales para alimentación y GND; lleva la señal al pin Arduino indicado.";
+  const pinNames = [...new Set(item.connections.flatMap((connection) => connection.split("→").map((part) => part.trim())).filter(Boolean))];
   content.innerHTML = `<div class="component-guide-head"><div><p class="eyebrow">GUÍA INDIVIDUAL · ${esc(item.type.toUpperCase())}</p><h2 id="component-dialog-title">${esc(item.name)}</h2></div><button type="button" class="icon-button" data-component-close aria-label="Cerrar guía">×</button></div>
     <div class="component-guide-layout"><div class="component-guide-image component-product-image" style="--component-column:${index % 5};--component-row:${Math.floor(index / 5)}" role="img" aria-label="Ilustración de ${esc(item.name)}"></div><div class="component-guide-description"><p class="component-summary">${esc(item.summary)}</p><h3>¿Cómo funciona?</h3><p>${esc(item.operation)}</p></div></div>
-    <section class="component-guide-section"><h3>Conexiones y pines</h3><p class="component-guide-caption">Montaje ilustrado de ${esc(item.name)} en protoboard. Apaga la alimentación antes de armar el circuito.</p><div class="component-wiring-art" style="--wiring-column:${index % 5};--wiring-row:${Math.floor(index / 5)}" role="img" aria-label="Ilustración de montaje de ${esc(item.name)} con Arduino y protoboard"></div><div class="component-wire-list">${wiring}</div><div class="breadboard-instructions"><span>1</span><p><strong>Identifica los pines.</strong> Lee las etiquetas impresas en el módulo y ubica los pines en el orden mostrado.</p><span>2</span><p><strong>Colócalo en la protoboard.</strong> ${esc(breadboardTip)}</p><span>3</span><p><strong>Conecta cada jumper.</strong> Sigue los colores y une el pin del módulo con el destino indicado; las filas centrales y los rieles tienen conexiones internas distintas.</p></div><p class="component-guide-caption">Ilustración didáctica, no a escala. El orden físico de los pines cambia según el fabricante: confirma el rotulado de tu pieza.</p></section>
+    <section class="component-guide-section"><h3>Conexiones paso a paso · Arduino Uno</h3><p class="component-guide-caption">Apaga la alimentación antes de armar el circuito. Cada pin y destino aparece escrito junto al dibujo.</p><div class="component-step-gallery">
+      <article class="component-step-card"><div class="component-step-title"><span>1</span><div><h4>Reconoce la pieza y sus pines</h4><p>Ubica cada nombre impreso en el módulo.</p></div></div><div class="component-step-product component-product-image" style="--component-column:${index % 5};--component-row:${Math.floor(index / 5)}" role="img" aria-label="Vista de ${esc(item.name)} para reconocer sus pines"></div><div class="component-pin-chips">${pinNames.map((pin, pinIndex) => `<span class="wire-color-${pinIndex % 4}">${esc(pin)}</span>`).join("")}</div></article>
+      <article class="component-step-card"><div class="component-step-title"><span>2</span><div><h4>Coloca en la protoboard</h4><p>Separa los pines y prepara las filas para los jumpers.</p></div></div><div class="component-step-board component-wiring-art" style="--wiring-column:${index % 5};--wiring-row:${Math.floor(index / 5)}" role="img" aria-label="Montaje ilustrado de ${esc(item.name)} en protoboard"></div><p class="component-step-note">${esc(breadboardTip)} Los grupos de cinco agujeros de una fila se conectan entre sí. Los rieles laterales se usan para alimentación y GND.</p></article>
+      <article class="component-step-card"><div class="component-step-title"><span>3</span><div><h4>Conecta cable por cable</h4><p>Cada línea numerada vincula un pin con su destino.</p></div></div><div class="component-exact-diagram">${componentWiringSvg(item)}</div><div class="component-wire-list">${wiring}</div></article>
+    </div><p class="component-guide-caption">Las ilustraciones son orientativas; el orden físico puede variar entre fabricantes. Comprueba el rotulado de tu módulo y el voltaje admitido.</p></section>
     <section class="component-guide-section"><h3>Prueba paso a paso</h3><ol>${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol><p class="component-guide-caption">Sube el programa, abre el Monitor serie a 9600 baudios cuando corresponda y cambia una condición a la vez.</p></section>
     <section class="component-guide-section"><div class="component-code-heading"><div><h3>Código de prueba · Arduino Uno</h3><p>Sketch mínimo para verificar este componente.</p></div><button type="button" class="secondary-button compact" data-component-copy>Copiar código</button></div><div class="component-test-code"><pre><code>${esc(code)}</code></pre></div>${item.id === "dht11" ? `<p class="component-guide-caption">Instala la biblioteca “DHT sensor library” desde el Administrador de bibliotecas del IDE Arduino antes de compilar.</p>` : ["servo-sg90", "stepper"].includes(item.id) ? `<p class="component-guide-caption">Usa la biblioteca Servo o Stepper incluida con el IDE Arduino. Para el motor paso a paso, conecta el ULN2003 en el orden indicado en la guía.</p>` : item.id === "mpu6050" ? `<p class="component-guide-caption">Este ejemplo lee el eje X del acelerómetro por I²C; requiere un módulo compatible con la dirección 0x68.</p>` : ""}</section>
     <section class="component-guide-section"><h3>Idea para practicar</h3><p class="component-guide-project">${esc(extra.project)}</p></section>

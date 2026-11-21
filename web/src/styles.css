@@ -688,6 +688,20 @@ html[data-theme="dark"] .component-safety strong{color:#ffd4ca}
 .component-guide-section ul{padding:0;list-style:none}
 .component-guide-section ul li{padding:9px 11px;border-radius:7px;background:var(--surface);overflow-wrap:anywhere}
 .component-guide-section code{font:12px/1.45 ui-monospace,Consolas,monospace}
+.component-step-gallery{display:grid;gap:12px;margin-top:12px}
+.component-step-card{display:grid;grid-template-columns:minmax(190px,.8fr) minmax(0,1.2fr);grid-template-areas:"head head" "visual notes";align-items:center;gap:12px;padding:13px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.component-step-title{grid-area:head;display:flex;align-items:flex-start;gap:10px}
+.component-step-title>span{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;background:var(--school-blue);color:#fff;font-weight:800}
+.component-step-title h4{margin:1px 0 3px;font:700 13px Manrope,sans-serif}.component-step-title p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}
+.component-step-product{grid-area:visual;width:100%;aspect-ratio:1;margin:0;background-image:url("/components/component-atlas.webp");background-repeat:no-repeat;background-size:500% 400%;background-position:calc(var(--component-column)*25%) calc(var(--component-row)*33.333333%)}
+.component-pin-chips{grid-area:notes;display:flex;align-content:center;flex-wrap:wrap;gap:7px}
+.component-pin-chips span{padding:6px 9px;border-radius:6px;background:var(--surface);color:var(--ink);font:700 11px ui-monospace,SFMono-Regular,Consolas,monospace}
+.component-pin-chips .wire-color-0{border-left:4px solid #c34a34}.component-pin-chips .wire-color-1{border-left:4px solid #263746}.component-pin-chips .wire-color-2{border-left:4px solid #d5a526}.component-pin-chips .wire-color-3{border-left:4px solid #3277bd}
+.component-step-board{grid-area:visual;width:100%;max-width:280px;aspect-ratio:1;margin:0 auto;border:0}
+.component-step-note{grid-area:notes;margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+.component-exact-diagram{grid-area:visual;max-width:100%;max-height:290px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff;padding:5px}
+.component-exact-diagram svg{display:block;width:100%;min-width:470px;height:auto}
+.component-step-card>.component-wire-list{grid-area:notes;grid-template-columns:1fr;margin:0;align-content:center}
 .component-guide-care{margin-top:18px;padding:12px;border-left:3px solid var(--school-gold);border-radius:4px;background:var(--surface)}
 .component-guide-care strong{color:var(--ink)}
 .component-wiring-art{width:min(100%,380px);aspect-ratio:1;margin:10px auto 0;border:1px solid var(--line);border-radius:10px;background-color:var(--surface);background-image:url("/components/wiring-atlas.webp");background-repeat:no-repeat;background-size:500% 400%;background-position:calc(var(--wiring-column)*25%) calc(var(--wiring-row)*33.333333%)}
@@ -714,3 +728,4 @@ html[data-theme="dark"] .component-type.control{background:#3a3021;color:#f0d49a
 @media(max-width:600px){.component-tools{grid-template-columns:1fr;padding:12px;gap:10px}.component-view-toggle{justify-content:flex-start;flex-wrap:wrap}.component-grid{grid-template-columns:1fr;gap:10px}.component-card{padding:14px}.component-grid.is-list .component-card{grid-template-columns:minmax(68px,82px) minmax(0,1fr);column-gap:9px;row-gap:3px;padding:9px}.component-grid.is-list .component-product-image{max-width:82px}.component-grid.is-list .component-card>h2{font-size:14px}.component-grid.is-list .component-summary{font-size:11px}.component-grid.is-list .component-card-actions .secondary-button,.component-grid.is-list .component-guide-open{min-height:34px;padding:6px 9px;font-size:11px}.component-compare-bar{justify-content:flex-start;flex-wrap:wrap}.component-comparison-row{grid-template-columns:1fr 1fr}.component-comparison-row>strong{grid-column:1/-1}}
 @media(max-width:520px){.component-guide-dialog{padding:16px}.component-guide-head h2{font-size:19px}.component-guide-layout{grid-template-columns:1fr;gap:12px;padding:12px}.component-guide-image{max-width:170px}.component-guide-description{gap:8px}}
 @media(max-width:520px){.component-code-heading{align-items:flex-start;flex-direction:column}.component-test-code pre{font-size:11px;padding:11px}}
+@media(max-width:600px){.component-step-card{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "visual" "notes";padding:11px}.component-step-product,.component-step-board{width:min(100%,250px);justify-self:center}.component-pin-chips{justify-content:center}.component-exact-diagram{width:100%}.component-step-card>.component-wire-list{grid-template-columns:1fr}}
