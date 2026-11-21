@@ -261,3 +261,26 @@ export const componentUsage: Record<string, string[]> = {
     "Prueba primero con una carga pequeña y confirma el estado del relé; nunca manipules tensión de red sin personal calificado.",
   ],
 };
+
+export type ComponentExtras = { uses: string[]; level: "Inicial" | "Intermedio" | "Avanzado"; project: string; safety?: string };
+export const componentExtras: Record<string, ComponentExtras> = {
+  "hc-sr04": { uses:["Distancia","Robótica móvil"], level:"Inicial", project:"Alarma de proximidad", safety:"Conecta ECHO a una entrada compatible: algunos módulos de 5 V requieren adaptación para placas de 3.3 V." },
+  ldr: { uses:["Luz","Automatización"], level:"Inicial", project:"Lámpara automática" },
+  fc51: { uses:["Distancia","Robótica móvil"], level:"Inicial", project:"Robot evita obstáculos" },
+  lm35: { uses:["Temperatura","Automatización"], level:"Inicial", project:"Alerta de temperatura" },
+  dht11: { uses:["Temperatura","Humedad","Automatización"], level:"Inicial", project:"Estación ambiental" },
+  tcrt5000: { uses:["Luz","Robótica móvil"], level:"Intermedio", project:"Robot seguidor de línea" },
+  pir: { uses:["Movimiento","Automatización"], level:"Inicial", project:"Luz con detector de movimiento" },
+  mpu6050: { uses:["Movimiento","Robótica móvil"], level:"Avanzado", project:"Medidor de inclinación", safety:"El chip trabaja a bajo voltaje; confirma que tu módulo incluya regulador o adaptación de nivel antes de usar 5 V." },
+  potenciometro: { uses:["Control manual"], level:"Inicial", project:"Control de brillo" },
+  joystick: { uses:["Control manual","Robótica móvil"], level:"Intermedio", project:"Mando para robot" },
+  pulsador: { uses:["Control manual"], level:"Inicial", project:"Arranque y paro" },
+  led: { uses:["Luz","Indicadores"], level:"Inicial", project:"Semáforo" },
+  rgb: { uses:["Luz","Indicadores"], level:"Intermedio", project:"Indicador de estado RGB" },
+  buzzer: { uses:["Sonido","Indicadores"], level:"Inicial", project:"Alarma sonora" },
+  "servo-sg90": { uses:["Movimiento","Robótica móvil"], level:"Intermedio", project:"Barrera automática", safety:"El servo puede consumir más corriente de la que entrega el pin de 5 V; usa una fuente adecuada y GND común." },
+  "motor-dc": { uses:["Movimiento","Robótica móvil"], level:"Avanzado", project:"Ventilador o rueda motorizada", safety:"No conectes el motor directamente a un pin de Arduino; usa driver y alimentación adecuados." },
+  l293d: { uses:["Movimiento","Robótica móvil"], level:"Avanzado", project:"Robot de dos ruedas", safety:"Desconecta la alimentación antes de cambiar cables y respeta corriente y voltaje máximos; el driver puede calentarse." },
+  stepper: { uses:["Movimiento","Robótica móvil"], level:"Avanzado", project:"Plataforma giratoria", safety:"Usa el controlador y una fuente adecuada; el motor puede calentarse si queda energizado." },
+  rele: { uses:["Automatización","Control"], level:"Avanzado", project:"Conmutador de baja tensión", safety:"Usa solo baja tensión en prácticas escolares. Nunca conectes tensión de red." },
+};

@@ -67,7 +67,7 @@ import lockIcon from "lucide-static/icons/lock-keyhole.svg?raw";
 import unlockIcon from "lucide-static/icons/lock-keyhole-open.svg?raw";
 import { firebaseConfig } from "./firebase-config";
 import { featuredGuides } from "./featured-guides";
-import { componentCatalog, componentUsage } from "./component-catalog";
+import { componentCatalog, componentExtras, componentUsage } from "./component-catalog";
 import type { GuideWorkspace } from "./guide-workspace";
 let guideWorkspace: GuideWorkspace | null = null;
 import { CLUB_NAME, CLUB_SHORT_NAME, INITIAL_ADMIN_EMAIL, INSTITUTIONAL_EMAIL_DOMAIN, isInitialAdminEmail, isInstitutionalEmail } from "./club-config";
@@ -1113,6 +1113,10 @@ document.addEventListener("input", (event) => {
     applyComponentFilters();
     return;
   }
+  if (event.target instanceof HTMLInputElement && event.target.matches("[data-component-favorites-only]")) {
+    applyComponentFilters();
+    return;
+  }
   const form = (event.target as HTMLElement).closest<HTMLFormElement>('[data-form="auth"]');
   if (!form || state.authMode !== "register") return;
   const data = new FormData(form);
@@ -1228,26 +1232,43 @@ async function pageContent(page: Page): Promise<string> {
   }
 }
 
+function readComponentSet(key: string): Set<string> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch { return new Set(); }
+}
+
 function renderComponentCatalog(): string {
   const view = localStorage.getItem("cdr-component-view") === "list" ? "list" : "grid";
+  const favorites = readComponentSet("cdr-component-favorites");
+  const compared = readComponentSet("cdr-component-compare");
   const entries = componentCatalog.map((item, index) => {
-    const search = `${item.name} ${item.type} ${item.summary} ${item.operation} ${item.connections.join(" ")}`;
+    const extra = componentExtras[item.id];
+    const search = `${item.name} ${item.type} ${item.summary} ${item.operation} ${item.connections.join(" ")} ${extra.uses.join(" ")} ${extra.project} ${extra.level}`;
     return `<article class="component-card" data-component-card data-component-id="${esc(item.id)}" data-type="${item.type}" data-search="${esc(search)}">
       <div class="component-product-image" style="--component-column:${index % 5};--component-row:${Math.floor(index / 5)}" role="img" aria-label="Ilustración del componente ${esc(item.name)}"></div>
       <div class="component-card-top"><span class="component-mark">${icon("componentes", 23)}</span><span class="component-type ${item.type.toLowerCase()}">${item.type}</span></div>
       <h2>${esc(item.name)}</h2><p class="component-summary">${esc(item.summary)}</p>
       <section class="component-explanation"><h3>¿Cómo funciona?</h3><p>${esc(item.operation)}</p></section>
       <details class="component-wiring"><summary>Ver conexión individual</summary><p>Conecta cada pin siguiendo esta guía:</p><ul>${item.connections.map((connection) => `<li><code>${esc(connection)}</code></li>`).join("")}</ul></details>
-      <p class="component-care"><strong>Consejo:</strong> ${esc(item.care)}</p>
+      <p class="component-meta"><span>${esc(extra.level)}</span><span>${extra.uses.map(esc).join(" · ")}</span></p>
+      <p class="component-project"><strong>Proyecto:</strong> ${esc(extra.project)}</p>
+      ${extra.safety ? `<p class="component-tip component-safety"><strong>Seguridad:</strong> ${esc(extra.safety)}</p>` : `<p class="component-tip component-care"><strong>Consejo:</strong> ${esc(item.care)}</p>`}
+      <div class="component-card-actions"><button type="button" class="secondary-button compact" data-component-favorite="${esc(item.id)}" aria-pressed="${favorites.has(item.id)}">${favorites.has(item.id) ? "★ Guardado" : "☆ Favorito"}</button><button type="button" class="secondary-button compact" data-component-compare="${esc(item.id)}" aria-pressed="${compared.has(item.id)}">${compared.has(item.id) ? "✓ Comparar" : "＋ Comparar"}</button></div>
       <button type="button" class="secondary-button component-guide-open" data-component-open="${esc(item.id)}">Ver guía de uso ${icon("ir", 15)}</button>
     </article>`;
   }).join("");
   return `<div class="page-heading component-page-heading"><div><h1 tabindex="-1">Componentes</h1><p>Sensores, actuadores y controles.</p></div></div>
     <p class="component-intro"><span>${icon("alerta", 16)}</span>Conexiones de referencia para Arduino Uno. Comprueba voltaje y pinout antes de conectar.</p>
     <section class="component-catalog" aria-labelledby="component-catalog-title">
-      <div class="component-tools"><label>Buscar componente<input type="search" data-component-search placeholder="Ej. ultrasonido, luz, motor…" autocomplete="off" /></label>
-        <label>Tipo<select data-component-type-filter><option value="">Todos</option><option value="Sensor">Sensores</option><option value="Actuador">Actuadores</option><option value="Control">Controles</option></select></label>
+      <div class="component-tools"><label>Buscar componente<input type="search" data-component-search placeholder="Nombre, uso, proyecto, pin…" autocomplete="off" /></label>
+        <label>Tipo<select data-component-type-filter><option value="">Todos los tipos</option><option value="Sensor">Sensores</option><option value="Actuador">Actuadores</option><option value="Control">Controles</option></select></label>
+        <label>Uso<select data-component-use-filter><option value="">Todos los usos</option>${[...new Set(Object.values(componentExtras).flatMap((extra) => extra.uses))].sort().map((use) => `<option value="${esc(use)}">${esc(use)}</option>`).join("")}</select></label>
+        <label>Dificultad<select data-component-level-filter><option value="">Todos los niveles</option><option>Inicial</option><option>Intermedio</option><option>Avanzado</option></select></label>
+        <label class="component-favorites-filter"><input type="checkbox" data-component-favorites-only /> Solo favoritos</label>
         <div class="component-view-toggle" role="group" aria-label="Vista del catálogo"><span>Ver como</span><button type="button" class="secondary-button compact" data-component-view="grid" aria-pressed="${view === "grid"}">Tarjetas</button><button type="button" class="secondary-button compact" data-component-view="list" aria-pressed="${view === "list"}">Lista</button></div></div>
+      <div class="component-compare-bar" data-component-compare-bar ${compared.size ? "" : "hidden"}><span data-component-compare-count>${compared.size} seleccionados</span><button type="button" class="secondary-button compact" data-component-compare-open ${compared.size === 2 ? "" : "disabled"}>Comparar seleccionados</button><button type="button" class="text-button" data-component-compare-clear>Limpiar</button></div>
       <p class="component-result-count" data-component-count role="status" aria-live="polite">${componentCatalog.length} componentes</p>
       <div class="component-grid ${view === "list" ? "is-list" : ""}">${entries}</div>
       <p class="component-empty" data-component-empty hidden>No hay componentes que coincidan. Prueba otra palabra o tipo.</p>
@@ -1260,9 +1281,15 @@ function applyComponentFilters(): void {
   if (!catalog) return;
   const search = normalizeSearchText(catalog.querySelector<HTMLInputElement>("[data-component-search]")?.value || "").trim();
   const type = catalog.querySelector<HTMLSelectElement>("[data-component-type-filter]")?.value || "";
+  const use = catalog.querySelector<HTMLSelectElement>("[data-component-use-filter]")?.value || "";
+  const level = catalog.querySelector<HTMLSelectElement>("[data-component-level-filter]")?.value || "";
+  const favoritesOnly = catalog.querySelector<HTMLInputElement>("[data-component-favorites-only]")?.checked || false;
+  const favorites = readComponentSet("cdr-component-favorites");
   let visible = 0;
   catalog.querySelectorAll<HTMLElement>("[data-component-card]").forEach((card) => {
-    const matches = (!type || card.dataset.type === type)
+    const extra = componentExtras[card.dataset.componentId || ""];
+    const matches = (!type || card.dataset.type === type) && (!use || extra?.uses.includes(use))
+      && (!level || extra?.level === level) && (!favoritesOnly || favorites.has(card.dataset.componentId || ""))
       && (!search || normalizeSearchText(card.dataset.search || "").includes(search));
     card.hidden = !matches;
     if (matches) visible++;
@@ -1281,6 +1308,37 @@ document.addEventListener("click", (event) => {
     openComponentGuide(card.dataset.componentId || "");
     return;
   }
+  const favorite = target.closest<HTMLButtonElement>("[data-component-favorite]");
+  if (favorite) {
+    const id = favorite.dataset.componentFavorite || "";
+    const favorites = readComponentSet("cdr-component-favorites");
+    favorites.has(id) ? favorites.delete(id) : favorites.add(id);
+    localStorage.setItem("cdr-component-favorites", JSON.stringify([...favorites]));
+    favorite.setAttribute("aria-pressed", String(favorites.has(id)));
+    favorite.textContent = favorites.has(id) ? "★ Guardado" : "☆ Favorito";
+    applyComponentFilters();
+    return;
+  }
+  const compare = target.closest<HTMLButtonElement>("[data-component-compare]");
+  if (compare) {
+    const id = compare.dataset.componentCompare || "";
+    const selected = readComponentSet("cdr-component-compare");
+    if (selected.has(id)) selected.delete(id);
+    else if (selected.size < 2) selected.add(id);
+    else { showToast("Puedes comparar hasta dos componentes."); return; }
+    localStorage.setItem("cdr-component-compare", JSON.stringify([...selected]));
+    compare.setAttribute("aria-pressed", String(selected.has(id)));
+    compare.textContent = selected.has(id) ? "✓ Comparar" : "＋ Comparar";
+    updateComponentCompareBar(selected);
+    return;
+  }
+  if (target.closest("[data-component-compare-clear]")) {
+    localStorage.removeItem("cdr-component-compare");
+    document.querySelectorAll<HTMLButtonElement>("[data-component-compare]").forEach((button) => { button.setAttribute("aria-pressed", "false"); button.textContent = "＋ Comparar"; });
+    updateComponentCompareBar(new Set());
+    return;
+  }
+  if (target.closest("[data-component-compare-open]")) { openComponentComparison(); return; }
   const guideButton = target.closest<HTMLButtonElement>("[data-component-open]");
   if (guideButton) {
     openComponentGuide(guideButton.dataset.componentOpen || "");
@@ -1313,12 +1371,43 @@ function openComponentGuide(id: string): void {
 
   const index = componentCatalog.indexOf(item);
   const steps = componentUsage[item.id] || [];
+  const extra = componentExtras[item.id];
+  const wiring = item.connections.map((connection, wireIndex) => `<div class="component-wire-row"><i class="wire-color-${wireIndex % 4}"></i><code>${esc(connection)}</code></div>`).join("");
   content.innerHTML = `<div class="component-guide-head"><div><p class="eyebrow">GUÍA INDIVIDUAL · ${esc(item.type.toUpperCase())}</p><h2 id="component-dialog-title">${esc(item.name)}</h2></div><button type="button" class="icon-button" data-component-close aria-label="Cerrar guía">×</button></div>
     <div class="component-guide-layout"><div class="component-guide-image component-product-image" style="--component-column:${index % 5};--component-row:${Math.floor(index / 5)}" role="img" aria-label="Ilustración de ${esc(item.name)}"></div><div class="component-guide-description"><p class="component-summary">${esc(item.summary)}</p><h3>¿Cómo funciona?</h3><p>${esc(item.operation)}</p></div></div>
+    <section class="component-guide-section"><h3>Conexión visual de referencia</h3><div class="component-wiring-visual"><div class="wiring-device"><strong>Arduino Uno</strong><small>5V · GND · pines</small></div><div class="wiring-leads" aria-hidden="true">${item.connections.map((_, wireIndex) => `<i class="wire-color-${wireIndex % 4}"></i>`).join("")}</div><div class="wiring-device"><strong>${esc(item.name.replace(/^Sensor |^Módulo /, ""))}</strong><small>Conecta con la placa apagada</small></div></div><div class="component-wire-list">${wiring}</div><p class="component-guide-caption">Esquema orientativo de cableado, no representa escala física. Comprueba el pinout de tu versión.</p></section>
     <section class="component-guide-section"><h3>Cómo usarlo paso a paso</h3><ol>${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol></section>
     <section class="component-guide-section"><h3>Conexiones de referencia · Arduino Uno</h3><ul>${item.connections.map((connection) => `<li><code>${esc(connection)}</code></li>`).join("")}</ul></section>
-    <p class="component-guide-care"><strong>Recomendación:</strong> ${esc(item.care)}</p>`;
+    <section class="component-guide-section"><h3>Ideas para practicar</h3><p class="component-guide-project">${esc(extra.project)} · Nivel ${esc(extra.level)} · ${esc(extra.uses.join(" y "))}</p></section>
+    <p class="component-guide-care"><strong>${extra.safety ? "Seguridad:" : "Recomendación:"}</strong> ${esc(extra.safety || item.care)}</p>`;
   if (!dialog.open) dialog.showModal();
+  dialog.querySelector<HTMLButtonElement>("[data-component-close]")?.focus();
+}
+
+function updateComponentCompareBar(selected: Set<string>): void {
+  const bar = document.querySelector<HTMLElement>("[data-component-compare-bar]");
+  if (!bar) return;
+  bar.hidden = selected.size === 0;
+  const count = bar.querySelector<HTMLElement>("[data-component-compare-count]");
+  if (count) count.textContent = `${selected.size} seleccionados`;
+  const button = bar.querySelector<HTMLButtonElement>("[data-component-compare-open]");
+  if (button) button.disabled = selected.size !== 2;
+}
+
+function openComponentComparison(): void {
+  const selected = [...readComponentSet("cdr-component-compare")].slice(0, 2);
+  if (selected.length !== 2) return;
+  const items = selected.map((id) => componentCatalog.find((item) => item.id === id)).filter((item): item is typeof componentCatalog[number] => !!item);
+  const dialog = document.querySelector<HTMLDialogElement>("[data-component-dialog]");
+  const content = dialog?.querySelector<HTMLElement>("[data-component-dialog-content]");
+  if (items.length !== 2 || !dialog || !content) return;
+  const rows: Array<[string, (item: typeof items[number]) => string]> = [
+    ["Tipo", (item) => item.type], ["Uso", (item) => componentExtras[item.id].uses.join(", ")],
+    ["Dificultad", (item) => componentExtras[item.id].level], ["Funcionamiento", (item) => item.operation],
+    ["Proyecto sugerido", (item) => componentExtras[item.id].project], ["Conexiones", (item) => item.connections.join(" · ")],
+  ];
+  content.innerHTML = `<div class="component-guide-head"><div><p class="eyebrow">COMPARADOR</p><h2 id="component-dialog-title">Compara componentes</h2></div><button type="button" class="icon-button" data-component-close aria-label="Cerrar comparación">×</button></div><div class="component-comparison">${rows.map(([label, value]) => `<div class="component-comparison-row"><strong>${esc(label)}</strong>${items.map((item) => `<p><b>${esc(item.name)}</b><br>${esc(value(item))}</p>`).join("")}</div>`).join("")}</div>`;
+  dialog.showModal();
   dialog.querySelector<HTMLButtonElement>("[data-component-close]")?.focus();
 }
 
@@ -2909,7 +2998,7 @@ document.addEventListener("keydown", (event) => {
 
 document.addEventListener("change", (event) => {
   const target = event.target as HTMLInputElement | HTMLSelectElement;
-  if (target.matches("[data-component-type-filter]")) {
+  if (target.matches("[data-component-type-filter], [data-component-use-filter], [data-component-level-filter], [data-component-favorites-only]")) {
     applyComponentFilters();
   } else if (target.matches("[data-showcase-area-filter], [data-showcase-level-filter]")) {
     applyShowcaseFilters();

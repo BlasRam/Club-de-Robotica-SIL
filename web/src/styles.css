@@ -631,14 +631,17 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:14px;align-items:start}
 .component-grid.is-list{grid-template-columns:minmax(0,1fr);gap:9px}
 .component-card{display:grid;align-content:start;gap:11px;min-width:0;padding:16px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink)}
-.component-grid.is-list .component-card{grid-template-columns:minmax(110px,150px) minmax(0,1fr);grid-template-areas:"image top" "image title" "image summary" "image operation" "image wiring" "image care" "image guide";column-gap:17px;row-gap:6px;align-items:start}
+.component-grid.is-list .component-card{grid-template-columns:minmax(110px,150px) minmax(0,1fr);grid-template-areas:"image top" "image title" "image summary" "image operation" "image wiring" "image meta" "image project" "image tip" "image actions" "image guide";column-gap:17px;row-gap:6px;align-items:start}
 .component-grid.is-list .component-product-image{grid-area:image;width:100%;max-width:150px;margin:0;align-self:center}
 .component-grid.is-list .component-card-top{grid-area:top}
 .component-grid.is-list .component-card>h2{grid-area:title}
 .component-grid.is-list .component-summary{grid-area:summary}
 .component-grid.is-list .component-explanation{grid-area:operation}
 .component-grid.is-list .component-wiring{grid-area:wiring}
-.component-grid.is-list .component-care{grid-area:care}
+.component-grid.is-list .component-meta{grid-area:meta}
+.component-grid.is-list .component-project{grid-area:project}
+.component-grid.is-list .component-tip{grid-area:tip}
+.component-grid.is-list .component-card-actions{grid-area:actions}
 .component-card[hidden]{display:none}
 .component-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .component-product-image{width:min(100%,190px);aspect-ratio:1;margin:0 auto 3px;background-image:url("/components/component-atlas.webp");background-repeat:no-repeat;background-size:500% 400%;background-position:calc(var(--component-column)*25%) calc(var(--component-row)*33.333333%)}
@@ -657,6 +660,20 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-card code{font:12px/1.45 ui-monospace,Consolas,monospace;color:var(--ink)}
 .component-card .component-care{font-size:12px}
 .component-card .component-care strong{color:var(--ink)}
+.component-meta{display:flex;flex-wrap:wrap;gap:5px;color:var(--muted)!important;font-size:11px!important}
+.component-meta span{padding:3px 7px;border-radius:999px;background:var(--surface)}
+.component-project,.component-safety{font-size:12px!important;line-height:1.45!important}
+.component-safety{padding:8px 10px;border-left:3px solid #c34a34;border-radius:4px;background:#fff4ef;color:#823123!important}
+.component-safety strong{color:#823123}
+html[data-theme="dark"] .component-safety{border-color:#e77d68;background:#392824;color:#ffd4ca!important}
+html[data-theme="dark"] .component-safety strong{color:#ffd4ca}
+.component-card-actions{display:flex;flex-wrap:wrap;gap:6px}
+.component-card-actions .secondary-button{min-height:36px}
+.component-favorites-filter{display:flex!important;grid-column:1/-1;align-items:center;gap:8px!important}
+.component-favorites-filter input{width:18px!important;min-height:18px!important;accent-color:var(--red)}
+.component-compare-bar{display:flex;align-items:center;justify-content:flex-end;gap:9px;margin:10px 0;color:var(--muted);font-size:12px}
+.component-compare-bar[hidden]{display:none}
+.component-compare-bar .text-button{min-height:36px}
 .component-guide-open{justify-self:start;gap:7px}
 .component-grid.is-list .component-guide-open{grid-area:guide}
 .component-guide-dialog{width:min(720px,calc(100vw - 28px));max-width:none;max-height:calc(100dvh - 28px);margin:auto;padding:22px;border:1px solid var(--line);border-radius:13px;background:var(--paper);color:var(--ink);box-shadow:0 22px 80px #081b303d;overflow:auto}
@@ -678,10 +695,24 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-guide-section code{font:12px/1.45 ui-monospace,Consolas,monospace}
 .component-guide-care{margin-top:18px;padding:12px;border-left:3px solid var(--school-gold);border-radius:4px;background:var(--surface)}
 .component-guide-care strong{color:var(--ink)}
+.component-wiring-visual{display:grid;grid-template-columns:1fr 54px 1fr;align-items:center;gap:10px;margin-top:10px;padding:14px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+.wiring-device{display:grid;align-content:center;min-height:82px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);text-align:center}
+.wiring-device strong{font-size:12px}.wiring-device small{margin-top:5px;color:var(--muted);font-size:10px}
+.wiring-leads{display:grid;gap:8px}.wiring-leads i,.component-wire-row i{display:block;height:3px;border-radius:5px;background:#c34a34}
+.wire-color-1{background:#20252d!important}.wire-color-2{background:#e5b631!important}.wire-color-3{background:#3277bd!important}
+.component-wire-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;margin-top:9px}
+.component-wire-row{display:flex;align-items:center;gap:8px;min-width:0;padding:7px 9px;border-radius:6px;background:var(--surface)}
+.component-wire-row i{flex:none;width:15px}.component-wire-row code{font-size:11px;overflow-wrap:anywhere}
+.component-guide-caption{margin:8px 0 0;color:var(--muted);font-size:10px;line-height:1.5}
+.component-guide-project{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
+.component-comparison{display:grid;gap:8px}
+.component-comparison-row{display:grid;grid-template-columns:110px repeat(2,minmax(0,1fr));gap:10px;padding:11px;border-radius:8px;background:var(--surface);font-size:12px;line-height:1.5}
+.component-comparison-row>strong{color:var(--muted)}
+.component-comparison-row p{margin:0;overflow-wrap:anywhere}
 .component-empty{padding:20px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);text-align:center}
 html[data-theme="dark"] .component-type{background:#26394a;color:#d1e8ff}
 html[data-theme="dark"] .component-type.actuador{background:#20372e;color:#b6e3c9}
 html[data-theme="dark"] .component-type.control{background:#3a3021;color:#f0d49a}
 @media(max-width:680px){.component-home-card{grid-template-columns:auto minmax(0,1fr);gap:10px;padding:14px}.component-home-card .secondary-button{grid-column:1/-1;width:100%}}
-@media(max-width:600px){.component-tools{grid-template-columns:1fr;padding:12px;gap:10px}.component-view-toggle{justify-content:flex-start;flex-wrap:wrap}.component-grid{grid-template-columns:1fr;gap:10px}.component-card{padding:14px}.component-grid.is-list .component-card{grid-template-columns:minmax(88px,105px) minmax(0,1fr);column-gap:11px;row-gap:5px;padding:11px}.component-grid.is-list .component-product-image{max-width:105px}}
+@media(max-width:600px){.component-tools{grid-template-columns:1fr;padding:12px;gap:10px}.component-view-toggle{justify-content:flex-start;flex-wrap:wrap}.component-grid{grid-template-columns:1fr;gap:10px}.component-card{padding:14px}.component-grid.is-list .component-card{grid-template-columns:minmax(88px,105px) minmax(0,1fr);column-gap:11px;row-gap:5px;padding:11px}.component-grid.is-list .component-product-image{max-width:105px}.component-compare-bar{justify-content:flex-start;flex-wrap:wrap}.component-comparison-row{grid-template-columns:1fr 1fr}.component-comparison-row>strong{grid-column:1/-1}}
 @media(max-width:520px){.component-guide-dialog{padding:16px}.component-guide-head h2{font-size:19px}.component-guide-layout{grid-template-columns:1fr;gap:12px;padding:12px}.component-guide-image{max-width:170px}.component-guide-description{gap:8px}}
