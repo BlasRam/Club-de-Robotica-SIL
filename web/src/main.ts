@@ -1242,8 +1242,8 @@ function renderComponentCatalog(): string {
       <button type="button" class="secondary-button component-guide-open" data-component-open="${esc(item.id)}">Ver guía de uso ${icon("ir", 15)}</button>
     </article>`;
   }).join("");
-  return `${pageHeading("Componentes y módulos", "Conoce cada sensor y actuador: qué hace, cómo funciona y cómo conectarlo por separado.")}
-    <section class="component-intro notice-box info"><span>${icon("alerta", 20)}</span><p>Las imágenes son ilustraciones para reconocer cada pieza; el aspecto puede variar según el fabricante. Las conexiones de referencia usan Arduino Uno: revisa el voltaje y el pinout de tu módulo antes de conectarlo.</p></section>
+  return `<div class="page-heading component-page-heading"><div><h1 tabindex="-1">Componentes</h1><p>Sensores, actuadores y controles.</p></div></div>
+    <p class="component-intro"><span>${icon("alerta", 16)}</span>Conexiones de referencia para Arduino Uno. Comprueba voltaje y pinout antes de conectar.</p>
     <section class="component-catalog" aria-labelledby="component-catalog-title">
       <div class="component-tools"><label>Buscar componente<input type="search" data-component-search placeholder="Ej. ultrasonido, luz, motor…" autocomplete="off" /></label>
         <label>Tipo<select data-component-type-filter><option value="">Todos</option><option value="Sensor">Sensores</option><option value="Actuador">Actuadores</option><option value="Control">Controles</option></select></label>

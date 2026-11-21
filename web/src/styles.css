@@ -613,11 +613,14 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 :where(input,select,textarea):focus-visible{outline:3px solid #1769aa;outline-offset:2px}
 .offline-banner{line-height:1.5}
 @media(max-width:680px){.page-content{padding-bottom:calc(88px + env(safe-area-inset-bottom))}.topbar{padding-top:max(10px,env(safe-area-inset-top))}}
-.component-intro{align-items:flex-start;gap:10px;margin:0 0 18px;line-height:1.55}
+.component-page-heading{margin-bottom:10px}
+.component-page-heading h1{margin:0 0 2px}
+.component-page-heading>div>p{margin:0;color:var(--muted);font-size:12px}
+.component-intro{display:flex;align-items:center;gap:7px;margin:0 0 10px;color:var(--muted);font-size:11px;line-height:1.4}
+.component-intro svg{flex:none;color:var(--school-blue)}
 .component-home-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;margin:8px 0 20px;padding:18px;border:1px solid var(--line);border-radius:9px;background:var(--paper)}
 .component-home-card h2{margin:4px 0;font-size:16px}
 .component-home-card p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
-.component-intro p{margin:0}
 .component-catalog{margin:18px 0 36px}
 .component-tools{display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px;padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
 .component-tools label{display:grid;gap:7px;font-size:12px;font-weight:700;color:var(--ink)}
