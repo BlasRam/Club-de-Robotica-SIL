@@ -67,7 +67,7 @@ import lockIcon from "lucide-static/icons/lock-keyhole.svg?raw";
 import unlockIcon from "lucide-static/icons/lock-keyhole-open.svg?raw";
 import { firebaseConfig } from "./firebase-config";
 import { featuredGuides } from "./featured-guides";
-import { componentCatalog } from "./component-catalog";
+import { componentCatalog, componentUsage } from "./component-catalog";
 import type { GuideWorkspace } from "./guide-workspace";
 let guideWorkspace: GuideWorkspace | null = null;
 import { CLUB_NAME, CLUB_SHORT_NAME, INITIAL_ADMIN_EMAIL, INSTITUTIONAL_EMAIL_DOMAIN, isInitialAdminEmail, isInstitutionalEmail } from "./club-config";
@@ -1232,13 +1232,14 @@ function renderComponentCatalog(): string {
   const view = localStorage.getItem("cdr-component-view") === "list" ? "list" : "grid";
   const entries = componentCatalog.map((item, index) => {
     const search = `${item.name} ${item.type} ${item.summary} ${item.operation} ${item.connections.join(" ")}`;
-    return `<article class="component-card" data-component-card data-type="${item.type}" data-search="${esc(search)}">
+    return `<article class="component-card" data-component-card data-component-id="${esc(item.id)}" data-type="${item.type}" data-search="${esc(search)}">
       <div class="component-product-image" style="--component-column:${index % 5};--component-row:${Math.floor(index / 5)}" role="img" aria-label="Ilustración del componente ${esc(item.name)}"></div>
       <div class="component-card-top"><span class="component-mark">${icon("componentes", 23)}</span><span class="component-type ${item.type.toLowerCase()}">${item.type}</span></div>
       <h2>${esc(item.name)}</h2><p class="component-summary">${esc(item.summary)}</p>
       <section class="component-explanation"><h3>¿Cómo funciona?</h3><p>${esc(item.operation)}</p></section>
       <details class="component-wiring"><summary>Ver conexión individual</summary><p>Conecta cada pin siguiendo esta guía:</p><ul>${item.connections.map((connection) => `<li><code>${esc(connection)}</code></li>`).join("")}</ul></details>
       <p class="component-care"><strong>Consejo:</strong> ${esc(item.care)}</p>
+      <button type="button" class="secondary-button component-guide-open" data-component-open="${esc(item.id)}">Ver guía de uso ${icon("ir", 15)}</button>
     </article>`;
   }).join("");
   return `${pageHeading("Componentes y módulos", "Conoce cada sensor y actuador: qué hace, cómo funciona y cómo conectarlo por separado.")}
@@ -1250,6 +1251,7 @@ function renderComponentCatalog(): string {
       <p class="component-result-count" data-component-count role="status" aria-live="polite">${componentCatalog.length} componentes</p>
       <div class="component-grid ${view === "list" ? "is-list" : ""}">${entries}</div>
       <p class="component-empty" data-component-empty hidden>No hay componentes que coincidan. Prueba otra palabra o tipo.</p>
+      <dialog class="component-guide-dialog" data-component-dialog aria-labelledby="component-dialog-title"><div data-component-dialog-content></div></dialog>
     </section>`;
 }
 
@@ -1274,6 +1276,25 @@ function applyComponentFilters(): void {
 document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+  const card = target.closest<HTMLElement>("[data-component-card]");
+  if (card && !target.closest("button, a, summary, input, select, textarea, details")) {
+    openComponentGuide(card.dataset.componentId || "");
+    return;
+  }
+  const guideButton = target.closest<HTMLButtonElement>("[data-component-open]");
+  if (guideButton) {
+    openComponentGuide(guideButton.dataset.componentOpen || "");
+    return;
+  }
+  if (target.closest("[data-component-close]")) {
+    target.closest<HTMLDialogElement>("[data-component-dialog]")?.close();
+    return;
+  }
+  const guideDialog = target.closest<HTMLDialogElement>("[data-component-dialog]");
+  if (guideDialog && target === guideDialog) {
+    guideDialog.close();
+    return;
+  }
   const button = target.closest<HTMLButtonElement>("[data-component-view]");
   if (!button) return;
   const view = button.dataset.componentView === "list" ? "list" : "grid";
@@ -1283,6 +1304,23 @@ document.addEventListener("click", (event) => {
     item.setAttribute("aria-pressed", String(item.dataset.componentView === view));
   });
 });
+
+function openComponentGuide(id: string): void {
+  const item = componentCatalog.find((component) => component.id === id);
+  const dialog = document.querySelector<HTMLDialogElement>("[data-component-dialog]");
+  const content = dialog?.querySelector<HTMLElement>("[data-component-dialog-content]");
+  if (!item || !dialog || !content) return;
+
+  const index = componentCatalog.indexOf(item);
+  const steps = componentUsage[item.id] || [];
+  content.innerHTML = `<div class="component-guide-head"><div><p class="eyebrow">GUÍA INDIVIDUAL · ${esc(item.type.toUpperCase())}</p><h2 id="component-dialog-title">${esc(item.name)}</h2></div><button type="button" class="icon-button" data-component-close aria-label="Cerrar guía">×</button></div>
+    <div class="component-guide-layout"><div class="component-guide-image component-product-image" style="--component-column:${index % 5};--component-row:${Math.floor(index / 5)}" role="img" aria-label="Ilustración de ${esc(item.name)}"></div><div class="component-guide-description"><p class="component-summary">${esc(item.summary)}</p><h3>¿Cómo funciona?</h3><p>${esc(item.operation)}</p></div></div>
+    <section class="component-guide-section"><h3>Cómo usarlo paso a paso</h3><ol>${steps.map((step) => `<li>${esc(step)}</li>`).join("")}</ol></section>
+    <section class="component-guide-section"><h3>Conexiones de referencia · Arduino Uno</h3><ul>${item.connections.map((connection) => `<li><code>${esc(connection)}</code></li>`).join("")}</ul></section>
+    <p class="component-guide-care"><strong>Recomendación:</strong> ${esc(item.care)}</p>`;
+  if (!dialog.open) dialog.showModal();
+  dialog.querySelector<HTMLButtonElement>("[data-component-close]")?.focus();
+}
 
 function renderSettings(): string {
   const profile = state.profile!;

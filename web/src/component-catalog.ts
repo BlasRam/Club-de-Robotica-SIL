@@ -144,3 +144,120 @@ export const componentCatalog: ComponentEntry[] = [
     care: "Para actividades escolares, trabaja solo con baja tensión. La red eléctrica puede causar lesiones graves y requiere personal calificado.",
   },
 ];
+
+export const componentUsage: Record<string, string[]> = {
+  "hc-sr04": [
+    "Coloca el módulo firme y orienta sus dos transductores hacia el área que quieres medir.",
+    "Envía un pulso de unos 10 microsegundos por TRIG y mide cuánto permanece activa la señal ECHO.",
+    "Calcula la distancia aproximada en centímetros con: duración del eco × 0,034 ÷ 2.",
+    "Compara varias lecturas y usa un umbral para decidir si un objeto está cerca; deja un intervalo entre mediciones.",
+  ],
+  ldr: [
+    "Arma el divisor de voltaje con la LDR y una resistencia de 10 kΩ antes de conectarlo a Arduino.",
+    "Carga un programa que lea A0 con analogRead y muestra el resultado por el monitor serial.",
+    "Registra lecturas con mucha luz y con poca luz para conocer el rango de tu montaje.",
+    "Elige un umbral entre esos valores para encender un LED o activar otra acción; añade histéresis si el estado parpadea.",
+  ],
+  fc51: [
+    "Monta el módulo mirando al área que quieres vigilar y mantén libres el emisor y el receptor infrarrojos.",
+    "Enciéndelo y gira lentamente el potenciómetro hasta que la salida cambie al acercar un objeto.",
+    "Lee OUT como entrada digital y observa el indicador LED del módulo para confirmar la detección.",
+    "Prueba a distintas distancias y con distintos objetos: el alcance depende del color, la forma y la luz del ambiente.",
+  ],
+  lm35: [
+    "Identifica Vs, Vout y GND en la hoja técnica o en el módulo; no adivines el orden de las patas.",
+    "Conecta Vout a A0 y carga una lectura con analogRead para obtener el voltaje medido.",
+    "En el Arduino Uno, convierte el valor a voltaje y luego a temperatura: voltaje en voltios × 100 ≈ °C.",
+    "Compara la lectura con un termómetro de referencia y evita tocar o calentar las patas eléctricas.",
+  ],
+  dht11: [
+    "Comprueba si tienes el sensor suelto o un módulo: el orden de pines y la resistencia DATA pueden cambiar.",
+    "Conecta DATA a D2 y usa una biblioteca compatible con DHT11 en el programa.",
+    "Inicializa el sensor, espera una lectura válida y consulta temperatura y humedad con al menos un segundo entre lecturas.",
+    "Colócalo en un lugar ventilado, lejos de agua, calor directo y del aire caliente de la placa.",
+  ],
+  tcrt5000: [
+    "Fija el módulo mirando hacia abajo, a una altura constante y cerca de la superficie que seguirá.",
+    "Conecta DO para una detección digital; usa AO si tu módulo ofrece lectura analógica.",
+    "Mueve el módulo sobre las zonas claras y oscuras de la pista y ajusta el potenciómetro hasta distinguirlas.",
+    "Verifica las lecturas con la iluminación real del lugar antes de instalarlo en el robot.",
+  ],
+  pir: [
+    "Instala el sensor con la cúpula apuntando al espacio donde esperas movimiento.",
+    "Conecta OUT a D2 y espera el tiempo de estabilización indicado por el fabricante al encenderlo.",
+    "Lee OUT como una señal digital y prueba caminando dentro y fuera del campo de detección.",
+    "Ajusta sensibilidad y duración con sus controles; el PIR detecta cambios de movimiento, no mide distancia.",
+  ],
+  mpu6050: [
+    "Monta el módulo firme en la pieza cuyo movimiento quieres medir y comprueba el voltaje permitido por tu breakout.",
+    "Conecta SDA y SCL al bus I²C; en Arduino Uno clásico son A4 y A5.",
+    "Inicia una biblioteca compatible, comprueba que el módulo responde en I²C y deja el sensor quieto durante la calibración.",
+    "Lee acelerómetro y giroscopio, calibra el sesgo y suaviza las lecturas antes de usarlas para estimar inclinación o giro.",
+  ],
+  potenciometro: [
+    "Conecta las patas exteriores a 5V y GND, y la central a A0.",
+    "Lee A0 con analogRead mientras giras lentamente la perilla.",
+    "Usa map para convertir la lectura, normalmente de 0–1023, al rango que necesite tu proyecto.",
+    "Si el sentido de giro está invertido, intercambia las patas exteriores; no conectes la pata central directamente a 5V.",
+  ],
+  joystick: [
+    "Conecta VRx y VRy a entradas analógicas distintas y SW a una entrada digital si usarás el pulsador.",
+    "Lee ambos ejes con analogRead y registra sus valores con la palanca centrada.",
+    "Define una zona muerta alrededor del centro para que pequeñas variaciones no muevan el robot.",
+    "Usa SW como pulsador con INPUT_PULLUP y verifica si el módulo entrega LOW o HIGH al presionarlo.",
+  ],
+  pulsador: [
+    "Coloca el pulsador cruzando la ranura central de la protoboard para separar sus contactos.",
+    "Conecta un lado a D2 y el otro a GND; configura el pin como INPUT_PULLUP.",
+    "Lee LOW cuando está presionado y HIGH cuando está suelto.",
+    "Si la lectura cambia varias veces por una sola pulsación, añade antirrebote por software.",
+  ],
+  led: [
+    "Identifica el ánodo, normalmente la pata larga, y el cátodo, normalmente la pata corta.",
+    "Conecta el pin digital al ánodo mediante una resistencia de 220–330 Ω y el cátodo a GND.",
+    "Configura el pin como OUTPUT y usa HIGH para encenderlo y LOW para apagarlo.",
+    "Para variar el brillo usa un pin PWM y analogWrite; mantén siempre la resistencia en serie.",
+  ],
+  rgb: [
+    "Identifica si el terminal común del LED RGB es ánodo común o cátodo común.",
+    "Conecta cada canal R, G y B a un pin PWM mediante su propia resistencia.",
+    "Prueba cada canal por separado y luego mezcla sus niveles PWM para crear colores.",
+    "En un modelo de ánodo común, invierte los niveles de control; no compartas una sola resistencia entre los tres canales.",
+  ],
+  buzzer: [
+    "Comprueba si el zumbador es activo (suena con alimentación continua) o pasivo (necesita una frecuencia).",
+    "Conecta el módulo siguiendo sus marcas de VCC, GND y señal; usa D8 como pin de control.",
+    "Para un activo usa HIGH/LOW; para uno pasivo genera una frecuencia con tone y detén el sonido con noTone.",
+    "Si el modelo consume más corriente de la permitida por el pin, utiliza un transistor o un módulo driver.",
+  ],
+  "servo-sg90": [
+    "Conecta la señal al pin D9 y confirma el código de colores de los cables de tu servo.",
+    "Inicia la biblioteca Servo, asocia el pin y prueba primero con un ángulo pequeño.",
+    "Usa write para moverlo gradualmente dentro del rango que soporte tu mecanismo; no lo fuerces contra un tope.",
+    "Si la alimentación viene de una fuente externa, une su GND con el GND de Arduino y verifica que entregue corriente suficiente.",
+  ],
+  "motor-dc": [
+    "Elige un transistor o MOSFET adecuado y conecta el motor a una fuente externa del voltaje correcto.",
+    "Añade un diodo de protección en paralelo con el motor y conecta las tierras de la fuente y Arduino.",
+    "Usa un pin PWM a través de la resistencia de control para regular la velocidad.",
+    "Para invertir el sentido de giro usa un puente H; no alimentes el motor directamente desde un pin de Arduino.",
+  ],
+  l293d: [
+    "Coloca el driver con la muesca orientada como indica su diagrama y conecta por separado alimentación lógica y de motor.",
+    "Une las tierras del driver, la fuente del motor y Arduino; conecta el motor a un par de salidas OUT.",
+    "Usa IN1 e IN2 para elegir el sentido; activa EN1 y aplica PWM ahí para regular la velocidad.",
+    "Prueba sin carga y revisa corriente y temperatura: el L293D tiene límites y pierde parte del voltaje de alimentación.",
+  ],
+  stepper: [
+    "Conecta el motor al conector del ULN2003 y las entradas IN1–IN4 a cuatro pines digitales.",
+    "Alimenta el motor desde una fuente adecuada para el modelo y comparte GND con Arduino.",
+    "Usa una secuencia de pasos compatible con el 28BYJ-48 y una velocidad moderada para evitar que pierda pasos.",
+    "Comprueba el sentido y el recorrido sin carga; corta la alimentación del motor cuando no necesite mantener posición.",
+  ],
+  rele: [
+    "Trabaja únicamente con circuitos de baja tensión en las actividades del club y verifica el voltaje de la bobina.",
+    "Conecta VCC, GND e IN según las marcas del módulo y usa una salida digital para activar la entrada.",
+    "Con la fuente desconectada, conecta la carga a COM y NO si quieres que normalmente esté apagada, o a COM y NC si corresponde.",
+    "Prueba primero con una carga pequeña y confirma el estado del relé; nunca manipules tensión de red sin personal calificado.",
+  ],
+};

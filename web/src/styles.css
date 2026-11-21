@@ -654,9 +654,31 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-card code{font:12px/1.45 ui-monospace,Consolas,monospace;color:var(--ink)}
 .component-card .component-care{font-size:12px}
 .component-card .component-care strong{color:var(--ink)}
+.component-guide-open{justify-self:start;gap:7px}
+.component-grid.is-list .component-guide-open{grid-area:guide}
+.component-guide-dialog{width:min(720px,calc(100vw - 28px));max-width:none;max-height:calc(100dvh - 28px);margin:auto;padding:22px;border:1px solid var(--line);border-radius:13px;background:var(--paper);color:var(--ink);box-shadow:0 22px 80px #081b303d;overflow:auto}
+.component-guide-dialog::backdrop{background:#091a2bcc;backdrop-filter:blur(3px)}
+.component-guide-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
+.component-guide-head .eyebrow{margin:0 0 5px}
+.component-guide-head h2{margin:0;font:800 23px Manrope,sans-serif;line-height:1.25}
+.component-guide-layout{display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr);align-items:center;gap:22px;padding:15px;border-radius:10px;background:var(--surface)}
+.component-guide-image{width:100%;max-width:220px;margin:0;justify-self:center}
+.component-guide-description{display:grid;gap:10px}
+.component-guide-description h3,.component-guide-section h3{margin:0;font:700 14px Manrope,sans-serif}
+.component-guide-description p,.component-guide-care{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.component-guide-description .component-summary{color:var(--ink);font-weight:700}
+.component-guide-section{margin-top:20px}
+.component-guide-section ol,.component-guide-section ul{display:grid;gap:9px;margin:10px 0 0;padding-left:24px;color:var(--ink);font-size:13px;line-height:1.55}
+.component-guide-section li{padding-left:3px}
+.component-guide-section ul{padding:0;list-style:none}
+.component-guide-section ul li{padding:9px 11px;border-radius:7px;background:var(--surface);overflow-wrap:anywhere}
+.component-guide-section code{font:12px/1.45 ui-monospace,Consolas,monospace}
+.component-guide-care{margin-top:18px;padding:12px;border-left:3px solid var(--school-gold);border-radius:4px;background:var(--surface)}
+.component-guide-care strong{color:var(--ink)}
 .component-empty{padding:20px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);text-align:center}
 html[data-theme="dark"] .component-type{background:#26394a;color:#d1e8ff}
 html[data-theme="dark"] .component-type.actuador{background:#20372e;color:#b6e3c9}
 html[data-theme="dark"] .component-type.control{background:#3a3021;color:#f0d49a}
 @media(max-width:680px){.component-home-card{grid-template-columns:auto minmax(0,1fr);gap:10px;padding:14px}.component-home-card .secondary-button{grid-column:1/-1;width:100%}}
 @media(max-width:600px){.component-tools{grid-template-columns:1fr;padding:12px;gap:10px}.component-view-toggle{justify-content:flex-start;flex-wrap:wrap}.component-grid{grid-template-columns:1fr;gap:10px}.component-card{padding:14px}.component-grid.is-list .component-card{grid-template-columns:minmax(88px,105px) minmax(0,1fr);column-gap:11px;row-gap:5px;padding:11px}.component-grid.is-list .component-product-image{max-width:105px}}
+@media(max-width:520px){.component-guide-dialog{padding:16px}.component-guide-head h2{font-size:19px}.component-guide-layout{grid-template-columns:1fr;gap:12px;padding:12px}.component-guide-image{max-width:170px}.component-guide-description{gap:8px}}
