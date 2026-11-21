@@ -284,3 +284,135 @@ export const componentExtras: Record<string, ComponentExtras> = {
   stepper: { uses:["Movimiento","Robótica móvil"], level:"Avanzado", project:"Plataforma giratoria", safety:"Usa el controlador y una fuente adecuada; el motor puede calentarse si queda energizado." },
   rele: { uses:["Automatización","Control"], level:"Avanzado", project:"Conmutador de baja tensión", safety:"Usa solo baja tensión en prácticas escolares. Nunca conectes tensión de red." },
 };
+
+// Ejemplos mínimos de prueba: cada sketch está pensado para Arduino Uno y los pines indicados.
+export const componentTestCode: Record<string, string> = {
+  "hc-sr04": `const byte TRIG = 9, ECHO = 10;
+void setup() {
+  pinMode(TRIG, OUTPUT); pinMode(ECHO, INPUT);
+  Serial.begin(9600);
+}
+void loop() {
+  digitalWrite(TRIG, LOW); delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH); delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+  unsigned long us = pulseIn(ECHO, HIGH, 30000);
+  Serial.println(us ? us * 0.0343 / 2 : -1);
+  delay(250);
+}`,
+  ldr: `void setup() { Serial.begin(9600); }
+void loop() {
+  Serial.println(analogRead(A0));
+  delay(250);
+}`,
+  fc51: `const byte SENSOR = 2;
+void setup() { pinMode(SENSOR, INPUT); Serial.begin(9600); }
+void loop() {
+  Serial.println(digitalRead(SENSOR)); // Ajusta según la lógica de tu módulo
+  delay(100);
+}`,
+  lm35: `void setup() { Serial.begin(9600); }
+void loop() {
+  int raw = analogRead(A0);
+  float volts = raw * (5.0 / 1023.0);
+  Serial.print(volts * 100.0); Serial.println(" C");
+  delay(1000);
+}`,
+  dht11: `#include <DHT.h>
+#define DHTPIN 2
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+void setup() { Serial.begin(9600); dht.begin(); }
+void loop() {
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  if (isnan(h) || isnan(t)) { Serial.println("Error de lectura"); }
+  else { Serial.print(t); Serial.print(" C, "); Serial.print(h); Serial.println(" %"); }
+  delay(2000);
+}`,
+  tcrt5000: `const byte LINEA = 2;
+void setup() { pinMode(LINEA, INPUT); Serial.begin(9600); }
+void loop() { Serial.println(digitalRead(LINEA)); delay(100); }`,
+  pir: `const byte PIR = 2;
+void setup() { pinMode(PIR, INPUT); Serial.begin(9600); }
+void loop() {
+  Serial.println(digitalRead(PIR) ? "Movimiento" : "Sin movimiento");
+  delay(200);
+}`,
+  mpu6050: `#include <Wire.h>
+const byte MPU = 0x68;
+void setup() {
+  Serial.begin(9600); Wire.begin();
+  Wire.beginTransmission(MPU); Wire.write(0x6B); Wire.write(0); Wire.endTransmission();
+}
+void loop() {
+  Wire.beginTransmission(MPU); Wire.write(0x3B); Wire.endTransmission(false);
+  Wire.requestFrom(MPU, (byte)2);
+  if (Wire.available() == 2) {
+    int16_t ax = (Wire.read() << 8) | Wire.read();
+    Serial.println(ax);
+  }
+  delay(200);
+}`,
+  potenciometro: `void setup() { Serial.begin(9600); }
+void loop() { Serial.println(analogRead(A0)); delay(100); }`,
+  joystick: `const byte X = A0, Y = A1, SW = 2;
+void setup() { pinMode(SW, INPUT_PULLUP); Serial.begin(9600); }
+void loop() {
+  Serial.print(analogRead(X)); Serial.print(", ");
+  Serial.print(analogRead(Y)); Serial.print(", boton=");
+  Serial.println(digitalRead(SW) == LOW); delay(100);
+}`,
+  pulsador: `const byte BOTON = 2;
+void setup() { pinMode(BOTON, INPUT_PULLUP); Serial.begin(9600); }
+void loop() { Serial.println(digitalRead(BOTON) == LOW ? "Pulsado" : "Libre"); delay(50); }`,
+  led: `const byte LED = 9;
+void setup() { pinMode(LED, OUTPUT); }
+void loop() {
+  digitalWrite(LED, HIGH); delay(500);
+  digitalWrite(LED, LOW); delay(500);
+}`,
+  rgb: `const byte R=9, G=10, B=11; // LED de cátodo común
+void setup() { pinMode(R,OUTPUT); pinMode(G,OUTPUT); pinMode(B,OUTPUT); }
+void loop() {
+  analogWrite(R,255); analogWrite(G,0); analogWrite(B,0); delay(700);
+  analogWrite(R,0); analogWrite(G,255); analogWrite(B,0); delay(700);
+  analogWrite(R,0); analogWrite(G,0); analogWrite(B,255); delay(700);
+}`,
+  buzzer: `const byte BUZZER = 8; // Zumbador pasivo
+void setup() {}
+void loop() { tone(BUZZER, 1000); delay(300); noTone(BUZZER); delay(700); }`,
+  "servo-sg90": `#include <Servo.h>
+Servo servo;
+void setup() { servo.attach(9); }
+void loop() {
+  servo.write(20); delay(700);
+  servo.write(90); delay(700);
+  servo.write(160); delay(700);
+}`,
+  "motor-dc": `const byte MOTOR = 5; // Gate/base del driver, nunca el motor directo
+void setup() { pinMode(MOTOR, OUTPUT); }
+void loop() {
+  analogWrite(MOTOR, 120); delay(2000);
+  analogWrite(MOTOR, 0); delay(2000);
+}`,
+  l293d: `const byte EN=5, IN1=7, IN2=8;
+void setup() { pinMode(EN,OUTPUT); pinMode(IN1,OUTPUT); pinMode(IN2,OUTPUT); }
+void loop() {
+  digitalWrite(IN1,HIGH); digitalWrite(IN2,LOW); analogWrite(EN,150); delay(1500);
+  analogWrite(EN,0); delay(500);
+  digitalWrite(IN1,LOW); digitalWrite(IN2,HIGH); analogWrite(EN,150); delay(1500);
+  analogWrite(EN,0); delay(500);
+}`,
+  stepper: `#include <Stepper.h>
+const int PASOS = 2048;
+Stepper motor(PASOS, 8, 10, 9, 11); // ULN2003 IN1, IN3, IN2, IN4
+void setup() { motor.setSpeed(8); }
+void loop() { motor.step(PASOS / 4); delay(500); motor.step(-PASOS / 4); delay(500); }`,
+  rele: `const byte RELE = 8;
+void setup() { pinMode(RELE, OUTPUT); }
+void loop() {
+  digitalWrite(RELE, HIGH); delay(1000); // Si tu módulo es activo en LOW, invierte HIGH/LOW
+  digitalWrite(RELE, LOW); delay(1000);
+}`,
+};
