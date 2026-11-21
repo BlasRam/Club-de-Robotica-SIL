@@ -628,7 +628,7 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:14px;align-items:start}
 .component-grid.is-list{grid-template-columns:minmax(0,1fr);gap:9px}
 .component-card{display:grid;align-content:start;gap:11px;min-width:0;padding:16px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink)}
-.component-grid.is-list .component-card{grid-template-columns:minmax(110px,150px) minmax(0,1fr);grid-template-areas:"image top" "image title" "image summary" "image operation" "image wiring" "image care";column-gap:17px;row-gap:6px;align-items:start}
+.component-grid.is-list .component-card{grid-template-columns:minmax(110px,150px) minmax(0,1fr);grid-template-areas:"image top" "image title" "image summary" "image operation" "image wiring" "image care" "image guide";column-gap:17px;row-gap:6px;align-items:start}
 .component-grid.is-list .component-product-image{grid-area:image;width:100%;max-width:150px;margin:0;align-self:center}
 .component-grid.is-list .component-card-top{grid-area:top}
 .component-grid.is-list .component-card>h2{grid-area:title}
