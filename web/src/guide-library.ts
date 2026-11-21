@@ -32,16 +32,15 @@ const circuit = '<svg viewBox="0 0 48 48" width="40" height="40" fill="none" str
 let context: { uid: string; items: Guide[]; photos: Map<string, string>; workspace?: GuideWorkspace } | null = null;
 let filters = { search: '', level: '', area: '', view: 'all', sort: 'level' };
 
-function card(item: Guide, index: number, saved: Saved, photos: Map<string, string>): string {
+function card(item: Guide, saved: Saved, photos: Map<string, string>): string {
   const favorite = saved.favorites.includes(item.id);
   const count = completed(saved, item).length;
   const total = stepsOf(item).length;
   return '<article class="gl-card" data-gl-card="' + escape(item.id) + '"><div class="gl-card-top">' +
     (photos.has(item.id) ? '<img src="' + escape(photos.get(item.id)) + '" alt="Prototipo de ' + escape(item.titulo) + '" loading="lazy"/>' : '<span class="gl-circuit">' + circuit + '</span>') +
-    '<span class="gl-number">' + String(index + 1).padStart(2, '0') + '</span><button class="gl-save" data-gl-save="' + escape(item.id) + '" aria-pressed="' + favorite + '" aria-label="' + (favorite ? 'Quitar de guardadas: ' : 'Guardar: ') + escape(item.titulo) + '">' + bookmark + '</button></div>' +
-    '<div class="gl-card-body"><span class="gl-origin">' + (item.guiaInicial ? 'PARA PRACTICAR' : 'PROYECTO DEL CLUB') + '</span><h3>' + escape(item.titulo) + '</h3><p>' + escape(item.resumen) + '</p><div class="gl-tags"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + escape(item.tiempoEstimado || 'Tiempo variable') + '</span></div>' +
-    '<p class="gl-progress-label">' + (count ? count + ' de ' + total + ' pasos marcados' : total + ' pasos · conexiones y código') + '</p>' +
-    '<button class="primary-button" data-gl-open="' + escape(item.id) + '">' + (count ? 'Continuar guía' : 'Explorar guía') + ' <span aria-hidden="true">→</span></button></div></article>';
+    '<button class="gl-save" data-gl-save="' + escape(item.id) + '" aria-pressed="' + favorite + '" aria-label="' + (favorite ? 'Quitar de guardadas: ' : 'Guardar: ') + escape(item.titulo) + '">' + bookmark + '</button></div>' +
+    '<div class="gl-card-body"><span class="gl-origin">' + (item.guiaInicial ? 'PRÁCTICA' : 'PROYECTO DEL CLUB') + '</span><h3>' + escape(item.titulo) + '</h3><p>' + escape(item.resumen) + '</p><div class="gl-card-meta"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + (count ? count + '/' + total + ' pasos' : escape(item.tiempoEstimado || 'Guía paso a paso')) + '</span></div>' +
+    '<button class="primary-button" data-gl-open="' + escape(item.id) + '">' + (count ? 'Continuar' : 'Ver guía') + ' <span aria-hidden="true">→</span></button></div></article>';
 }
 
 function filteredItems(items: Guide[], saved: Saved): Guide[] {
@@ -58,7 +57,7 @@ function filteredItems(items: Guide[], saved: Saved): Guide[] {
 }
 
 function results(items: Guide[], photos: Map<string, string>, saved: Saved): string {
-  return items.length ? items.map((item, i) => card(item, i, saved, photos)).join('')
+  return items.length ? items.map(item => card(item, saved, photos)).join('')
     : '<div class="gl-empty"><h3>No hay guías en esta selección</h3><p>Prueba otro componente, cambia los filtros o guarda una guía para encontrarla aquí.</p><button class="secondary-button" data-gl-reset>Mostrar todas</button></div>';
 }
 
@@ -69,10 +68,10 @@ export function renderGuideLibrary(items: Guide[], photos: Map<string, string>, 
   const visible = filteredItems(items, saved);
   const areas = [...new Set(items.flatMap(item => item.areas || []))].sort();
   const option = (label: string, value: string, selected: string) => '<option value="' + escape(value) + '"' + (value === selected ? ' selected' : '') + '>' + escape(label) + '</option>';
-  return '<section class="gl-library" aria-label="Biblioteca de proyectos"><div class="gl-hero"><div><span class="gl-eyebrow">APRENDE CONSTRUYENDO</span><h2>Tu próximo proyecto empieza aquí</h2><p>Elige una idea, prepara los materiales y avanza a tu ritmo.</p></div><div class="gl-total"><strong>' + items.filter(item => !item.archivada).length + '</strong><span>guías para explorar</span></div></div>' +
-    workspaceToolbar(workspace) + routeMarkup(items, saved) + '<div class="gl-toolbar"><label class="gl-search">Buscar por proyecto o componente<input type="search" data-gl-filter="search" placeholder="Prueba: sensor, LED, servo…" value="' + escape(filters.search) + '"/></label><div class="gl-filter-row"><label>Nivel<select data-gl-filter="level">' + option('Todos los niveles', '', filters.level) + ['Inicial', 'Intermedio', 'Avanzado'].map(l => option(l, l, filters.level)).join('') + '</select></label><label>Área<select data-gl-filter="area">' + option('Todas las áreas', '', filters.area) + areas.map(a => option(a, a, filters.area)).join('') + '</select></label><label>Ordenar<select data-gl-filter="sort">' + option('Más sencillas primero', 'level', filters.sort) + option('Título A–Z', 'title', filters.sort) + '</select></label></div>' +
-    '<div class="gl-views" role="group" aria-label="Filtrar biblioteca">' + [['all', 'Todas'], ['saved', 'Guardadas'], ['started', 'Mi avance'], ...(workspace?.admin ? [['archived', 'Archivadas']] : [])].map(([value, label]) => '<button data-gl-view="' + value + '" aria-pressed="' + (filters.view === value) + '">' + label + '</button>').join('') + '<button class="gl-clear" data-gl-reset>Limpiar filtros</button></div></div>' +
-    '<p class="gl-device-note">' + escape(workspace?.progress.status() || 'Avance guardado en este dispositivo.') + '</p><div class="gl-result-count" role="status" aria-live="polite">' + visible.length + ' de ' + items.length + ' guías</div><div class="gl-grid">' + results(visible, photos, saved) + '</div><p class="gl-status" role="status"></p></section>';
+  return '<section class="gl-library" aria-label="Biblioteca de proyectos"><div class="gl-hero"><div><span class="gl-eyebrow">GUÍAS DE PROYECTOS</span><h2>Aprende construyendo</h2></div><div class="gl-total"><strong>' + items.filter(item => !item.archivada).length + '</strong><span>proyectos</span></div></div>' +
+    workspaceToolbar(workspace) + routeMarkup(items, saved) + '<div class="gl-toolbar"><label class="gl-search">Buscar proyecto o componente<input type="search" data-gl-filter="search" placeholder="Ej.: sensor, LED, servo…" value="' + escape(filters.search) + '"/></label><details class="gl-more-filters"><summary>Filtros y orden</summary><div class="gl-filter-row"><label>Nivel<select data-gl-filter="level">' + option('Todos los niveles', '', filters.level) + ['Inicial', 'Intermedio', 'Avanzado'].map(l => option(l, l, filters.level)).join('') + '</select></label><label>Área<select data-gl-filter="area">' + option('Todas las áreas', '', filters.area) + areas.map(a => option(a, a, filters.area)).join('') + '</select></label><label>Ordenar<select data-gl-filter="sort">' + option('Más sencillas primero', 'level', filters.sort) + option('Título A–Z', 'title', filters.sort) + '</select></label></div></details>' +
+    '<div class="gl-views" role="group" aria-label="Filtrar biblioteca">' + [['all', 'Todas'], ['saved', 'Guardadas'], ['started', 'Mi avance'], ...(workspace?.admin ? [['archived', 'Archivadas']] : [])].map(([value, label]) => '<button data-gl-view="' + value + '" aria-pressed="' + (filters.view === value) + '">' + label + '</button>').join('') + '<button class="gl-clear" data-gl-reset>Limpiar</button></div></div>' +
+    (workspace ? '<p class="gl-device-note">' + escape(workspace.progress.status()) + '</p>' : '') + '<div class="gl-result-count" role="status" aria-live="polite">' + visible.length + ' guías</div><div class="gl-grid">' + results(visible, photos, saved) + '</div><p class="gl-status" role="status"></p></section>';
 }
 
 function updateLibrary(): void {
@@ -85,7 +84,7 @@ function updateLibrary(): void {
   if (route) route.innerHTML = routeContents(context.items, saved);
   const visible = filteredItems(context.items, saved);
   root.querySelector('.gl-grid')!.innerHTML = results(visible, context.photos, saved);
-  root.querySelector('.gl-result-count')!.textContent = visible.length + ' de ' + context.items.length + ' guías';
+  root.querySelector('.gl-result-count')!.textContent = visible.length + ' guías';
   root.querySelectorAll<HTMLElement>('[data-gl-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.glView === filters.view)));
 }
 
