@@ -589,12 +589,15 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .topbar-right{min-width:0;max-width:72%;flex:0 1 72%;flex-wrap:wrap;justify-content:flex-end;gap:6px}
 .topbar-right>*{flex:0 0 auto}
 @media(max-width:680px){
-  .topbar{display:grid;grid-template-columns:34px minmax(0,1fr);grid-template-areas:"menu crumb" "tools tools";gap:8px 10px;padding:9px 12px}
-  .topbar>.student-menu-button{grid-area:menu}
-  .topbar>.crumb{grid-area:crumb;width:100%;max-width:100%;min-width:0}
-  .topbar>.topbar-right{grid-area:tools;width:100%;max-width:none;min-width:0;flex:none;justify-content:flex-start;gap:7px}
+  .topbar{display:flex;height:56px;min-height:56px;flex-wrap:nowrap;gap:7px;padding:0 10px;overflow:hidden}
+  .topbar>.student-menu-button{flex:none}
+  .topbar>.crumb{flex:1;min-width:0;width:auto;max-width:none;overflow:hidden}
+  .topbar>.topbar-right{display:flex;flex:none;width:auto;max-width:none;min-width:0;margin-left:auto;justify-content:flex-end;gap:4px;flex-wrap:nowrap}
+  .topbar .crumb>span:first-child,.topbar .crumb .crumb-sep{display:none}
+  .topbar .crumb strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .topbar-right .role-tag{display:none}
-  .topbar-right .connection{margin-right:auto}
+  .topbar-right .connection{display:none}
+  .topbar-right>.student-preview-toggle,.topbar-right>.admin-layout-toggle,.topbar-right>.mobile-install{display:none!important}
   .topbar-right .student-preview-toggle span,.topbar-right .admin-layout-toggle span{display:none}
   .topbar-right .student-preview-toggle,.topbar-right .admin-layout-toggle{width:34px;height:34px;padding:0;justify-content:center}
   .topbar-right .student-bell-button,.topbar-right .profile-shortcut,.topbar-right .global-search-trigger{width:34px;height:34px;padding:0}

@@ -1259,9 +1259,7 @@ function renderComponentCatalog(): string {
       <button type="button" class="secondary-button component-guide-open" data-component-open="${esc(item.id)}">Ver guía de uso ${icon("ir", 15)}</button>
     </article>`;
   }).join("");
-  return `<div class="page-heading component-page-heading"><div><h1 tabindex="-1">Componentes</h1><p>Sensores, actuadores y controles.</p></div></div>
-    <p class="component-intro"><span>${icon("alerta", 16)}</span>Conexiones de referencia para Arduino Uno. Comprueba voltaje y pinout antes de conectar.</p>
-    <section class="component-catalog" aria-labelledby="component-catalog-title">
+  return `<section class="component-catalog" aria-label="Catálogo de componentes">
       <div class="component-tools"><label>Buscar componente<input type="search" data-component-search placeholder="Nombre, uso, proyecto, pin…" autocomplete="off" /></label>
         <label>Tipo<select data-component-type-filter><option value="">Todos los tipos</option><option value="Sensor">Sensores</option><option value="Actuador">Actuadores</option><option value="Control">Controles</option></select></label>
         <label>Uso<select data-component-use-filter><option value="">Todos los usos</option>${[...new Set(Object.values(componentExtras).flatMap((extra) => extra.uses))].sort().map((use) => `<option value="${esc(use)}">${esc(use)}</option>`).join("")}</select></label>
