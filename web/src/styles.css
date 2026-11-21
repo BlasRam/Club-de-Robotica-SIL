@@ -634,14 +634,13 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:14px;align-items:start}
 .component-grid.is-list{grid-template-columns:minmax(0,1fr);gap:9px}
 .component-card{display:grid;align-content:start;gap:11px;min-width:0;padding:16px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink)}
-.component-grid.is-list .component-card{grid-template-columns:minmax(110px,150px) minmax(0,1fr);grid-template-areas:"image top" "image title" "image summary" "image operation" "image wiring" "image meta" "image project" "image tip" "image actions" "image guide";column-gap:17px;row-gap:6px;align-items:start}
+.component-grid.is-list .component-card{grid-template-columns:minmax(110px,150px) minmax(0,1fr);grid-template-areas:"image top" "image title" "image summary" "image operation" "image wiring" "image project" "image tip" "image actions" "image guide";column-gap:17px;row-gap:6px;align-items:start}
 .component-grid.is-list .component-product-image{grid-area:image;width:100%;max-width:150px;margin:0;align-self:center}
 .component-grid.is-list .component-card-top{grid-area:top}
 .component-grid.is-list .component-card>h2{grid-area:title}
 .component-grid.is-list .component-summary{grid-area:summary}
 .component-grid.is-list .component-explanation{grid-area:operation}
 .component-grid.is-list .component-wiring{grid-area:wiring}
-.component-grid.is-list .component-meta{grid-area:meta}
 .component-grid.is-list .component-project{grid-area:project}
 .component-grid.is-list .component-tip{grid-area:tip}
 .component-grid.is-list .component-card-actions{grid-area:actions}
@@ -663,8 +662,6 @@ html[data-theme="dark"] .showcase-guide-badge{background:#26394e;color:#c2ddfa}h
 .component-card code{font:12px/1.45 ui-monospace,Consolas,monospace;color:var(--ink)}
 .component-card .component-care{font-size:12px}
 .component-card .component-care strong{color:var(--ink)}
-.component-meta{display:flex;flex-wrap:wrap;gap:5px;color:var(--muted)!important;font-size:11px!important}
-.component-meta span{padding:3px 7px;border-radius:999px;background:var(--surface)}
 .component-project,.component-safety{font-size:12px!important;line-height:1.45!important}
 .component-safety{padding:8px 10px;border-left:3px solid #c34a34;border-radius:4px;background:#fff4ef;color:#823123!important}
 .component-safety strong{color:#823123}
@@ -672,8 +669,6 @@ html[data-theme="dark"] .component-safety{border-color:#e77d68;background:#39282
 html[data-theme="dark"] .component-safety strong{color:#ffd4ca}
 .component-card-actions{display:flex;flex-wrap:wrap;gap:6px}
 .component-card-actions .secondary-button{min-height:36px}
-.component-favorites-filter{display:flex!important;grid-column:1/-1;align-items:center;gap:8px!important}
-.component-favorites-filter input{width:18px!important;min-height:18px!important;accent-color:var(--red)}
 .component-compare-bar{display:flex;align-items:center;justify-content:flex-end;gap:9px;margin:10px 0;color:var(--muted);font-size:12px}
 .component-compare-bar[hidden]{display:none}
 .component-compare-bar .text-button{min-height:36px}
