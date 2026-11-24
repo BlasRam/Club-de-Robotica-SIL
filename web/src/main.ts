@@ -1216,7 +1216,7 @@ async function pageContent(page: Page): Promise<string> {
     if (page === "inicio") {
       const sandboxHome = renderStudentSandbox(page);
       const noticeHeading = '<section class="unframed-section"><div class="section-heading"><h2>Avisos recientes</h2>';
-      return sandboxHome.replace(noticeHeading, `${renderSandboxShortcuts()}${renderSandboxCalendar()}${noticeHeading}`);
+      return sandboxHome.replace(noticeHeading, `${renderSandboxCalendar()}${noticeHeading}`);
     }
     return renderStudentSandbox(page);
   }
