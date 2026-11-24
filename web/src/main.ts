@@ -932,14 +932,23 @@ function appShell(content: string): string {
       ${state.updateAvailable ? `<aside class="app-update-banner" role="status"><div><strong>Nueva versión lista</strong><small>La aplicación se recargará para aplicar la actualización.</small></div><button class="primary-button compact" data-action="apply-app-update">Actualizar ahora</button><button class="icon-button" data-action="dismiss-app-update" aria-label="Cerrar aviso">×</button></aside>` : ""}
       ${onboardingModal}
       <nav class="mobile-nav" aria-label="Navegación móvil">
-        ${items.filter((item) => {
-          const mobilePages = !isAuthorized()
-            ? ["inicio", "muestra", "componentes", "sugerencias", "configuracion"]
-            : state.profile?.tipoUsuario === "docente" && !isStudentPreview()
-              ? ["inicio", "proyectos", "tareas", "muestra", "componentes"]
-              : ["inicio", "tareas", "componentes", "proyectos", "avisos"];
-          return mobilePages.includes(item.id);
-        }).map((item) => { const label = item.id === "componentes" ? "Componentes" : item.id === "sugerencias" ? "Ayuda" : item.id === "calendario" ? "Agenda" : item.id === "muestra" ? "Guías" : item.label; return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}">${icon(item.id, 19)}<span>${label}</span></button>`; }).join("")}
+        ${(() => {
+          const studentNavigation = isStudentPreview() || (!isAdminInterface() && state.profile?.tipoUsuario !== "docente");
+          const mobilePages = studentNavigation
+            ? isAuthorized() ? ["inicio", "tareas", "componentes", "proyectos"] : ["inicio", "muestra", "componentes", "sugerencias"]
+            : !isAuthorized()
+              ? ["inicio", "muestra", "componentes", "sugerencias", "configuracion"]
+              : state.profile?.tipoUsuario === "docente" && !isStudentPreview()
+                ? ["inicio", "proyectos", "tareas", "muestra", "componentes"]
+                : ["inicio", "tareas", "componentes", "proyectos", "avisos"];
+          const visibleItems = items.filter((item) => mobilePages.includes(item.id));
+          const selectedInMore = studentNavigation && !mobilePages.includes(state.page);
+          const buttons = visibleItems.map((item) => {
+            const label = item.id === "componentes" ? "Componentes" : item.id === "sugerencias" ? "Ayuda" : item.id === "calendario" ? "Agenda" : item.id === "muestra" ? "Guías" : item.label;
+            return `<button class="mobile-nav-item ${state.page === item.id ? "active" : ""}" data-page="${item.id}" aria-label="${item.label}" title="${item.label}" ${state.page === item.id ? 'aria-current="page"' : ""}>${icon(item.id, 20)}<span>${label}</span></button>`;
+          }).join("");
+          return buttons + (studentNavigation ? `<button class="mobile-nav-item mobile-nav-more ${state.menuOpen || selectedInMore ? "active" : ""}" data-action="toggle-menu" aria-label="Más secciones" title="Más secciones" aria-expanded="${state.menuOpen}" ${selectedInMore ? 'aria-current="page"' : ""}>${icon("menu", 20)}<span>Más</span></button>` : "");
+        })()}
       </nav>
       <div id="toast" class="toast" role="status"></div>
     </div>`;
@@ -1170,6 +1179,9 @@ async function loadPage(): Promise<void> {
       }
       lastRenderedPage = requestedPage;
       if (requestedPage === "inicio" && isAdminInterface() && state.user) void loadAdminHomeDashboard(state.user.uid);
+      if (requestedPage === "inicio" && isAuthorized() && !isAdminInterface() && state.profile?.tipoUsuario !== "docente" && !isStudentPreview() && state.user) {
+        void loadStudentHomeProgressively(state.user.uid);
+      }
     }
   if (page && state.page === "cursos" && state.courseFocusId) {
       const course = [...page.querySelectorAll<HTMLElement>("[data-course-id]")].find((item) => item.dataset.courseId === state.courseFocusId);
@@ -1535,7 +1547,7 @@ function renderSandboxShortcuts(): string {
 }
 
 function renderStudentShortcuts(pendingTasks?: number, pendingLoans?: number): string {
-  return `<section class="student-overview-links"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="student-shortcut-rail" role="group" aria-label="Accesos rápidos del estudiante"><button class="student-shortcut tasks" data-page="tareas" data-task-filter="pending" aria-label="Mis tareas"><span class="quick-icon coral">${icon("tareas", 22)}</span><strong>Mis tareas</strong>${pendingTasks !== undefined ? `<small>${pendingTasks ? `${pendingTasks} pendientes` : "Al día"}</small>` : ""}</button><button class="student-shortcut loans" data-page="prestamos" aria-label="Mis préstamos"><span class="quick-icon green">${icon("prestamos", 22)}</span><strong>Mis préstamos</strong>${pendingLoans !== undefined ? `<small>${pendingLoans ? `${pendingLoans} solicitudes` : "Sin solicitudes"}</small>` : ""}</button><button class="student-shortcut projects" data-page="proyectos" aria-label="Proyectos"><span class="quick-icon blue">${icon("proyectos", 22)}</span><strong>Proyectos</strong></button><button class="student-shortcut courses" data-page="cursos" aria-label="Cursos"><span class="quick-icon amber">${icon("cursos", 22)}</span><strong>Cursos</strong></button></div></section>`;
+  return `<section class="student-overview-links"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="student-shortcut-rail" role="group" aria-label="Accesos rápidos del estudiante"><button class="student-shortcut tasks" data-student-shortcut="tasks" data-page="tareas" data-task-filter="pending" aria-label="Mis tareas"><span class="quick-icon coral">${icon("tareas", 22)}</span><strong>Mis tareas</strong><small>${pendingTasks === undefined ? "Ver pendientes" : pendingTasks ? `${pendingTasks} pendientes` : "Al día"}</small></button><button class="student-shortcut loans" data-student-shortcut="loans" data-page="prestamos" aria-label="Mis préstamos"><span class="quick-icon green">${icon("prestamos", 22)}</span><strong>Mis préstamos</strong><small>${pendingLoans === undefined ? "Consultar solicitudes" : pendingLoans ? `${pendingLoans} solicitudes` : "Sin solicitudes"}</small></button><button class="student-shortcut courses" data-page="cursos" aria-label="Cursos"><span class="quick-icon amber">${icon("cursos", 22)}</span><strong>Cursos</strong><small>Aprende algo nuevo</small></button><button class="student-shortcut guides" data-page="muestra" aria-label="Guías de proyectos"><span class="quick-icon blue">${icon("muestra", 22)}</span><strong>Guías</strong><small>Ideas paso a paso</small></button></div></section>`;
 }
 
 function renderStudentHomeModules(pendingTasks: number, pendingLoans: number): string {
@@ -1604,6 +1616,115 @@ async function loadAdminHomeDashboard(uid: string): Promise<void> {
   }
 }
 
+function renderStudentHomeInitial(): string {
+  const greeting = fullName().split(" ")[0];
+  const loading = `<div class="loading-block" role="status"><span class="spinner"></span><span>Cargando…</span></div>`;
+  return `${pageHeading(`Hola, ${esc(greeting)}`, "Panel del estudiante · tus tareas, equipo y actividad del club.")}
+    <section id="student-home-next" class="unframed-section home-priority-section" aria-busy="true"><div class="section-heading"><div><h2>Qué sigue</h2><p>Revisando tus tareas pendientes.</p></div></div>${loading}</section>
+    <div id="student-home-shortcuts">${renderStudentHomeModules()}</div>
+    <div id="student-home-team" aria-busy="true"><section class="unframed-section student-team-section"><div class="section-heading"><div><h2>Mi equipo</h2><p>Tus proyectos, avances y próximos pasos.</p></div></div>${loading}</section></div>
+    <div id="student-home-calendar" aria-busy="true">${loading}</div>
+    <div id="student-home-showcase"></div>
+    <section id="student-home-notices" class="unframed-section" aria-busy="true"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${loading}</section>`;
+}
+
+function studentHomeIsCurrent(uid: string): boolean {
+  return state.page === "inicio" && state.user?.uid === uid && state.profile?.tipoUsuario !== "docente" && !isAdminInterface() && !isStudentPreview();
+}
+
+function updateStudentHomeSection(id: string, uid: string, content: string): void {
+  if (!studentHomeIsCurrent(uid)) return;
+  const section = document.getElementById(id);
+  if (!section) return;
+  section.innerHTML = content;
+  section.setAttribute("aria-busy", "false");
+}
+
+function renderStudentNextTasks(snapshots: Array<QueryDocumentSnapshot<DocumentData> | null>, projectNames: Map<string, string>): string {
+  if (snapshots.every((snapshot) => snapshot === null)) {
+    return `<div class="section-heading"><h2>Qué sigue</h2></div><div class="notice-box warning">No se pudieron cargar tus tareas. Comprueba tu conexión e inténtalo de nuevo.</div><button class="secondary-button compact" data-action="refresh">Reintentar</button>`;
+  }
+  const tasks = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+  snapshots.flatMap((snapshot) => snapshot?.docs ?? []).forEach((task) => {
+    if (task.get("estado") !== "Completada") tasks.set(task.ref.path, task);
+  });
+  const ordered = [...tasks.values()].sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const overdue = ordered.filter((task) => task.get("fechaLimite")?.toDate?.() instanceof Date && task.get("fechaLimite").toDate() < today);
+  const next = ordered.slice(0, 3);
+  if (!next.length) return `<div class="section-heading"><h2>Qué sigue</h2></div><div class="home-empty-next"><span class="state-pill success">Al día</span><p>No tienes tareas pendientes. Revisa tus proyectos o los avisos del club.</p><button class="secondary-button compact" data-page="proyectos">Ver mis proyectos</button></div>`;
+  return `${overdue.length ? `<div class="notice-box warning home-overdue-alert"><strong>Hay ${overdue.length} tarea${overdue.length === 1 ? " atrasada" : "s atrasadas"}.</strong><span>Revisa las fechas y acuerda con tu equipo un nuevo plan.</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver atrasadas</button></div>` : ""}
+    <div class="section-heading"><div><h2>Qué sigue</h2><p>${ordered.length} tarea${ordered.length === 1 ? " pendiente" : "s pendientes"}.</p></div><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${next.map((task) => homeTaskCard(task, projectNames)).join("")}</div>`;
+}
+
+async function loadStudentHomeProgressively(uid: string): Promise<void> {
+  let loadedTaskSnapshots: Array<QueryDocumentSnapshot<DocumentData> | null> | null = null;
+  const projectNames = new Map<string, string>();
+  const taskQueries = Promise.all([
+    getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", uid), limit(20))).catch(() => null),
+    getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", uid), limit(20))).catch(() => null),
+  ]);
+  const loanQuery = getDocs(query(collection(db, "reservas"), where("solicitanteUid", "==", uid))).catch(() => null);
+  const projectQuery = Promise.all([
+    getDocs(query(collection(db, "proyectos"), where("miembrosUids", "array-contains", uid), limit(20))).catch(() => null),
+    getDocs(query(collection(db, "proyectos"), where("responsableUid", "==", uid), limit(20))).catch(() => null),
+    getDocs(query(collection(db, "proyectos"), where("creadoPorUid", "==", uid), limit(20))).catch(() => null),
+  ]).then((snapshots) => {
+    if (snapshots.every((snapshot) => snapshot === null)) return null;
+    const projects = new Map<string, QueryDocumentSnapshot<DocumentData>>();
+    snapshots.flatMap((snapshot) => snapshot?.docs ?? []).forEach((project) => projects.set(project.id, project));
+    return { docs: [...projects.values()] };
+  });
+  const noticeQuery = getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(10))).catch(() => null);
+  const calendarQuery = renderHomeCalendar().catch(() => `<section class="unframed-section"><div class="section-heading"><h2>Calendario</h2><button class="text-button" data-page="calendario">Ver agenda ${icon("ir", 14)}</button></div><div class="empty-inline">No se pudo cargar la agenda. Puedes consultarla desde el apartado Calendario.</div></section>`);
+  const guideQuery = getDocs(query(collection(db, "guiasPublicadas"), limit(12))).catch(() => null);
+
+  void taskQueries.then((snapshots) => {
+    if (!studentHomeIsCurrent(uid)) return;
+    loadedTaskSnapshots = snapshots;
+    updateStudentHomeSection("student-home-next", uid, renderStudentNextTasks(snapshots, projectNames));
+    const taskCount = new Set(snapshots.flatMap((snapshot) => snapshot?.docs ?? []).filter((task) => task.get("estado") !== "Completada").map((task) => task.ref.path)).size;
+    const taskStatus = document.querySelector<HTMLElement>("[data-student-shortcut='tasks'] small");
+    if (taskStatus && snapshots.some((snapshot) => snapshot !== null)) taskStatus.textContent = taskCount ? `${taskCount} pendientes` : "Al día";
+  });
+
+  void loanQuery.then((loans) => {
+    if (!studentHomeIsCurrent(uid) || !loans) return;
+    const pending = loans.docs.filter((loan) => loan.get("estado") === "Pendiente").length;
+    const loanStatus = document.querySelector<HTMLElement>("[data-student-shortcut='loans'] small");
+    if (loanStatus) loanStatus.textContent = pending ? `${pending} solicitudes` : "Sin solicitudes";
+  });
+
+  void projectQuery.then(async (records) => {
+    if (!studentHomeIsCurrent(uid)) return;
+    records?.docs.forEach((project) => projectNames.set(project.id, String(project.get("nombre") || project.get("titulo") || "Proyecto del club")));
+    const team = await renderStudentProjectDashboard(records);
+    updateStudentHomeSection("student-home-team", uid, team);
+    if (loadedTaskSnapshots) updateStudentHomeSection("student-home-next", uid, renderStudentNextTasks(loadedTaskSnapshots, projectNames));
+  });
+
+  void calendarQuery.then((content) => updateStudentHomeSection("student-home-calendar", uid, content));
+  void noticeQuery.then((notices) => {
+    if (!studentHomeIsCurrent(uid)) return;
+    if (!notices) {
+      updateStudentHomeSection("student-home-notices", uid, `<div class="section-heading"><h2>Avisos</h2></div><div class="empty-inline">No se pudieron cargar los avisos. Puedes verlos desde el apartado Avisos.</div>`);
+      return;
+    }
+    const important = notices.docs.map((item) => ({ id: item.id, data: item.data() }))
+      .sort((a, b) => Number(b.data.prioridad === "Importante") - Number(a.data.prioridad === "Importante") || (b.data.fechaCreacion?.toMillis?.() ?? 0) - (a.data.fechaCreacion?.toMillis?.() ?? 0)).slice(0, 3);
+    const content = `<div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${important.length ? `<div class="notice-list">${important.map((item) => noticeCard(item.id, item.data, false)).join("")}</div>` : emptyInline("No hay avisos publicados.")}`;
+    updateStudentHomeSection("student-home-notices", uid, content);
+  });
+  void guideQuery.then((guides) => {
+    if (!studentHomeIsCurrent(uid)) return;
+    const items = guides?.docs.map((item) => ({ ...item.data(), id: item.id })) ?? [];
+    const ids = new Set(items.map((item) => item.id));
+    const featured = [...items, ...featuredGuides.filter((item) => !ids.has(item.id))].filter((item) => !item.archivada).slice(0, 3);
+    void loadHomeGuidePhotos(featured, uid);
+    updateStudentHomeSection("student-home-showcase", uid, renderHomeShowcase(featured, new Map()));
+  });
+}
+
 async function renderHome(): Promise<string> {
   const greeting = fullName().split(" ")[0];
   if (!isAuthorized()) {
@@ -1618,6 +1739,7 @@ async function renderHome(): Promise<string> {
       <div id="admin-home-data" role="status" aria-live="polite" aria-busy="true"><div class="loading-block"><span class="spinner"></span><span>Cargando indicadores y accesos recientes…</span></div></div>`;
   }
   const teacher = state.profile?.tipoUsuario === "docente";
+  if (!teacher) return renderStudentHomeInitial();
   const [loans, notices, calendar, assignedByOwner, assignedByList, featuredShowcase, studentProjectRecords] = await Promise.all([
     getDocs(query(collection(db, "reservas"), where("solicitanteUid", "==", state.user!.uid))),
     getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(10))),
@@ -1697,7 +1819,7 @@ async function renderStudentProjectDashboard(records: { docs: QueryDocumentSnaps
   const projects = records.docs.filter((project) => {
     const data = project.data();
     return projectLead(data) === uid || (Array.isArray(data.miembrosUids) && data.miembrosUids.includes(uid));
-  }).sort((a, b) => Number(b.get("estado") === "Activo") - Number(a.get("estado") === "Activo")).slice(0, 5);
+  }).sort((a, b) => Number(b.get("estado") === "Activo") - Number(a.get("estado") === "Activo")).slice(0, 3);
   const overview = await Promise.all(projects.map(async (project) => {
     const [tasks, latestStage] = await Promise.all([
       getDocs(query(collection(db, "proyectos", project.id, "tareas"), limit(50))).catch(() => null),
@@ -2688,7 +2810,12 @@ root.addEventListener("click", (event) => {
     } else {
       state.menuOpen = action === "toggle-menu" ? !state.menuOpen : false;
     }
-    render();
+    document.querySelector(".app-shell")?.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
+    document.querySelector(".app-shell")?.classList.toggle("menu-open", state.menuOpen);
+    document.querySelector(".sidebar-menu-toggle")?.setAttribute("aria-expanded", String(!state.sidebarCollapsed));
+    document.querySelectorAll<HTMLElement>(".student-menu-button, .mobile-nav-more").forEach((toggle) => toggle.setAttribute("aria-expanded", String(state.menuOpen)));
+    document.querySelector(".mobile-nav-more")?.classList.toggle("active", state.menuOpen || !!document.querySelector('.mobile-nav-more[aria-current="page"]'));
+    return;
   } else if (action === "toggle-password") {
     const input = button.parentElement?.querySelector<HTMLInputElement>("input");
     if (input) {
