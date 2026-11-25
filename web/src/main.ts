@@ -368,6 +368,7 @@ history.replaceState({ cdrBase: true, cdrPage: state.page }, "", location.href);
 history.pushState({ cdrBackGuard: true }, "", location.href);
 
 function navigatePage(page: Page, taskFilter?: TaskFilter, searchTerm?: string): void {
+  if (page === "acceso") page = "componentes";
   if (!isAuthorized() && !canUseWhileAccessPending(page)) {
     state.page = "inicio";
     state.menuOpen = false;
@@ -827,9 +828,10 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") void checkForUpdate();
       });
+      window.addEventListener("focus", () => void checkForUpdate());
       window.setInterval(() => {
         if (document.visibilityState === "visible") void checkForUpdate();
-      }, 30 * 60 * 1000);
+      }, 60 * 1000);
     }).catch(() => undefined);
   });
 }
@@ -1206,11 +1208,11 @@ async function pageContent(page: Page): Promise<string> {
     state.page = "inicio";
     return pendingNotice();
   }
+  if (page === "acceso") return renderComponentCatalog();
   if (isStudentPreview()) {
     if (page === "perfil") return renderSandboxProfile();
     if (page === "configuracion") return renderSettings();
     if (page === "calendario") return renderCalendar();
-    if (page === "acceso") return renderComponentCatalog();
     if (page === "componentes") return renderComponentCatalog();
     if (page === "muestra") return `${pageHeading("Guías de proyectos", "Prototipos del club que ya fueron revisados.")}<div class="showcase-grid"><article class="showcase-card"><p class="project-area">Electrónica · Programación</p><h3>Robot móvil</h3><p>Prototipo autónomo para explorar el aula y evitar obstáculos.</p><small>Guía compartida con el club</small></article></div>`;
     if (page === "sugerencias") return `${pageHeading("Ayuda y sugerencias", "Envía una idea o reporta un problema de la PWA.")}<div class="notice-box info">La vista de prueba no envía información real.</div>`;
@@ -1221,7 +1223,6 @@ async function pageContent(page: Page): Promise<string> {
     }
     return renderStudentSandbox(page);
   }
-  if (page === "acceso" && !isAdminInterface()) return renderComponentCatalog();
   switch (page) {
     case "inicio": return renderHome();
     case "proyectos": return renderProjects();
@@ -1599,7 +1600,7 @@ async function loadAdminHomeDashboard(uid: string): Promise<void> {
       ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
       ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
     </section>
-    <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2><button class="text-button" data-page="acceso">Ver accesos ${icon("ir", 14)}</button></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
+    <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
     container.setAttribute("aria-busy", "false");
 
     // Mantiene la sincronización del directorio fuera del camino que dibuja el inicio.
