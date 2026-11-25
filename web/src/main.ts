@@ -32,6 +32,7 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { getFirestore } from "firebase/firestore";
+import { deleteObject, getBlob, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import homeIcon from "lucide-static/icons/house.svg?raw";
 import projectIcon from "lucide-static/icons/folder-kanban.svg?raw";
 import showcaseIcon from "lucide-static/icons/trophy.svg?raw";
@@ -69,6 +70,8 @@ import { firebaseConfig } from "./firebase-config";
 import { featuredGuides } from "./featured-guides";
 import { componentCatalog, componentExtras, componentTestCode, componentUsage } from "./component-catalog";
 import type { GuideWorkspace } from "./guide-workspace";
+import kitInventoryCatalog from "./elegoo-uno-r3-kit.json";
+import sensorKitInventoryCatalog from "./elegoo-sensores-37-kit.json";
 let guideWorkspace: GuideWorkspace | null = null;
 import { CLUB_NAME, CLUB_SHORT_NAME, INITIAL_ADMIN_EMAIL, INSTITUTIONAL_EMAIL_DOMAIN, isInitialAdminEmail, isInstitutionalEmail } from "./club-config";
 import "./styles.css";
@@ -91,6 +94,14 @@ async function deleteClubFile(path: string): Promise<void> {
   const { deleteObject, getStorage, ref } = await import("firebase/storage");
   await deleteObject(ref(getStorage(firebaseApp), path));
 }
+const storage = getStorage(firebaseApp);
+const kitInventoryImageOptions = [...kitInventoryCatalog, ...sensorKitInventoryCatalog].map((item) =>
+  `<option value="assets/inventory/${esc(item.imageSlug)}.webp">${esc(item.name)}</option>`,
+).join("");
+const inventoryImageUrls = new Map<string, string>();
+const pendingInventoryImages = new Set<string>();
+let inventoryItemsById = new Map<string, Record<string, any>>();
+let inventoryImageObserver: IntersectionObserver | null = null;
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const NOTIFICATION_WORKER_URL = "https://TU-WORKER.workers.dev";
 type EntryDeliveryPhase = "waiting" | "released" | "failed";
@@ -1193,6 +1204,7 @@ async function loadPage(): Promise<void> {
         void loadStudentHomeProgressively(state.user.uid);
       }
     }
+    syncInventoryImageObserver(page && state.page === "inventario" ? page : null);
   if (page && state.page === "cursos" && state.courseFocusId) {
       const course = [...page.querySelectorAll<HTMLElement>("[data-course-id]")].find((item) => item.dataset.courseId === state.courseFocusId);
       state.courseFocusId = "";
@@ -2701,20 +2713,138 @@ async function loadInventoryOptions(): Promise<void> {
   const select = document.querySelector<HTMLSelectElement>('select[name="recursoId"]');
   if (!select) return;
   try {
-    const snapshot = await getDocs(query(collection(db, "inventario"), where("estado", "==", "Disponible"), limit(60)));
-    const available = snapshot.docs.filter((item) => (item.get("cantidad") || 0) > 0);
-    select.innerHTML = `<option value="">Seleccionar artículo</option>${available.map((item) => `<option value="${esc(item.id)}" data-name="${esc(item.get("nombre"))}" data-stock="${Number(item.get("cantidad") || 0)}">${esc(item.get("nombre"))} · ${Number(item.get("cantidad") || 0)} disponibles</option>`).join("")}`;
+    const snapshot = await getDocs(query(collection(db, "inventario"), where("estado", "==", "Disponible"), limit(300)));
+    const available = snapshot.docs.map((item) => ({
+      id: item.id,
+      name: String(item.get("nombre") || "Artículo"),
+      quantity: Number(item.get("cantidad") || 0),
+      damaged: Number(item.get("cantidadDanada") || 0),
+      unit: inventoryUnit(item.data()),
+    })).filter((item) => item.quantity - item.damaged > 0);
+    select.innerHTML = `<option value="">Seleccionar artículo</option>${available.map((item) => `<option value="${esc(item.id)}" data-name="${esc(item.name)}" data-stock="${item.quantity - item.damaged}">${esc(item.name)} · ${item.quantity - item.damaged} ${inventoryUnitLabel(item.unit, item.quantity - item.damaged)} disponibles</option>`).join("")}`;
     if (!available.length) select.innerHTML = `<option value="">No hay artículos disponibles</option>`;
   } catch (error) { select.innerHTML = `<option value="">${esc(errorMessage(error, "No se pudo cargar el inventario"))}</option>`; }
 }
 
+function inventoryUnit(item: Record<string, any>): string {
+  if (typeof item.unidadInventario === "string") return item.unidadInventario;
+  return /paquete/i.test(String(item.nombre || "")) ? "paquete" : "unidad";
+}
+
+function inventoryUnitLabel(unit: string, quantity: number): string {
+  const labels: Record<string, [string, string]> = {
+    unidad: ["unidad", "unidades"], paquete: ["paquete", "paquetes"], kit: ["kit", "kits"],
+    par: ["par", "pares"], lote: ["lote", "lotes"],
+  };
+  return (labels[unit] || labels.unidad)[quantity === 1 ? 0 : 1];
+}
+
+function inventoryQuantity(item: Record<string, any>): number {
+  return Math.max(0, Number(item.cantidad || 0) - Number(item.cantidadDanada || 0));
+}
+
 async function renderInventory(): Promise<string> {
-  const snapshot = await getDocs(query(collection(db, "inventario"), orderBy("nombre"), limit(100)));
+  const snapshot = await getDocs(query(collection(db, "inventario"), orderBy("nombre"), limit(300)));
   const items: Array<Record<string, any>> = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-  const lowStock = items.filter((item) => Number(item.cantidad || 0) <= 2 && item.estado !== "Retirado");
-  return `${pageHeading("Inventario", "Artículos, disponibilidad y cantidades.", `<button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button>`)}
-    ${lowStock.length ? `<div class="notice-box warning inventory-alert"><strong>${lowStock.length === 1 ? "Existencia baja" : `${lowStock.length} existencias bajas`}</strong><span>${lowStock.map((item) => `${esc(item.nombre)} (${Number(item.cantidad || 0)})`).join(" · ")}. Revisa estos artículos al planificar proyectos.</span></div>` : `<div class="notice-box success inventory-alert">No hay artículos con dos unidades o menos.</div>`}
-    ${items.length ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Disponibles</th><th>Ubicación</th><th>Estado</th></tr></thead><tbody>${items.map((item) => `<tr><td><strong>${esc(item.nombre)}</strong><small>${esc(item.descripcion || "")}</small></td><td>${esc(item.categoria || "Sin categoría")}</td><td>${Number(item.cantidad || 0)}${Number(item.cantidad || 0) <= 2 && item.estado !== "Retirado" ? ` <span class="state-pill warning">Revisar</span>` : ""}</td><td>${esc(item.ubicacion || "—")}</td><td><span class="state-pill ${item.estado === "Disponible" ? "success" : "muted"}">${esc(item.estado || "—")}</span></td></tr>`).join("")}</tbody></table></div>` : emptyPanel("Inventario vacío", "Agrega el primer artículo del club.")}`;
+  inventoryItemsById = new Map(items.map((item) => [item.id, item]));
+  const lowStock = items.filter((item) => inventoryQuantity(item) <= Number(item.stockMinimo ?? 2) && !["Baja", "Retirado"].includes(item.estado));
+  const categories = [...new Set(items.map((item) => String(item.categoria || "Sin categoría")))].sort((a, b) => a.localeCompare(b, "es"));
+  const locations = [...new Set(items.map((item) => `${String(item.ubicacion || "")} · ${String(item.ubicacionDetalle || "")}`.trim().replace(/ ·$/, "")))].sort((a, b) => a.localeCompare(b, "es"));
+  const filters = `<div class="inventory-filters" id="inventory-filters"><label>Buscar artículo<input data-inventory-filter="search" type="search" placeholder="Nombre, modelo o descripción" /></label><label>Categoría<select data-inventory-filter="category"><option value="">Todas las categorías</option>${categories.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ubicación<select data-inventory-filter="location"><option value="">Todas las ubicaciones</option>${locations.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label class="inventory-low-filter"><input data-inventory-filter="low" type="checkbox" /> Solo bajo mínimo</label><span class="inventory-filter-count" aria-live="polite">${items.length} artículos</span></div>`;
+  return `${pageHeading("Inventario", "Existencias, ubicaciones, condición y movimientos.", `<div class="inventory-heading-actions"><button class="secondary-button compact" data-action="view-inventory-history">Historial</button><button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button></div>`)}
+    ${filters}
+    ${lowStock.length ? `<div class="inventory-low-summary" role="status"><span class="inventory-low-dot"></span><strong>${lowStock.length} ${lowStock.length === 1 ? "artículo bajo" : "artículos bajo"} mínimo</strong><span>Usa el filtro para verlos.</span></div>` : ""}
+    ${items.length ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Disponible / total</th><th>Ubicación</th><th>Condición</th><th>Gestión</th></tr></thead><tbody>${items.map((item) => {
+      const imagePath = typeof item.imagenPath === "string" && item.imagenPath.startsWith(`inventario/${item.id}/`)
+        ? item.imagenPath
+        : typeof item.imagenCatalogo === "string" && /^assets\/inventory\/[A-Za-z0-9_-]+\.webp$/.test(item.imagenCatalogo)
+          ? item.imagenCatalogo
+          : "";
+      const quantity = Number(item.cantidad || 0);
+      const damaged = Number(item.cantidadDanada || 0);
+      const available = inventoryQuantity(item);
+      const minimum = Number(item.stockMinimo ?? 2);
+      const unit = inventoryUnit(item);
+      const location = `${String(item.ubicacion || "—")}${item.ubicacionDetalle ? ` · ${String(item.ubicacionDetalle)}` : ""}`;
+      const condition = damaged > 0 ? `${damaged} dañadas · ${String(item.detalleDanio || "Revisar condición")}` : "Sin daños reportados";
+      const low = available <= minimum && !["Baja", "Retirado"].includes(item.estado);
+      return `<tr data-inventory-row data-search="${esc(normalizeSearchText([item.nombre, item.descripcion, item.categoria].join(" ")))}" data-category="${esc(item.categoria || "Sin categoría")}" data-location="${esc(location.replace("—", "").trim())}" data-low="${low ? "true" : "false"}"><td><div class="inventory-item-cell"><div class="inventory-thumb">${imagePath ? `<img data-inventory-image-path="${esc(imagePath)}" alt="Imagen ilustrativa de ${esc(item.nombre)}" loading="lazy" />` : ""}<span class="inventory-thumb-placeholder">${icon("inventario", 20)}</span></div><div class="inventory-item-copy"><strong title="${esc(item.nombre)}">${esc(item.nombre)}</strong><small title="${esc(item.descripcion || "")}">${esc(item.descripcion || "")}</small></div></div></td><td><span class="inventory-category">${esc(item.categoria || "Sin categoría")}</span></td><td><strong>${available} ${inventoryUnitLabel(unit, available)}</strong><small class="inventory-stock-meta"><span>${quantity} total</span><span>${damaged} dañadas</span><span class="${low ? "warning-text" : ""}">mín. ${minimum}</span></small></td><td><span class="inventory-location" title="${esc(location)}">${esc(location)}</span></td><td><span class="state-pill ${item.estado === "Disponible" ? "success" : "muted"}">${esc(item.estado || "—")}</span>${damaged ? `<small class="inventory-condition-note warning-text" title="${esc(condition)}">${damaged} dañadas · ${esc(item.detalleDanio || "Revisar")}</small>` : ""}</td><td><details class="inventory-actions-menu"><summary aria-label="Acciones para ${esc(item.nombre)}" title="Acciones">⋯</summary><div class="inventory-actions-popover"><button data-action="adjust-stock" data-id="${esc(item.id)}">Ajustar stock</button><button data-action="count-stock" data-id="${esc(item.id)}">Conteo físico</button><button data-action="item-condition" data-id="${esc(item.id)}">Condición y daños</button><button data-action="item-settings" data-id="${esc(item.id)}">Ubicación y mínimo</button></div></details></td></tr>`;
+    }).join("")}</tbody></table></div>` : emptyPanel("Inventario vacío", "Agrega el primer artículo del club.")}`;
+}
+
+function applyInventoryFilters(): void {
+  const filters = document.querySelector<HTMLElement>("#inventory-filters");
+  if (!filters) return;
+  const search = normalizeSearchText(filters.querySelector<HTMLInputElement>('[data-inventory-filter="search"]')?.value || "");
+  const category = filters.querySelector<HTMLSelectElement>('[data-inventory-filter="category"]')?.value || "";
+  const location = filters.querySelector<HTMLSelectElement>('[data-inventory-filter="location"]')?.value || "";
+  const lowOnly = filters.querySelector<HTMLInputElement>('[data-inventory-filter="low"]')?.checked || false;
+  const rows = [...document.querySelectorAll<HTMLTableRowElement>("tr[data-inventory-row]")];
+  let visible = 0;
+  rows.forEach((row) => {
+    const match = (!search || (row.dataset.search || "").includes(search))
+      && (!category || row.dataset.category === category)
+      && (!location || row.dataset.location === location)
+      && (!lowOnly || row.dataset.low === "true");
+    row.hidden = !match;
+    if (match) visible += 1;
+  });
+  const count = filters.querySelector<HTMLElement>(".inventory-filter-count");
+  if (count) count.textContent = `${visible} de ${rows.length} artículos`;
+}
+
+function syncInventoryImageObserver(page: HTMLElement | null): void {
+  inventoryImageObserver?.disconnect();
+  inventoryImageObserver = null;
+  const images = page ? [...page.querySelectorAll<HTMLImageElement>("img[data-inventory-image-path]")] : [];
+  const activePaths = new Set(images.map((image) => image.dataset.inventoryImagePath || ""));
+  for (const [path, url] of inventoryImageUrls) {
+    if (!activePaths.has(path)) {
+      URL.revokeObjectURL(url);
+      inventoryImageUrls.delete(path);
+    }
+  }
+  images.forEach((image) => {
+    const path = image.dataset.inventoryImagePath || "";
+    const cachedUrl = inventoryImageUrls.get(path);
+    if (cachedUrl) image.src = cachedUrl;
+  });
+  if (!images.length) return;
+  const loadImage = (image: HTMLImageElement) => {
+    const path = image.dataset.inventoryImagePath || "";
+    if (!path || inventoryImageUrls.has(path) || pendingInventoryImages.has(path)) return;
+    if (path.startsWith("assets/inventory/")) {
+      image.src = `/${path}`;
+      return;
+    }
+    pendingInventoryImages.add(path);
+    void getBlob(ref(storage, path), 4 * 1024 * 1024).then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const matchingImages = [...document.querySelectorAll<HTMLImageElement>("img[data-inventory-image-path]")]
+        .filter((candidate) => candidate.dataset.inventoryImagePath === path && candidate.isConnected);
+      if (!matchingImages.length) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      inventoryImageUrls.set(path, url);
+      matchingImages.forEach((candidate) => { candidate.src = url; });
+    }).catch(() => {
+      // The placeholder remains visible when an image is unavailable or Storage denies access.
+    }).finally(() => pendingInventoryImages.delete(path));
+  };
+  if (typeof IntersectionObserver === "undefined") {
+    images.slice(0, 12).forEach(loadImage);
+    return;
+  }
+  inventoryImageObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      const image = entry.target as HTMLImageElement;
+      inventoryImageObserver?.unobserve(image);
+      loadImage(image);
+    });
+  }, { rootMargin: "120px" });
+  images.forEach((image) => inventoryImageObserver?.observe(image));
 }
 
 async function renderStudents(): Promise<string> {
@@ -2928,6 +3058,16 @@ root.addEventListener("click", (event) => {
     void deleteCalendarEntry(button.dataset.id!, button.dataset.source!, button as HTMLButtonElement);
   } else if (action === "new-item") {
     openDialog("item-dialog");
+  } else if (action === "adjust-stock") {
+    void openInventoryAdjustmentDialog(button as HTMLButtonElement);
+  } else if (action === "count-stock") {
+    void openInventoryCountDialog(button as HTMLButtonElement);
+  } else if (action === "item-condition") {
+    void openInventoryConditionDialog(button as HTMLButtonElement);
+  } else if (action === "item-settings") {
+    void openInventorySettingsDialog(button as HTMLButtonElement);
+  } else if (action === "view-inventory-history") {
+    void openInventoryHistoryDialog();
   } else if (action === "toggle-student") {
     void toggleStudentAccess(button.dataset.id!, button.dataset.authorized !== "true", button as HTMLButtonElement);
   } else if (action === "toggle-showcase-reviewer" && isAdminInterface()) {
@@ -2976,6 +3116,10 @@ document.addEventListener("submit", (event) => {
   else if (type === "calendar-exam") void submitCalendarExam(form);
   else if (type === "club-activity") void submitClubActivity(form);
   else if (type === "item") void submitItem(form);
+  else if (type === "inventory-adjust") void submitInventoryAdjustment(form);
+  else if (type === "inventory-count") void submitInventoryCount(form);
+  else if (type === "inventory-condition") void submitInventoryCondition(form);
+  else if (type === "inventory-settings") void submitInventorySettings(form);
   else if (type === "project") void submitProject(form);
   else if (type === "project-stage") void submitProjectStage(form);
   else if (type === "course") void submitCourse(form);
@@ -2985,6 +3129,16 @@ document.addEventListener("submit", (event) => {
   else if (type === "showcase-request") void submitShowcaseRequest(form);
   else if (type === "task-assignment") void submitTaskAssignment(form);
   else if (type === "project-responsible") void submitProjectResponsible(form);
+});
+
+document.addEventListener("input", (event) => {
+  if ((event.target as HTMLElement).closest("#inventory-filters")) applyInventoryFilters();
+  if ((event.target as HTMLElement).closest("#inventory-history-filters")) applyInventoryHistoryFilters(event.target as HTMLElement);
+});
+
+document.addEventListener("change", (event) => {
+  if ((event.target as HTMLElement).closest("#inventory-filters")) applyInventoryFilters();
+  if ((event.target as HTMLElement).closest("#inventory-history-filters")) applyInventoryHistoryFilters(event.target as HTMLElement);
 });
 
 document.addEventListener("click", (event) => {
@@ -3660,11 +3814,14 @@ async function resolveLoan(id: string, action: string, button: HTMLButtonElement
   if (!isAdmin() || !state.user) return;
   setBusy(button, true);
   const ref = doc(db, "reservas", id);
+  const activityRef = doc(collection(db, "actividadAdmin"));
   try {
     let auditType = "";
     let auditTitle = "";
     let auditDetail = "";
+    let auditStock: Record<string, number | string> | null = null;
     await runTransaction(db, async (transaction) => {
+      auditStock = null;
       const loanSnapshot = await transaction.get(ref);
       if (!loanSnapshot.exists()) throw new Error("La solicitud ya no existe.");
       const loan = loanSnapshot.data();
@@ -3674,15 +3831,16 @@ async function resolveLoan(id: string, action: string, button: HTMLButtonElement
       const item = itemSnapshot.data();
       const quantity = Number(loan.cantidadSolicitada || 1);
       const stock = Number(item.cantidad || 0);
-      auditDetail = `${loan.recursoNombre || "Artículo"} · ${loan.solicitanteNombre || "Solicitante"} · ${quantity} unidad(es)`;
+      auditDetail = `${loan.recursoNombre || "Artículo"} · ${loan.solicitanteNombre || "Solicitante"} · ${quantity} unidad(es)`.slice(0, 500);
       if (action === "loan-approve") {
         if (loan.estado !== "Pendiente") throw new Error("La solicitud ya fue procesada.");
         if (stock < quantity) throw new Error("No hay stock suficiente para aprobar este préstamo.");
         const remaining = stock - quantity;
-        transaction.update(itemRef, { cantidad: remaining, estado: remaining === 0 ? "Prestado" : "Disponible" });
+        transaction.update(itemRef, { cantidad: remaining, estado: remaining === 0 ? "Prestado" : "Disponible", ultimoMovimientoId: activityRef.id });
         transaction.update(ref, { estado: "Aprobada", aprobadoPorUid: state.user!.uid, aprobadoPorNombre: fullName() });
         auditType = "prestamo_aprobado";
         auditTitle = "Préstamo aprobado";
+        auditStock = { cantidad: quantity, stockAnterior: stock, stockNuevo: remaining, inventarioId: itemRef.id };
       } else if (action === "loan-reject") {
         if (loan.estado !== "Pendiente") throw new Error("La solicitud ya fue procesada.");
         transaction.update(ref, { estado: "Rechazada" });
@@ -3691,7 +3849,7 @@ async function resolveLoan(id: string, action: string, button: HTMLButtonElement
       } else {
         if (loan.estado !== "Aprobada") throw new Error("Este artículo no figura como préstamo activo.");
         const restored = stock + quantity;
-        transaction.update(itemRef, { cantidad: restored, estado: "Disponible" });
+        transaction.update(itemRef, { cantidad: restored, estado: "Disponible", ultimoMovimientoId: activityRef.id });
         const archiveRef = doc(collection(db, "prestamosArchivados"));
         transaction.set(archiveRef, {
           reservaId: id,
@@ -3713,16 +3871,18 @@ async function resolveLoan(id: string, action: string, button: HTMLButtonElement
         transaction.delete(ref);
         auditType = "prestamo_devuelto";
         auditTitle = "Devolución registrada";
+        auditStock = { cantidad: quantity, stockAnterior: stock, stockNuevo: restored, inventarioId: itemRef.id };
       }
-    });
-    await addDoc(collection(db, "actividadAdmin"), {
-      tipo: auditType,
-      titulo: auditTitle,
-      detalle: auditDetail,
-      emisorUid: state.user.uid,
-      emisorNombre: fullName(),
-      entidadId: id,
-      fechaCreacion: serverTimestamp(),
+      transaction.set(activityRef, {
+        tipo: auditType,
+        titulo: auditTitle,
+        detalle: auditDetail,
+        ...(auditStock || {}),
+        emisorUid: state.user!.uid,
+        emisorNombre: fullName(),
+        entidadId: id,
+        fechaCreacion: serverTimestamp(),
+      });
     });
     notify(action === "loan-approve" ? "Préstamo aprobado." : action === "loan-reject" ? "Solicitud rechazada." : "Devolución registrada.");
     await loadPage();
@@ -3736,11 +3896,14 @@ async function resolveLoanRequest(id: string, approve: boolean, button: HTMLButt
   if (!isAdminInterface() || !state.user) return;
   setBusy(button, true);
   const loanRef = doc(db, "reservas", id);
+  const activityRef = doc(collection(db, "actividadAdmin"));
   let auditType = "";
   let auditTitle = "";
   let auditDetail = "";
+  let auditStock: Record<string, number | string> | null = null;
   try {
     await runTransaction(db, async (transaction) => {
+      auditStock = null;
       const loanSnapshot = await transaction.get(loanRef);
       if (!loanSnapshot.exists()) throw new Error("El préstamo ya no existe.");
       const loan = loanSnapshot.data();
@@ -3749,7 +3912,7 @@ async function resolveLoanRequest(id: string, approve: boolean, button: HTMLButt
       }
       const requestType = String(loan.accionSolicitada || "");
       if (requestType !== "Devolucion" && requestType !== "Prorroga") throw new Error("Tipo de solicitud desconocido.");
-      auditDetail = `${loan.recursoNombre || "Artículo"} · ${loan.solicitanteNombre || "Estudiante"} · ${Number(loan.cantidadSolicitada || 1)} unidad(es)`;
+      auditDetail = `${loan.recursoNombre || "Artículo"} · ${loan.solicitanteNombre || "Estudiante"} · ${Number(loan.cantidadSolicitada || 1)} unidad(es)`.slice(0, 500);
       const notificationRef = doc(collection(db, "usuarios", String(loan.solicitanteUid), "notificaciones"));
 
       if (requestType === "Devolucion" && approve) {
@@ -3757,11 +3920,13 @@ async function resolveLoanRequest(id: string, approve: boolean, button: HTMLButt
         const itemSnapshot = await transaction.get(itemRef);
         if (!itemSnapshot.exists()) throw new Error("El artículo ya no existe en el inventario.");
         const quantity = Number(loan.cantidadSolicitada || 1);
-        const restoredQuantity = Number(itemSnapshot.get("cantidad") || 0) + quantity;
+        const previousQuantity = Number(itemSnapshot.get("cantidad") || 0);
+        const restoredQuantity = previousQuantity + quantity;
         const archiveRef = doc(collection(db, "prestamosArchivados"));
         transaction.update(itemRef, {
           cantidad: restoredQuantity,
           estado: restoredQuantity > 0 ? "Disponible" : "Prestado",
+          ultimoMovimientoId: activityRef.id,
         });
         transaction.set(archiveRef, {
           reservaId: id,
@@ -3783,6 +3948,7 @@ async function resolveLoanRequest(id: string, approve: boolean, button: HTMLButt
         transaction.delete(loanRef);
         auditType = "prestamo_devuelto";
         auditTitle = "Devolución autorizada";
+        auditStock = { cantidad: quantity, stockAnterior: previousQuantity, stockNuevo: restoredQuantity, inventarioId: itemRef.id };
       } else {
         const update: Record<string, unknown> = {
           estadoSolicitud: approve ? "Aprobada" : "Rechazada",
@@ -3818,16 +3984,17 @@ async function resolveLoanRequest(id: string, approve: boolean, button: HTMLButt
         fechaCreacion: serverTimestamp(),
         leida: false,
       });
+      transaction.set(activityRef, {
+        tipo: auditType,
+        titulo: auditTitle,
+        detalle: auditDetail,
+        ...(auditStock || {}),
+        emisorUid: state.user!.uid,
+        emisorNombre: fullName(),
+        entidadId: id,
+        fechaCreacion: serverTimestamp(),
+      });
     });
-    await addDoc(collection(db, "actividadAdmin"), {
-      tipo: auditType,
-      titulo: auditTitle,
-      detalle: auditDetail,
-      emisorUid: state.user.uid,
-      emisorNombre: fullName(),
-      entidadId: id,
-      fechaCreacion: serverTimestamp(),
-    }).catch(() => undefined);
     notify(approve ? "Solicitud aprobada." : "Solicitud rechazada.");
     await loadPage();
   } catch (error) {
@@ -4045,24 +4212,408 @@ async function submitItem(form: HTMLFormElement): Promise<void> {
   const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
   setBusy(button, true);
   const data = new FormData(form);
+  const initialQuantity = Number(data.get("cantidad"));
+  const stockMinimum = Number(data.get("stockMinimo"));
+  const itemName = String(data.get("nombre") || "").trim();
+  if (!itemName || !Number.isSafeInteger(initialQuantity) || initialQuantity < 0 || !Number.isSafeInteger(stockMinimum) || stockMinimum < 0) {
+    setBusy(button, false);
+    notify("Revisa el nombre, la cantidad inicial y el stock mínimo.", "error");
+    return;
+  }
   try {
-    await addDoc(collection(db, "inventario"), {
-      nombre: String(data.get("nombre") || "").trim(),
+    const itemRef = doc(collection(db, "inventario"));
+    const itemData = {
+      nombre: itemName,
       descripcion: String(data.get("descripcion") || "").trim(),
       categoria: String(data.get("categoria") || "").trim(),
-      cantidad: Number(data.get("cantidad")),
+      cantidad: initialQuantity,
       ubicacion: String(data.get("ubicacion") || "").trim(),
+      ubicacionDetalle: String(data.get("ubicacionDetalle") || "").trim(),
+      unidadInventario: String(data.get("unidadInventario") || "unidad"),
+      stockMinimo,
+      cantidadDanada: 0,
+      detalleDanio: "",
+      ...(data.get("imagenCatalogo") ? { imagenCatalogo: String(data.get("imagenCatalogo")) } : {}),
       estado: "Disponible",
       creadoPorUid: state.user.uid,
       creadoPorNombre: fullName(),
       fechaCreacion: serverTimestamp(),
-    });
+    };
+    const batch = writeBatch(db);
+    if (initialQuantity > 0) {
+      const activityRef = doc(collection(db, "actividadAdmin"));
+      batch.set(itemRef, { ...itemData, ultimoMovimientoId: activityRef.id });
+      batch.set(activityRef, {
+        tipo: "inventario_entrada",
+        titulo: "Carga inicial de inventario",
+        detalle: `${itemName} · entrada inicial de ${initialQuantity}. Motivo: alta del artículo`.slice(0, 500),
+        cantidad: initialQuantity,
+        stockAnterior: 0,
+        stockNuevo: initialQuantity,
+        inventarioId: itemRef.id,
+        emisorUid: state.user.uid,
+        emisorNombre: fullName(),
+        entidadId: itemRef.id,
+        fechaCreacion: serverTimestamp(),
+      });
+    } else {
+      batch.set(itemRef, itemData);
+    }
+    await batch.commit();
     closeDialog();
-    notify("Artículo agregado al inventario.");
     await loadPage();
+    notify("Artículo agregado al inventario.");
   } catch (error) {
     setBusy(button, false);
     notify(errorMessage(error, "No se pudo guardar el artículo."), "error");
+  }
+}
+
+async function openInventoryAdjustmentDialog(button: HTMLButtonElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview() || !button.dataset.id) return;
+  const itemId = button.dataset.id;
+  const item = inventoryItemsById.get(itemId);
+  if (!item) return notify("No se encontró el artículo. Actualiza el inventario.", "error");
+  const itemName = String(item.nombre || "Artículo");
+  const quantity = Math.max(0, Number(item.cantidad || 0));
+  const damaged = Math.max(0, Number(item.cantidadDanada || 0));
+  const unit = inventoryUnitLabel(inventoryUnit(item), quantity);
+  const dialog = document.createElement("dialog");
+  dialog.className = "detail-dialog form-dialog";
+  dialog.innerHTML = `<form class="dialog-form" data-form="inventory-adjust" data-id="${esc(itemId)}"><div class="dialog-head"><div><p class="eyebrow">CONTROL DE EXISTENCIAS</p><h2>${esc(itemName)}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="inventory-adjust-current">Total en inventario: <strong>${quantity} ${unit}</strong><br />Dañadas: <strong>${damaged}</strong> · disponibles: <strong>${quantity - damaged}</strong></p><label>Movimiento<select name="tipo" required><option value="inventario_entrada">Agregar existencias</option><option value="inventario_salida">Retirar existencias disponibles</option></select></label><label>Cantidad<input name="cantidad" type="number" min="1" step="1" value="1" required /></label><label>Motivo<textarea name="motivo" rows="2" maxlength="300" required placeholder="Ej.: reposición o ajuste de inventario"></textarea></label><button class="primary-button" type="submit">Registrar movimiento</button></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("click", (event) => { if (event.target === dialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
+}
+
+async function submitInventoryAdjustment(form: HTMLFormElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview() || !state.user) return;
+  const itemId = form.dataset.id || "";
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const data = new FormData(form);
+  const type = String(data.get("tipo") || "");
+  const amount = Number(data.get("cantidad"));
+  const reason = String(data.get("motivo") || "").trim();
+  if (!itemId || !["inventario_entrada", "inventario_salida"].includes(type) || !Number.isSafeInteger(amount) || amount <= 0 || !reason || reason.length > 300) {
+    notify("Revisa el tipo de movimiento, la cantidad y el motivo.", "error");
+    return;
+  }
+  if (button) setBusy(button, true, "Registrando");
+  const itemRef = doc(db, "inventario", itemId);
+  const activityRef = doc(collection(db, "actividadAdmin"));
+  try {
+    await runTransaction(db, async (transaction) => {
+      const itemSnapshot = await transaction.get(itemRef);
+      if (!itemSnapshot.exists()) throw new Error("El artículo ya no existe. Actualiza el inventario.");
+      const item = itemSnapshot.data();
+      const previous = Number(item.cantidad);
+      if (!Number.isSafeInteger(previous) || previous < 0) throw new Error("La cantidad actual del artículo no es válida.");
+      const damaged = Number(item.cantidadDanada || 0);
+      if (type === "inventario_salida" && amount > previous - damaged) throw new Error(`Solo hay ${previous - damaged} existencias disponibles para retirar; las dañadas deben gestionarse desde Condición.`);
+      const next = type === "inventario_entrada" ? previous + amount : previous - amount;
+      if (!Number.isSafeInteger(next)) throw new Error("La cantidad resultante es demasiado grande.");
+      const movementLabel = type === "inventario_entrada" ? "Entrada" : "Salida";
+      transaction.update(itemRef, { cantidad: next, ultimoMovimientoId: activityRef.id });
+      transaction.set(activityRef, {
+        tipo: type,
+        titulo: type === "inventario_entrada" ? "Entrada de inventario" : "Salida de inventario",
+        detalle: `${String(item.nombre || "Artículo").slice(0, 120)} · ${movementLabel.toLowerCase()} de ${amount}. Motivo: ${reason}`.slice(0, 500),
+        cantidad: amount,
+        stockAnterior: previous,
+        stockNuevo: next,
+        inventarioId: itemId,
+        emisorUid: state.user!.uid,
+        emisorNombre: fullName(),
+        entidadId: itemId,
+        fechaCreacion: serverTimestamp(),
+      });
+    });
+    form.closest("dialog")?.close();
+    await loadPage();
+    notify(type === "inventario_entrada" ? "Entrada registrada y stock actualizado." : "Salida registrada y stock actualizado.");
+  } catch (error) {
+    if (button) setBusy(button, false);
+    notify(errorMessage(error, "No se pudo registrar el movimiento."), "error");
+  }
+}
+
+async function openInventoryCountDialog(button: HTMLButtonElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview() || !button.dataset.id) return;
+  const item = inventoryItemsById.get(button.dataset.id);
+  if (!item) return notify("No se encontró el artículo. Actualiza el inventario.", "error");
+  const total = Number(item.cantidad || 0);
+  const damaged = Number(item.cantidadDanada || 0);
+  const unit = inventoryUnitLabel(inventoryUnit(item), total);
+  const dialog = document.createElement("dialog");
+  dialog.className = "detail-dialog form-dialog";
+  dialog.innerHTML = `<form class="dialog-form" data-form="inventory-count" data-id="${esc(item.id)}"><div class="dialog-head"><div><p class="eyebrow">CONTEO FÍSICO</p><h2>${esc(item.nombre || "Artículo")}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="inventory-adjust-current">Total registrado: <strong>${total} ${unit}</strong> · ${damaged} dañadas</p><label>Total encontrado<input name="conteoFisico" type="number" min="0" step="1" value="${total}" required /></label><label>Nota del conteo<textarea name="nota" rows="2" maxlength="300" placeholder="Ej.: conteo en caja organizadora"></textarea></label><button class="primary-button" type="submit">Registrar conteo</button></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("click", (event) => { if (event.target === dialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
+}
+
+async function submitInventoryCount(form: HTMLFormElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview() || !state.user) return;
+  const itemId = form.dataset.id || "";
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const data = new FormData(form);
+  const count = Number(data.get("conteoFisico"));
+  const note = String(data.get("nota") || "").trim();
+  if (!itemId || !Number.isSafeInteger(count) || count < 0 || note.length > 300) {
+    notify("Ingresa una cantidad física válida.", "error");
+    return;
+  }
+  if (button) setBusy(button, true, "Registrando");
+  const itemRef = doc(db, "inventario", itemId);
+  const activityRef = doc(collection(db, "actividadAdmin"));
+  try {
+    let matched = false;
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(itemRef);
+      if (!snapshot.exists()) throw new Error("El artículo ya no existe. Actualiza el inventario.");
+      const item = snapshot.data();
+      const previous = Number(item.cantidad);
+      const damaged = Number(item.cantidadDanada || 0);
+      if (!Number.isSafeInteger(previous) || !Number.isSafeInteger(damaged) || count < damaged) {
+        throw new Error(`El conteo total no puede ser menor que las ${damaged} unidades dañadas registradas.`);
+      }
+      matched = count === previous;
+      const difference = Math.abs(count - previous);
+      const detail = `${String(item.nombre || "Artículo")} · conteo físico ${count}; stock anterior ${previous}${note ? `. Nota: ${note}` : ""}`.slice(0, 500);
+      transaction.update(itemRef, { cantidad: count, ultimoMovimientoId: activityRef.id });
+      transaction.set(activityRef, {
+        tipo: "inventario_conteo",
+        titulo: "Conteo físico de inventario",
+        detalle: detail,
+        cantidad: difference,
+        stockAnterior: previous,
+        stockNuevo: count,
+        conteoFisico: count,
+        inventarioId: itemId,
+        emisorUid: state.user!.uid,
+        emisorNombre: fullName(),
+        entidadId: itemId,
+        fechaCreacion: serverTimestamp(),
+      });
+    });
+    form.closest("dialog")?.close();
+    await loadPage();
+    notify(matched ? "Conteo registrado; el stock coincide." : "Conteo registrado y existencias reconciliadas.");
+  } catch (error) {
+    if (button) setBusy(button, false);
+    notify(errorMessage(error, "No se pudo registrar el conteo físico."), "error");
+  }
+}
+
+async function openInventoryConditionDialog(button: HTMLButtonElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview() || !button.dataset.id) return;
+  const item = inventoryItemsById.get(button.dataset.id);
+  if (!item) return notify("No se encontró el artículo. Actualiza el inventario.", "error");
+  const total = Number(item.cantidad || 0);
+  const damaged = Number(item.cantidadDanada || 0);
+  const dialog = document.createElement("dialog");
+  dialog.className = "detail-dialog form-dialog";
+  dialog.innerHTML = `<form class="dialog-form" data-form="inventory-condition" data-id="${esc(item.id)}"><div class="dialog-head"><div><p class="eyebrow">CONDICIÓN Y DAÑOS</p><h2>${esc(item.nombre || "Artículo")}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><p class="inventory-adjust-current">Total: <strong>${total}</strong> · dañadas: <strong>${damaged}</strong> · disponibles: <strong>${total - damaged}</strong></p><label>Acción<select name="operacion" required><option value="reportar_dano">Marcar unidades dañadas</option><option value="reparar" ${damaged ? "" : "disabled"}>Marcar reparadas</option><option value="retirar_danado" ${damaged ? "" : "disabled"}>Retirar unidades dañadas del inventario</option></select></label><label>Cantidad<input name="cantidad" type="number" min="1" max="${Math.max(1, total)}" step="1" value="1" required /></label><label>Detalle o motivo<textarea name="motivo" rows="2" maxlength="300" required placeholder="Ej.: pin doblado, placa reparada o pieza retirada"></textarea></label><button class="primary-button" type="submit">Guardar condición</button></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("click", (event) => { if (event.target === dialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
+}
+
+async function submitInventoryCondition(form: HTMLFormElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview() || !state.user) return;
+  const itemId = form.dataset.id || "";
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const data = new FormData(form);
+  const operation = String(data.get("operacion") || "");
+  const amount = Number(data.get("cantidad"));
+  const reason = String(data.get("motivo") || "").trim();
+  if (!itemId || !["reportar_dano", "reparar", "retirar_danado"].includes(operation) || !Number.isSafeInteger(amount) || amount <= 0 || !reason || reason.length > 300) {
+    notify("Revisa la acción, la cantidad y el motivo.", "error");
+    return;
+  }
+  if (button) setBusy(button, true, "Guardando");
+  const itemRef = doc(db, "inventario", itemId);
+  const conditionRef = doc(collection(db, "actividadAdmin"));
+  const stockRef = operation === "retirar_danado" ? doc(collection(db, "actividadAdmin")) : null;
+  const labels: Record<string, string> = { reportar_dano: "Daño registrado", reparar: "Reparación registrada", retirar_danado: "Unidades dañadas retiradas" };
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(itemRef);
+      if (!snapshot.exists()) throw new Error("El artículo ya no existe. Actualiza el inventario.");
+      const item = snapshot.data();
+      const previousTotal = Number(item.cantidad);
+      const previousDamaged = Number(item.cantidadDanada || 0);
+      if (!Number.isSafeInteger(previousTotal) || !Number.isSafeInteger(previousDamaged)) throw new Error("La condición actual del artículo no es válida.");
+      let nextDamaged = previousDamaged;
+      let nextTotal = previousTotal;
+      if (operation === "reportar_dano") {
+        if (previousDamaged + amount > previousTotal) throw new Error(`No puedes marcar más de ${previousTotal - previousDamaged} unidades como dañadas.`);
+        nextDamaged += amount;
+      } else {
+        if (amount > previousDamaged) throw new Error(`Solo hay ${previousDamaged} unidades marcadas como dañadas.`);
+        nextDamaged -= amount;
+        if (operation === "retirar_danado") nextTotal -= amount;
+      }
+      const nextDetail = nextDamaged > 0 ? reason : "";
+      transaction.update(itemRef, {
+        cantidad: nextTotal,
+        cantidadDanada: nextDamaged,
+        detalleDanio: nextDetail,
+        ultimoEventoCondicionId: conditionRef.id,
+        ...(stockRef ? { ultimoMovimientoId: stockRef.id } : {}),
+      });
+      transaction.set(conditionRef, {
+        tipo: "inventario_condicion_actualizada",
+        titulo: labels[operation],
+        detalle: `${String(item.nombre || "Artículo")} · ${labels[operation].toLowerCase()}: ${amount}. Motivo: ${reason}`.slice(0, 500),
+        cantidad: amount,
+        inventarioId: itemId,
+        cantidadDanadaAnterior: previousDamaged,
+        cantidadDanadaNueva: nextDamaged,
+        detalleCondicion: nextDetail,
+        operacionCondicion: operation,
+        emisorUid: state.user!.uid,
+        emisorNombre: fullName(),
+        entidadId: itemId,
+        fechaCreacion: serverTimestamp(),
+      });
+      if (stockRef) {
+        transaction.set(stockRef, {
+          tipo: "inventario_salida",
+          titulo: "Salida de unidades dañadas",
+          detalle: `${String(item.nombre || "Artículo")} · salida de ${amount} unidades dañadas. Motivo: ${reason}`.slice(0, 500),
+          cantidad: amount,
+          stockAnterior: previousTotal,
+          stockNuevo: nextTotal,
+          inventarioId: itemId,
+          emisorUid: state.user!.uid,
+          emisorNombre: fullName(),
+          entidadId: itemId,
+          fechaCreacion: serverTimestamp(),
+        });
+      }
+    });
+    form.closest("dialog")?.close();
+    await loadPage();
+    notify(`${labels[operation]} y guardada en el historial.`);
+  } catch (error) {
+    if (button) setBusy(button, false);
+    notify(errorMessage(error, "No se pudo actualizar la condición."), "error");
+  }
+}
+
+async function openInventorySettingsDialog(button: HTMLButtonElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview() || !button.dataset.id) return;
+  const item = inventoryItemsById.get(button.dataset.id);
+  if (!item) return notify("No se encontró el artículo. Actualiza el inventario.", "error");
+  const unit = inventoryUnit(item);
+  const dialog = document.createElement("dialog");
+  dialog.className = "detail-dialog form-dialog";
+  dialog.innerHTML = `<form class="dialog-form" data-form="inventory-settings" data-id="${esc(item.id)}"><div class="dialog-head"><div><p class="eyebrow">ORGANIZACIÓN</p><h2>${esc(item.nombre || "Artículo")}</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Caja o estante<input name="ubicacion" maxlength="120" value="${esc(item.ubicacion || "")}" placeholder="Ej.: Caja organizadora" /></label><label>Compartimento o posición<input name="ubicacionDetalle" maxlength="120" value="${esc(item.ubicacionDetalle || "")}" placeholder="Ej.: bandeja 2, fila B" /></label><div class="field-row"><label>Se cuenta por<select name="unidadInventario"><option value="unidad" ${unit === "unidad" ? "selected" : ""}>Unidad</option><option value="paquete" ${unit === "paquete" ? "selected" : ""}>Paquete</option><option value="kit" ${unit === "kit" ? "selected" : ""}>Kit</option><option value="par" ${unit === "par" ? "selected" : ""}>Par</option><option value="lote" ${unit === "lote" ? "selected" : ""}>Lote</option></select></label><label>Stock mínimo<input name="stockMinimo" type="number" min="0" step="1" value="${Number(item.stockMinimo ?? 2)}" required /></label></div><p class="form-hint">Las ubicaciones detalladas ayudan a encontrar artículos dentro de cajas y estantes.</p><button class="primary-button" type="submit">Guardar cambios</button></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener("click", (event) => { if (event.target === dialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
+}
+
+async function submitInventorySettings(form: HTMLFormElement): Promise<void> {
+  if (!isAdmin() || isStudentPreview()) return;
+  const itemId = form.dataset.id || "";
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  const data = new FormData(form);
+  const minimum = Number(data.get("stockMinimo"));
+  const location = String(data.get("ubicacion") || "").trim();
+  const detail = String(data.get("ubicacionDetalle") || "").trim();
+  const unit = String(data.get("unidadInventario") || "");
+  if (!itemId || !Number.isSafeInteger(minimum) || minimum < 0 || location.length > 120 || detail.length > 120 || !["unidad", "paquete", "kit", "par", "lote"].includes(unit)) {
+    notify("Revisa la ubicación, la unidad de conteo y el stock mínimo.", "error");
+    return;
+  }
+  if (button) setBusy(button, true, "Guardando");
+  try {
+    await updateDoc(doc(db, "inventario", itemId), {
+      ubicacion: location,
+      ubicacionDetalle: detail,
+      unidadInventario: unit,
+      stockMinimo: minimum,
+    });
+    form.closest("dialog")?.close();
+    await loadPage();
+    notify("Ubicación, unidad y stock mínimo actualizados.");
+  } catch (error) {
+    if (button) setBusy(button, false);
+    notify(errorMessage(error, "No se pudieron guardar los cambios."), "error");
+  }
+}
+
+function inventoryActivityLabel(type: string): string {
+  const labels: Record<string, string> = {
+    inventario_entrada: "Entrada", inventario_salida: "Salida", inventario_conteo: "Conteo físico",
+    inventario_condicion_actualizada: "Condición o daño", prestamo_aprobado: "Préstamo aprobado",
+    prestamo_devuelto: "Devolución", prestamo_rechazado: "Préstamo rechazado",
+  };
+  return labels[type] || type.replaceAll("_", " ");
+}
+
+function applyInventoryHistoryFilters(target: HTMLElement): void {
+  const filters = target.closest<HTMLElement>("#inventory-history-filters") || document.querySelector<HTMLElement>("#inventory-history-filters");
+  if (!filters) return;
+  const itemId = filters.querySelector<HTMLSelectElement>('[name="articulo"]')?.value || "";
+  const type = filters.querySelector<HTMLSelectElement>('[name="tipo"]')?.value || "";
+  const from = filters.querySelector<HTMLInputElement>('[name="desde"]')?.value || "";
+  const to = filters.querySelector<HTMLInputElement>('[name="hasta"]')?.value || "";
+  const search = normalizeSearchText(filters.querySelector<HTMLInputElement>('[name="buscar"]')?.value || "");
+  const rows = [...filters.querySelectorAll<HTMLElement>("[data-inventory-history-event]")];
+  let visible = 0;
+  for (const row of rows) {
+    const date = row.dataset.date || "";
+    const match = (!itemId || row.dataset.article === itemId)
+      && (!type || row.dataset.type === type)
+      && (!from || date >= from)
+      && (!to || date <= to)
+      && (!search || (row.dataset.search || "").includes(search));
+    row.hidden = !match;
+    if (match) visible += 1;
+  }
+  const count = filters.querySelector<HTMLElement>(".inventory-history-count");
+  if (count) count.textContent = `${visible} movimientos visibles`;
+  const empty = filters.querySelector<HTMLElement>(".inventory-history-empty");
+  if (empty) empty.hidden = visible > 0;
+}
+
+async function openInventoryHistoryDialog(): Promise<void> {
+  if (!isAdmin() || isStudentPreview()) return;
+  const items = [...inventoryItemsById.values()].sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+  const dialog = document.createElement("dialog");
+  dialog.className = "detail-dialog inventory-history-dialog";
+  dialog.innerHTML = `<section class="dialog-form"><div class="dialog-head"><div><p class="eyebrow">TRAZABILIDAD</p><h2>Historial de inventario</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><div id="inventory-history-filters"><div class="inventory-history-filters"><label>Artículo<select name="articulo"><option value="">Todos los artículos</option>${items.map((item) => `<option value="${esc(item.id)}">${esc(item.nombre || "Artículo")}</option>`).join("")}</select></label><label>Movimiento<select name="tipo"><option value="">Todos los movimientos</option><option value="inventario_entrada">Entradas</option><option value="inventario_salida">Salidas</option><option value="inventario_conteo">Conteos físicos</option><option value="inventario_condicion_actualizada">Daños y reparaciones</option><option value="prestamo_aprobado">Préstamos aprobados</option><option value="prestamo_devuelto">Devoluciones</option></select></label><label>Desde<input name="desde" type="date" /></label><label>Hasta<input name="hasta" type="date" /></label><label class="inventory-history-search">Buscar en detalle<input name="buscar" type="search" placeholder="Motivo, pieza o responsable" /></label></div><p class="inventory-history-count" aria-live="polite">Cargando movimientos…</p><div class="inventory-history-list"><p class="empty-inline">Cargando historial…</p></div><p class="inventory-history-empty" hidden>No hay movimientos que coincidan con estos filtros.</p></div></section>`;
+  document.body.append(dialog);
+  dialog.addEventListener("click", (event) => { if (event.target === dialog || (event.target as HTMLElement).closest('[data-action="close-dialog"]')) dialog.close(); });
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.showModal();
+  try {
+    const snapshot = await getDocs(query(collection(db, "actividadAdmin"), orderBy("fechaCreacion", "desc"), limit(300)));
+    const events = snapshot.docs.map((document) => ({ id: document.id, ...document.data() }))
+      .filter((event) => typeof event.inventarioId === "string");
+    const list = dialog.querySelector<HTMLElement>(".inventory-history-list");
+    if (!list) return;
+    list.innerHTML = events.length ? events.map((event) => {
+      const date = event.fechaCreacion?.toDate?.();
+      const dateKey = date instanceof Date && Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+      const articleName = String(inventoryItemsById.get(String(event.inventarioId))?.nombre || event.inventarioId);
+      return `<article class="inventory-history-row" data-inventory-history-event data-article="${esc(event.inventarioId)}" data-type="${esc(event.tipo)}" data-date="${esc(dateKey)}" data-search="${esc(normalizeSearchText([articleName, event.detalle, event.emisorNombre].join(" ")))}"><div><strong>${esc(event.titulo || inventoryActivityLabel(String(event.tipo || "")))}</strong><p>${esc(event.detalle || "")}</p><small>${esc(articleName)} · ${esc(event.emisorNombre || "Administrador")} · ${esc(dateText(event.fechaCreacion, true))}</small></div><span class="state-pill ${String(event.tipo).includes("salida") ? "warning" : "muted"}">${esc(inventoryActivityLabel(String(event.tipo || "")))}</span></article>`;
+    }).join("") : `<p class="empty-inline">Todavía no hay movimientos de inventario.</p>`;
+    const count = dialog.querySelector<HTMLElement>(".inventory-history-count");
+    if (count) count.textContent = `${events.length} movimientos recientes${snapshot.size >= 300 ? " · se muestran los últimos 300" : ""}`;
+    const empty = dialog.querySelector<HTMLElement>(".inventory-history-empty");
+    if (empty) empty.hidden = events.length > 0;
+    applyInventoryHistoryFilters(dialog);
+  } catch (error) {
+    const list = dialog.querySelector<HTMLElement>(".inventory-history-list");
+    if (list) list.innerHTML = `<p class="empty-inline">${esc(errorMessage(error, "No se pudo cargar el historial."))}</p>`;
   }
 }
 
@@ -4905,7 +5456,7 @@ async function deleteProjectTask(path: string, button: HTMLButtonElement, dialog
 function openDialog(id: string): void {
   const templates: Record<string, string> = {
     "notice-dialog": `<form class="dialog-form" data-form="notice"><div class="dialog-head"><div><p class="eyebrow">COMUNICACIÓN</p><h2>Publicar aviso</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Título<input name="titulo" required maxlength="100" /></label><label>Mensaje<textarea name="mensaje" required rows="4" maxlength="1500"></textarea></label><label>Prioridad<select name="prioridad"><option>Normal</option><option>Importante</option><option>Baja</option></select></label><button class="primary-button" type="submit">Publicar aviso</button></form>`,
-    "item-dialog": `<form class="dialog-form" data-form="item"><div class="dialog-head"><div><p class="eyebrow">RECURSOS</p><h2>Nuevo artículo</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Nombre<input name="nombre" required maxlength="100" /></label><label>Descripción<textarea name="descripcion" rows="3"></textarea></label><div class="field-row"><label>Categoría<input name="categoria" required /></label><label>Cantidad<input name="cantidad" type="number" min="0" required /></label></div><label>Ubicación<input name="ubicacion" /></label><button class="primary-button" type="submit">Guardar artículo</button></form>`,
+    "item-dialog": `<form class="dialog-form" data-form="item"><div class="dialog-head"><div><p class="eyebrow">RECURSOS</p><h2>Nuevo artículo</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Nombre<input name="nombre" required maxlength="100" /></label><label>Descripción<textarea name="descripcion" rows="3" maxlength="1000"></textarea></label><div class="field-row"><label>Categoría<input name="categoria" required maxlength="80" /></label><label>Se cuenta por<select name="unidadInventario"><option value="unidad">Unidad</option><option value="paquete">Paquete</option><option value="kit">Kit</option><option value="par">Par</option><option value="lote">Lote</option></select></label></div><div class="field-row"><label>Cantidad inicial<input name="cantidad" type="number" min="0" step="1" required /></label><label>Stock mínimo<input name="stockMinimo" type="number" min="0" step="1" value="2" required /></label></div><label>Caja o estante<input name="ubicacion" maxlength="120" placeholder="Ej.: Caja organizadora" /></label><label>Compartimento o posición<input name="ubicacionDetalle" maxlength="120" placeholder="Ej.: bandeja 2, fila B" /></label><label>Imagen ilustrativa<select name="imagenCatalogo"><option value="">Sin imagen</option>${kitInventoryImageOptions}</select></label><button class="primary-button" type="submit">Guardar artículo</button></form>`,
     "project-dialog": `<form class="dialog-form" data-form="project"><div class="dialog-head"><div><p class="eyebrow">TRABAJO DEL CLUB</p><h2>Nuevo proyecto</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Nombre<input name="nombre" required maxlength="100" /></label><label>Descripción<textarea name="descripcion" rows="3"></textarea></label><fieldset><legend>Áreas</legend>${["Electrónica", "Mecánica", "Programación"].map((name) => `<label class="check-label"><input type="checkbox" name="departamentos" value="${name}" />${name}</label>`).join("")}</fieldset><button class="primary-button" type="submit">Crear proyecto</button></form>`,
   };
   templates["course-dialog"] = `<form class="dialog-form" data-form="course"><div class="dialog-head"><div><p class="eyebrow">FORMACIÓN Robótica SIL</p><h2>Publicar curso</h2></div><button type="button" class="icon-button" data-action="close-dialog" aria-label="Cerrar">×</button></div><label>Nombre del curso<input name="titulo" required maxlength="100" /></label><label>Descripción<textarea name="descripcion" rows="3" maxlength="1000"></textarea></label><label>Instructor o responsable<input name="instructor" required maxlength="100" /></label><div class="field-row"><label>Fecha de inicio<input type="date" name="fechaInicio" required /></label><label>Fecha de fin<input type="date" name="fechaFin" required /></label></div><label>Horario<input name="horario" required maxlength="120" placeholder="Ej. martes y jueves, 15:00 a 17:00" /></label><div class="field-row"><label>Modalidad<select name="modalidad"><option>Presencial</option><option>Virtual</option><option>Híbrido</option></select></label><label>Lugar o enlace de referencia<input name="lugar" maxlength="120" /></label></div><button class="primary-button" type="submit">Publicar para inscripción</button></form>`;
