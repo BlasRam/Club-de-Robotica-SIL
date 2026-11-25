@@ -2754,15 +2754,9 @@ async function renderInventory(): Promise<string> {
   const lowStock = items.filter((item) => inventoryQuantity(item) <= Number(item.stockMinimo ?? 2) && !["Baja", "Retirado"].includes(item.estado));
   const categories = [...new Set(items.map((item) => String(item.categoria || "Sin categoría")))].sort((a, b) => a.localeCompare(b, "es"));
   const locations = [...new Set(items.map((item) => `${String(item.ubicacion || "")} · ${String(item.ubicacionDetalle || "")}`.trim().replace(/ ·$/, "")))].sort((a, b) => a.localeCompare(b, "es"));
-  const categorySummary = categories.map((category) => {
-    const categoryItems = items.filter((item) => String(item.categoria || "Sin categoría") === category);
-    const categoryLowStock = categoryItems.filter((item) => inventoryQuantity(item) <= Number(item.stockMinimo ?? 2) && !["Baja", "Retirado"].includes(item.estado)).length;
-    return `<button type="button" class="inventory-category-chip" data-inventory-category-filter="${esc(category)}" aria-pressed="false"><strong>${esc(category)}</strong><span>${categoryItems.length} ${categoryItems.length === 1 ? "artículo" : "artículos"}</span>${categoryLowStock ? `<small>${categoryLowStock} bajo mínimo</small>` : ""}</button>`;
-  }).join("");
   const filters = `<div class="inventory-filters" id="inventory-filters"><label>Buscar artículo<input data-inventory-filter="search" type="search" placeholder="Nombre, modelo, categoría o ubicación" /></label><label>Categoría<select data-inventory-filter="category"><option value="">Todas las categorías</option>${categories.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ubicación<select data-inventory-filter="location"><option value="">Todas las ubicaciones</option>${locations.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ordenar por<select data-inventory-filter="sort"><option value="name-asc">Nombre A–Z</option><option value="name-desc">Nombre Z–A</option><option value="stock-asc">Menor disponibilidad</option><option value="stock-desc">Mayor disponibilidad</option><option value="category">Categoría</option></select></label><label class="inventory-low-filter"><input data-inventory-filter="low" type="checkbox" /> Solo bajo mínimo</label><span class="inventory-filter-count" aria-live="polite">${items.length} artículos</span></div>`;
   return `${pageHeading("Inventario", "Existencias, ubicaciones, condición y movimientos.", `<div class="inventory-heading-actions"><button class="secondary-button compact" data-action="view-inventory-history">Historial</button><button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button></div>`)}
     ${filters}
-    ${categorySummary ? `<section class="inventory-category-summary" aria-label="Resumen por categoría"><div class="inventory-category-summary-heading"><strong>Resumen por categoría</strong><span>Selecciona una para filtrar</span></div><div class="inventory-category-chips">${categorySummary}</div></section>` : ""}
     ${lowStock.length ? `<div class="inventory-low-summary" role="status"><span class="inventory-low-dot"></span><strong>${lowStock.length} ${lowStock.length === 1 ? "artículo bajo" : "artículos bajo"} mínimo</strong><span>Usa el filtro para verlos.</span></div>` : ""}
     ${items.length ? `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Disponible / total</th><th>Ubicación</th><th>Condición</th><th>Gestión</th></tr></thead><tbody>${items.map((item) => {
       const imagePath = typeof item.imagenPath === "string" && item.imagenPath.startsWith(`inventario/${item.id}/`)
@@ -2814,9 +2808,6 @@ function applyInventoryFilters(): void {
   });
   const tbody = rows[0]?.parentElement;
   if (tbody) tbody.append(...rows);
-  document.querySelectorAll<HTMLButtonElement>("[data-inventory-category-filter]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.inventoryCategoryFilter === category));
-  });
   const count = filters.querySelector<HTMLElement>(".inventory-filter-count");
   if (count) count.textContent = `${visible} de ${rows.length} artículos`;
 }
@@ -2926,17 +2917,8 @@ function emptyPanel(title: string, message: string): string {
 
 root.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
-  const button = target.closest<HTMLElement>("[data-page], [data-action], [data-inventory-category-filter]");
+  const button = target.closest<HTMLElement>("[data-page], [data-action]");
   if (!button) return;
-  if (button.hasAttribute("data-inventory-category-filter")) {
-    const category = document.querySelector<HTMLSelectElement>('[data-inventory-filter="category"]');
-    if (category) {
-      const selectedCategory = button.dataset.inventoryCategoryFilter || "";
-      category.value = category.value === selectedCategory ? "" : selectedCategory;
-      applyInventoryFilters();
-    }
-    return;
-  }
   const page = button.dataset.page as Page | undefined;
   if (page) {
     event.preventDefault();
