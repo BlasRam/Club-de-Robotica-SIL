@@ -1,55 +1,149 @@
 // =====================================================
-    // ACTIVIDAD ADMINISTRATIVA
+// ACTIVIDAD ADMINISTRATIVA
 // =====================================================
 
-    match /actividadAdmin/{eventoId} {
-      allow read: if esAdministrador();
+match /actividadAdmin/{eventoId} {
+  function validStockActivity() {
+    let itemPath = /databases/$(database)/documents/inventario/$(request.resource.data.inventarioId);
+    let itemBefore = get(itemPath);
+    let itemAfter = getAfter(itemPath);
+    let difference = request.resource.data.stockAnterior > request.resource.data.stockNuevo
+      ? request.resource.data.stockAnterior - request.resource.data.stockNuevo
+      : request.resource.data.stockNuevo - request.resource.data.stockAnterior;
+    return request.resource.data.keys().hasAll(["cantidad", "stockAnterior", "stockNuevo", "inventarioId"])
+      && request.resource.data.cantidad is int
+      && request.resource.data.stockAnterior is int
+      && request.resource.data.stockAnterior >= 0
+      && request.resource.data.stockNuevo is int
+      && request.resource.data.stockNuevo >= 0
+      && request.resource.data.inventarioId is string
+      && request.resource.data.inventarioId.matches("^[A-Za-z0-9_-]{1,200}$")
+      && request.resource.data.entidadId == request.resource.data.inventarioId
+      && (
+        request.resource.data.tipo == "inventario_conteo"
+        ? (
+          request.resource.data.cantidad >= 0
+          && request.resource.data.keys().hasAll(["conteoFisico"])
+          && request.resource.data.conteoFisico is int
+          && request.resource.data.conteoFisico >= 0
+          && request.resource.data.conteoFisico == request.resource.data.stockNuevo
+          && request.resource.data.cantidad == difference
+          && exists(itemPath)
+          && itemBefore.data.cantidad == request.resource.data.stockAnterior
+        )
+        : (
+          request.resource.data.cantidad > 0
+          && (
+            exists(itemPath)
+            ? itemBefore.data.cantidad == request.resource.data.stockAnterior
+            : request.resource.data.tipo == "inventario_entrada" && request.resource.data.stockAnterior == 0
+          )
+          && (
+            request.resource.data.tipo in ["inventario_entrada", "prestamo_devuelto"]
+            ? request.resource.data.stockNuevo == request.resource.data.stockAnterior + request.resource.data.cantidad
+            : request.resource.data.stockNuevo == request.resource.data.stockAnterior - request.resource.data.cantidad
+          )
+        )
+      )
+      && itemAfter.data.cantidad == request.resource.data.stockNuevo
+      && itemAfter.data.ultimoMovimientoId == eventoId;
+  }
 
-      allow create: if
-        esAdministrador()
-        && request.resource.data.keys().hasOnly([
-          "tipo",
-          "titulo",
-          "detalle",
-          "emisorUid",
-          "emisorNombre",
-          "entidadId",
-          "fechaCreacion"
-        ])
-        && request.resource.data.keys().hasAll([
-          "tipo",
-          "titulo",
-          "detalle",
-          "emisorUid",
-          "emisorNombre",
-          "entidadId",
-          "fechaCreacion"
-        ])
-        && request.resource.data.tipo in [
-          "prestamo_aprobado",
-          "prestamo_rechazado",
-          "prestamo_devuelto",
-          "prestamo_eliminado",
-          "prestamo_prorroga_aprobada",
-          "prestamo_prorroga_rechazada",
-          "prestamo_devolucion_rechazada",
-          "usuario_autorizado",
-          "usuario_bloqueado",
-          "admin_promovido",
-          "usuario_eliminado"
-        ]
-        && request.resource.data.titulo is string
-        && request.resource.data.titulo.size() > 0
-        && request.resource.data.titulo.size() <= 120
-        && request.resource.data.detalle is string
-        && request.resource.data.detalle.size() <= 500
-        && request.resource.data.emisorUid == request.auth.uid
-        && request.resource.data.emisorNombre is string
-        && request.resource.data.emisorNombre.size() > 0
-        && request.resource.data.emisorNombre.size() <= 120
-        && request.resource.data.entidadId is string
-        && request.resource.data.entidadId.size() <= 200
-        && request.resource.data.fechaCreacion is timestamp;
+  function validConditionActivity() {
+    let itemPath = /databases/$(database)/documents/inventario/$(request.resource.data.inventarioId);
+    let itemBefore = get(itemPath);
+    let itemAfter = getAfter(itemPath);
+    let previousDamaged = itemBefore.data.get("cantidadDanada", 0);
+    let nextDamaged = request.resource.data.cantidadDanadaNueva;
+    let difference = previousDamaged > nextDamaged
+      ? previousDamaged - nextDamaged
+      : nextDamaged - previousDamaged;
+    return request.resource.data.keys().hasAll([
+        "cantidad", "inventarioId", "cantidadDanadaAnterior", "cantidadDanadaNueva",
+        "detalleCondicion", "operacionCondicion"
+      ])
+      && request.resource.data.cantidad is int
+      && request.resource.data.cantidad > 0
+      && request.resource.data.inventarioId is string
+      && request.resource.data.inventarioId.matches("^[A-Za-z0-9_-]{1,200}$")
+      && request.resource.data.entidadId == request.resource.data.inventarioId
+      && request.resource.data.cantidadDanadaAnterior is int
+      && request.resource.data.cantidadDanadaAnterior == previousDamaged
+      && request.resource.data.cantidadDanadaNueva is int
+      && request.resource.data.cantidadDanadaNueva >= 0
+      && request.resource.data.cantidad == difference
+      && request.resource.data.detalleCondicion is string
+      && request.resource.data.detalleCondicion.size() <= 300
+      && exists(itemPath)
+      && itemAfter.data.cantidadDanada == nextDamaged
+      && itemAfter.data.ultimoEventoCondicionId == eventoId
+      && itemAfter.data.detalleDanio == request.resource.data.detalleCondicion
+      && (
+        request.resource.data.operacionCondicion == "reportar_dano"
+        ? (
+          nextDamaged > previousDamaged
+          && itemAfter.data.cantidad == itemBefore.data.cantidad
+        )
+        : request.resource.data.operacionCondicion == "reparar"
+          ? (
+            nextDamaged < previousDamaged
+            && itemAfter.data.cantidad == itemBefore.data.cantidad
+          )
+          : request.resource.data.operacionCondicion == "retirar_danado"
+            ? (
+              nextDamaged < previousDamaged
+              && itemBefore.data.cantidad - itemAfter.data.cantidad == difference
+              && itemAfter.data.ultimoMovimientoId is string
+              && getAfter(/databases/$(database)/documents/actividadAdmin/$(itemAfter.data.ultimoMovimientoId)).data.tipo == "inventario_salida"
+              && getAfter(/databases/$(database)/documents/actividadAdmin/$(itemAfter.data.ultimoMovimientoId)).data.inventarioId == request.resource.data.inventarioId
+              && getAfter(/databases/$(database)/documents/actividadAdmin/$(itemAfter.data.ultimoMovimientoId)).data.stockAnterior == itemBefore.data.cantidad
+              && getAfter(/databases/$(database)/documents/actividadAdmin/$(itemAfter.data.ultimoMovimientoId)).data.stockNuevo == itemAfter.data.cantidad
+              && getAfter(/databases/$(database)/documents/actividadAdmin/$(itemAfter.data.ultimoMovimientoId)).data.cantidad == difference
+            )
+            : false
+      );
+  }
 
-      allow update, delete: if false;
-    }
+  allow read: if esAdministrador();
+
+  allow create: if
+    esAdministrador()
+    && request.resource.data.keys().hasOnly([
+      "tipo", "titulo", "detalle", "emisorUid", "emisorNombre", "entidadId", "fechaCreacion",
+      "cantidad", "stockAnterior", "stockNuevo", "inventarioId", "conteoFisico",
+      "cantidadDanadaAnterior", "cantidadDanadaNueva", "detalleCondicion", "operacionCondicion"
+    ])
+    && request.resource.data.keys().hasAll([
+      "tipo", "titulo", "detalle", "emisorUid", "emisorNombre", "entidadId", "fechaCreacion"
+    ])
+    && request.resource.data.tipo in [
+      "prestamo_aprobado", "prestamo_rechazado", "prestamo_devuelto", "prestamo_eliminado",
+      "prestamo_prorroga_aprobada", "prestamo_prorroga_rechazada", "prestamo_devolucion_rechazada",
+      "inventario_entrada", "inventario_salida", "inventario_conteo", "inventario_condicion_actualizada",
+      "usuario_autorizado", "usuario_bloqueado", "admin_promovido", "usuario_eliminado"
+    ]
+    && request.resource.data.titulo is string
+    && request.resource.data.titulo.size() > 0
+    && request.resource.data.titulo.size() <= 120
+    && request.resource.data.detalle is string
+    && request.resource.data.detalle.size() <= 500
+    && request.resource.data.emisorUid == request.auth.uid
+    && request.resource.data.emisorNombre is string
+    && request.resource.data.emisorNombre.size() > 0
+    && request.resource.data.emisorNombre.size() <= 120
+    && request.resource.data.entidadId is string
+    && request.resource.data.entidadId.size() <= 200
+    && request.resource.data.fechaCreacion is timestamp
+    && (
+      request.resource.data.tipo == "inventario_condicion_actualizada"
+      ? validConditionActivity()
+      : request.resource.data.tipo in ["inventario_entrada", "inventario_salida", "inventario_conteo", "prestamo_aprobado", "prestamo_devuelto"]
+        ? validStockActivity()
+        : !request.resource.data.keys().hasAny([
+          "cantidad", "stockAnterior", "stockNuevo", "inventarioId", "conteoFisico",
+          "cantidadDanadaAnterior", "cantidadDanadaNueva", "detalleCondicion", "operacionCondicion"
+        ])
+    );
+
+  allow update, delete: if false;
+}

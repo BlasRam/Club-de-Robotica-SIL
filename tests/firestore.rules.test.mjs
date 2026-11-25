@@ -61,6 +61,7 @@ test("reserva: estudiante crea la propia y solo administración la aprueba", asy
     "usuarios/admin": { uid: "admin", rol: "admin", autorizado: true },
     "usuarios/admin2": { uid: "admin2", rol: "admin", autorizado: true },
     "inventario/scope-1": { nombre: "Osciloscopio", cantidad: 5, estado: "Disponible" },
+    "reservas/pending-cleanup": { estado: "Pendiente", solicitanteUid: "student" },
   });
 
   const db = as("student");
@@ -81,11 +82,33 @@ test("reserva: estudiante crea la propia y solo administración la aprueba", asy
     fechaCreacion: Timestamp.now(),
   }));
   await assertFails(updateDoc(reservation, { estado: "Aprobada" }));
-  await assertSucceeds(updateDoc(doc(as("admin"), reservation.path), {
+  const adminDb = as("admin");
+  const approvalBatch = writeBatch(adminDb);
+  const approvalActivity = doc(collection(adminDb, "actividadAdmin"));
+  approvalBatch.update(doc(adminDb, "inventario/scope-1"), {
+    cantidad: 3,
+    estado: "Disponible",
+    ultimoMovimientoId: approvalActivity.id,
+  });
+  approvalBatch.set(approvalActivity, {
+    tipo: "prestamo_aprobado",
+    titulo: "Préstamo aprobado",
+    detalle: "Osciloscopio · préstamo",
+    cantidad: 2,
+    stockAnterior: 5,
+    stockNuevo: 3,
+    inventarioId: "scope-1",
+    emisorUid: "admin",
+    emisorNombre: "Admin original",
+    entidadId: reservation.id,
+    fechaCreacion: Timestamp.now(),
+  });
+  approvalBatch.update(doc(adminDb, reservation.path), {
     estado: "Aprobada",
     aprobadoPorUid: "admin",
     aprobadoPorNombre: "Admin original",
-  }));
+  });
+  await assertSucceeds(approvalBatch.commit());
   const proposalDate = Timestamp.fromDate(new Date("2026-11-14T12:00:00Z"));
   await assertSucceeds(updateDoc(reservation, {
     accionSolicitada: "Prorroga",
@@ -140,11 +163,26 @@ test("reserva: estudiante crea la propia y solo administración la aprueba", asy
     leida: false,
   });
   await assertSucceeds(returnRequest.commit());
+  await assertFails(deleteDoc(doc(as("admin2"), reservation.path)));
 
-  const adminDb = as("admin2");
-  const returnBatch = writeBatch(adminDb);
-  returnBatch.update(doc(adminDb, "inventario/scope-1"), { cantidad: 7, estado: "Disponible" });
-  returnBatch.set(doc(adminDb, "prestamosArchivados/returned-loan"), {
+  const adminDb2 = as("admin2");
+  const returnBatch = writeBatch(adminDb2);
+  const returnActivity = doc(collection(adminDb2, "actividadAdmin"));
+  returnBatch.update(doc(adminDb2, "inventario/scope-1"), { cantidad: 5, estado: "Disponible", ultimoMovimientoId: returnActivity.id });
+  returnBatch.set(returnActivity, {
+    tipo: "prestamo_devuelto",
+    titulo: "Devolución registrada",
+    detalle: "Osciloscopio · devolución",
+    cantidad: 2,
+    stockAnterior: 3,
+    stockNuevo: 5,
+    inventarioId: "scope-1",
+    emisorUid: "admin2",
+    emisorNombre: "Admin alternativo",
+    entidadId: reservation.id,
+    fechaCreacion: Timestamp.now(),
+  });
+  returnBatch.set(doc(adminDb2, `prestamosArchivados/${reservation.id}`), {
     reservaId: reservation.id,
     recursoId: "scope-1",
     recursoNombre: "Osciloscopio",
@@ -161,8 +199,8 @@ test("reserva: estudiante crea la propia y solo administración la aprueba", asy
     fechaDevolucionReal: Timestamp.now(),
     estado: "Devuelta",
   });
-  returnBatch.delete(doc(adminDb, reservation.path));
-  returnBatch.set(doc(adminDb, "usuarios/student/notificaciones/return-approved"), {
+  returnBatch.delete(doc(adminDb2, reservation.path));
+  returnBatch.set(doc(adminDb2, "usuarios/student/notificaciones/return-approved"), {
     proyectoId: "",
     tipo: "prestamo",
     reservaId: reservation.id,
@@ -202,8 +240,8 @@ test("reserva: estudiante crea la propia y solo administración la aprueba", asy
     fechaDevolucion: end,
     fechaCreacion: Timestamp.now(),
   }));
-  await assertFails(deleteDoc(doc(as("student"), reservation.path)));
-  await assertSucceeds(deleteDoc(doc(as("admin"), reservation.path)));
+  await assertFails(deleteDoc(doc(as("student"), "reservas/pending-cleanup")));
+  await assertSucceeds(deleteDoc(doc(as("admin"), "reservas/pending-cleanup")));
 });
 
 test("avisos: usuarios autorizados reaccionan solo con su propia identidad", async () => {
@@ -285,7 +323,21 @@ test("reservation: admin records return when borrower profile is deleted", async
 
   const db = as("admin");
   const batch = writeBatch(db);
-  batch.update(doc(db, "inventario/scope-1"), { cantidad: 5, estado: "Disponible" });
+  const returnActivity = doc(collection(db, "actividadAdmin"));
+  batch.update(doc(db, "inventario/scope-1"), { cantidad: 5, estado: "Disponible", ultimoMovimientoId: returnActivity.id });
+  batch.set(returnActivity, {
+    tipo: "prestamo_devuelto",
+    titulo: "Devolución registrada",
+    detalle: "Osciloscopio · devolución",
+    cantidad: 2,
+    stockAnterior: 3,
+    stockNuevo: 5,
+    inventarioId: "scope-1",
+    emisorUid: "admin",
+    emisorNombre: "Admin",
+    entidadId: "loan-1",
+    fechaCreacion: Timestamp.now(),
+  });
   batch.set(doc(db, "prestamosArchivados/loan-1"), {
     reservaId: "loan-1",
     recursoId: "scope-1",
@@ -328,7 +380,25 @@ test("inventario: solo administración puede cambiar cantidad", async () => {
     },
   });
   await assertFails(updateDoc(doc(as("student"), "inventario/scope-1"), { cantidad: 3 }));
-  await assertSucceeds(updateDoc(doc(as("admin"), "inventario/scope-1"), { cantidad: 3 }));
+  const adminDb = as("admin");
+  await assertFails(updateDoc(doc(adminDb, "inventario/scope-1"), { cantidad: 3 }));
+  const stockAdjustment = writeBatch(adminDb);
+  const activity = doc(collection(adminDb, "actividadAdmin"));
+  stockAdjustment.update(doc(adminDb, "inventario/scope-1"), { cantidad: 3, ultimoMovimientoId: activity.id });
+  stockAdjustment.set(activity, {
+    tipo: "inventario_salida",
+    titulo: "Salida de inventario",
+    detalle: "Osciloscopio · salida por pruebas",
+    cantidad: 2,
+    stockAnterior: 5,
+    stockNuevo: 3,
+    inventarioId: "scope-1",
+    emisorUid: "admin",
+    emisorNombre: "Admin",
+    entidadId: "scope-1",
+    fechaCreacion: Timestamp.now(),
+  });
+  await assertSucceeds(stockAdjustment.commit());
   await assertFails(deleteDoc(doc(as("student"), "inventario/scope-1")));
   await assertSucceeds(deleteDoc(doc(as("admin"), "inventario/scope-1")));
 });

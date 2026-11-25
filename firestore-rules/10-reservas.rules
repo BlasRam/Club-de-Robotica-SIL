@@ -5,6 +5,49 @@
 
     match /reservas/{reservaId} {
 
+      function hasApprovalMovement() {
+        let itemPath = /databases/$(database)/documents/inventario/$(resource.data.recursoId);
+        let itemBefore = get(itemPath).data;
+        let itemAfter = getAfter(itemPath).data;
+        let event = getAfter(/databases/$(database)/documents/actividadAdmin/$(itemAfter.ultimoMovimientoId)).data;
+        return resource.data.recursoId is string
+          && resource.data.cantidadSolicitada is int
+          && itemBefore.cantidad is int
+          && itemBefore.cantidad - itemBefore.get("cantidadDanada", 0) >= resource.data.cantidadSolicitada
+          && itemAfter.cantidad == itemBefore.cantidad - resource.data.cantidadSolicitada
+          && itemAfter.ultimoMovimientoId is string
+          && event.tipo == "prestamo_aprobado"
+          && event.entidadId == reservaId
+          && event.inventarioId == resource.data.recursoId
+          && event.cantidad == resource.data.cantidadSolicitada
+          && event.stockAnterior == itemBefore.cantidad
+          && event.stockNuevo == itemAfter.cantidad;
+      }
+
+      function hasReturnMovement() {
+        let itemPath = /databases/$(database)/documents/inventario/$(resource.data.recursoId);
+        let itemBefore = get(itemPath).data;
+        let itemAfter = getAfter(itemPath).data;
+        let event = getAfter(/databases/$(database)/documents/actividadAdmin/$(itemAfter.ultimoMovimientoId)).data;
+        let archive = getAfter(/databases/$(database)/documents/prestamosArchivados/$(reservaId)).data;
+        return resource.data.recursoId is string
+          && resource.data.cantidadSolicitada is int
+          && itemBefore.cantidad is int
+          && itemAfter.cantidad == itemBefore.cantidad + resource.data.cantidadSolicitada
+          && itemAfter.ultimoMovimientoId is string
+          && event.tipo == "prestamo_devuelto"
+          && event.entidadId == reservaId
+          && event.inventarioId == resource.data.recursoId
+          && event.cantidad == resource.data.cantidadSolicitada
+          && event.stockAnterior == itemBefore.cantidad
+          && event.stockNuevo == itemAfter.cantidad
+          && archive.reservaId == reservaId
+          && archive.estado == "Devuelta"
+          && archive.recursoId == resource.data.recursoId
+          && archive.cantidadSolicitada == resource.data.cantidadSolicitada
+          && archive.solicitanteUid == resource.data.solicitanteUid;
+      }
+
       allow create: if
         estaAutenticado()
         && (estaAutorizado() || esAdministrador())
@@ -50,7 +93,9 @@
         && request.resource.data.cantidadSolicitada > 0
         && get(
           /databases/$(database)/documents/inventario/$(request.resource.data.recursoId)
-        ).data.cantidad >= request.resource.data.cantidadSolicitada
+        ).data.cantidad - get(
+          /databases/$(database)/documents/inventario/$(request.resource.data.recursoId)
+        ).data.get("cantidadDanada", 0) >= request.resource.data.cantidadSolicitada
         && get(
           /databases/$(database)/documents/inventario/$(request.resource.data.recursoId)
         ).data.estado == "Disponible"
@@ -87,6 +132,7 @@
             || (
               request.resource.data.aprobadoPorUid == request.auth.uid
               && request.resource.data.aprobadoPorNombre is string
+              && hasApprovalMovement()
             )
           )
         )
@@ -141,7 +187,18 @@
         )
       );
 
-      allow delete: if esAdministrador();
+      allow delete: if esAdministrador() && (
+        resource.data.estado in ["Pendiente", "Rechazada", "Cancelada"]
+        || (
+          resource.data.estado == "Aprobada"
+          && exists(/databases/$(database)/documents/inventario/$(resource.data.recursoId))
+          && hasReturnMovement()
+        )
+        || (
+          resource.data.estado == "Aprobada"
+          && !exists(/databases/$(database)/documents/inventario/$(resource.data.recursoId))
+        )
+      );
     }
 
     // =====================================================
