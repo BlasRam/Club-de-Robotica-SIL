@@ -1210,6 +1210,7 @@ async function pageContent(page: Page): Promise<string> {
     if (page === "perfil") return renderSandboxProfile();
     if (page === "configuracion") return renderSettings();
     if (page === "calendario") return renderCalendar();
+    if (page === "acceso") return renderComponentCatalog();
     if (page === "componentes") return renderComponentCatalog();
     if (page === "muestra") return `${pageHeading("Guías de proyectos", "Prototipos del club que ya fueron revisados.")}<div class="showcase-grid"><article class="showcase-card"><p class="project-area">Electrónica · Programación</p><h3>Robot móvil</h3><p>Prototipo autónomo para explorar el aula y evitar obstáculos.</p><small>Guía compartida con el club</small></article></div>`;
     if (page === "sugerencias") return `${pageHeading("Ayuda y sugerencias", "Envía una idea o reporta un problema de la PWA.")}<div class="notice-box info">La vista de prueba no envía información real.</div>`;
@@ -1220,6 +1221,7 @@ async function pageContent(page: Page): Promise<string> {
     }
     return renderStudentSandbox(page);
   }
+  if (page === "acceso" && !isAdminInterface()) return renderComponentCatalog();
   switch (page) {
     case "inicio": return renderHome();
     case "proyectos": return renderProjects();
@@ -1503,11 +1505,6 @@ function renderStudentSandbox(page: Page): string {
     return `${heading("Tareas", "Seguimiento de tus responsabilidades.")}
       <div class="task-summary"><div><strong>${demo.taskDone ? 1 : 2}</strong><span>Pendientes</span></div><div><strong>${demo.taskDone ? 1 : 0}</strong><span>Completadas</span></div></div>
       <div class="task-list"><article class="task-row"><span class="task-check ${demo.taskDone ? "done" : ""}">${demo.taskDone ? icon("listo", 17) : ""}</span><div class="task-info"><span class="task-project">PROYECTO ROBOT MÓVIL</span><h3>Probar sensores ultrasónicos</h3><p>Verificar la distancia de detección y registrar resultados.</p><div class="task-meta"><span class="state-pill ${demo.taskDone ? "success" : "warning"}">${demo.taskDone ? "Completada" : "Pendiente"}</span></div></div>${demo.taskDone ? "" : `<button class="secondary-button compact" data-action="preview-complete-task">Marcar completada</button>`}</article><article class="task-row"><span class="task-check"></span><div class="task-info"><span class="task-project">PROYECTO ROBOT MÓVIL</span><h3>Documentar el montaje</h3><p>Agregar fotografías y notas del prototipo.</p><div class="task-meta"><span class="state-pill warning">Pendiente</span></div></div></article></div>`;
-  }
-  if (page === "acceso") {
-    return `${heading("Entrada al laboratorio", "Registra y consulta tus entradas y salidas.")}
-      <section class="access-panel ${demo.inside ? "inside" : "outside"}"><div class="access-panel-icon">${icon("acceso", 30)}</div><div class="access-panel-copy"><span class="status-label">TU ESTADO ACTUAL</span><h2>${demo.inside ? "Dentro del laboratorio" : "Fuera del laboratorio"}</h2><p>${demo.inside && demo.entryAt ? `Entrada registrada: ${dateText(demo.entryAt, true)}` : "Pulsa el candado para solicitar acceso."}</p></div>${accessLockButtonMarkup(demo.inside, "preview-register-entry", demo.inside)}</section>
-      <section class="unframed-section"><div class="section-heading"><h2>Mi historial</h2><span class="section-count">${demo.entryAt ? 1 : 0}</span></div>${demo.entryAt ? `<div class="activity-list">${activityRow({ tipo: "entrada", nombreCompleto: fullName(), fechaHora: demo.entryAt })}</div>` : emptyInline("Todavía no tienes movimientos registrados.")}</section>`;
   }
   if (page === "proyectos") {
     return `${heading("Proyectos", "Equipos, responsables y áreas de trabajo.")}
