@@ -800,6 +800,14 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
     state.updateAvailable = true;
     render();
   };
+  const applyUpdateWhenSafe = (worker: ServiceWorker) => {
+    if (document.querySelector("form, dialog[open]")) {
+      offerUpdate(worker);
+      return;
+    }
+    reloadingForUpdate = true;
+    worker.postMessage({ type: "SKIP_WAITING" });
+  };
   document.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -815,12 +823,12 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
 
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register("/service-worker.js", { updateViaCache: "none" }).then((registration) => {
-      if (registration.waiting && navigator.serviceWorker.controller) offerUpdate(registration.waiting);
+      if (registration.waiting && navigator.serviceWorker.controller) applyUpdateWhenSafe(registration.waiting);
       registration.addEventListener("updatefound", () => {
         const installing = registration.installing;
         if (!installing) return;
         installing.addEventListener("statechange", () => {
-          if (installing.state === "installed" && navigator.serviceWorker.controller) offerUpdate(installing);
+          if (installing.state === "installed" && navigator.serviceWorker.controller) applyUpdateWhenSafe(installing);
         });
       });
       const checkForUpdate = () => registration.update().catch(() => undefined);
