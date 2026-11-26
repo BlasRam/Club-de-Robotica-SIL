@@ -31,6 +31,12 @@ const bookmark = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" st
 const circuit = '<svg viewBox="0 0 48 48" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="13" y="13" width="22" height="22" rx="4"/><path d="M18 6v7m12-7v7M18 35v7m12-7v7M6 18h7m-7 12h7m22-12h7m-7 12h7"/><path d="m21 20-4 4 4 4m6-8 4 4-4 4"/></svg>';
 let context: { uid: string; items: Guide[]; photos: Map<string, string>; workspace?: GuideWorkspace } | null = null;
 let filters = { search: '', level: '', area: '', duration: '', view: 'all', sort: 'level' };
+type CatalogLayout = 'list' | 'grid';
+const layoutStorageKey = 'club-guide-catalog-layout-v1';
+let catalogLayout: CatalogLayout = (() => {
+  try { return localStorage.getItem(layoutStorageKey) === 'grid' ? 'grid' : 'list'; }
+  catch { return 'list'; }
+})();
 
 function durationBand(item: Guide): string {
   const value = normalize(item.tiempoEstimado);
@@ -84,7 +90,7 @@ export function renderGuideLibrary(items: Guide[], photos: Map<string, string>, 
   return '<section class="gl-library" aria-label="Biblioteca de proyectos"><div class="gl-catalog-controls"><label class="gl-search"><span class="gl-visually-hidden">Buscar proyectos, sensores o materiales</span><input type="search" data-gl-filter="search" aria-label="Buscar proyectos, sensores o materiales" placeholder="Ej.: robot móvil, LED, sensor ultrasónico" value="' + escape(filters.search) + '"/></label>' +
     '<div class="gl-catalog-tabs" role="group" aria-label="Ver proyectos">' + [['all', 'Todos'], ['saved', 'Guardados'], ['started', 'En progreso'], ...(workspace?.admin ? [['archived', 'Archivados']] : [])].map(([value, label]) => '<button type="button" data-gl-view="' + value + '" aria-pressed="' + (filters.view === value) + '">' + label + '</button>').join('') + '</div>' +
     '<details class="gl-more-filters"><summary>Más filtros</summary><div class="gl-filter-row"><label>Nivel<select data-gl-filter="level">' + option('Todos', '', filters.level) + option('Principiante', 'Inicial', filters.level) + option('Intermedio', 'Intermedio', filters.level) + option('Avanzado', 'Avanzado', filters.level) + '</select></label><label>Duración<select data-gl-filter="duration">' + option('Cualquiera', '', filters.duration) + option('Hasta 1 hora', 'short', filters.duration) + option('1 a 2 horas', 'medium', filters.duration) + option('Más de 2 horas', 'long', filters.duration) + '</select></label><label>Área<select data-gl-filter="area">' + option('Todas', '', filters.area) + areas.map(a => option(a, a, filters.area)).join('') + '</select></label><label>Orden<select data-gl-filter="sort">' + option('Más fáciles primero', 'level', filters.sort) + option('Nombre A–Z', 'title', filters.sort) + '</select></label><button type="button" class="gl-clear" data-gl-reset>Limpiar búsqueda y filtros</button></div></details></div>' +
-    workspaceToolbar(workspace) + routeMarkup(items, saved) + '<p class="gl-result-count" role="status" aria-live="polite">' + visible.length + ' de ' + items.length + ' proyectos</p><div class="gl-grid">' + results(visible, photos, saved) + '</div><p class="gl-status" role="status"></p></section>';
+    workspaceToolbar(workspace) + routeMarkup(items, saved) + '<div class="gl-results-toolbar"><p class="gl-result-count" role="status" aria-live="polite">' + visible.length + ' de ' + items.length + ' proyectos</p><div class="gl-layout-toggle" role="group" aria-label="Vista de proyectos"><button type="button" data-gl-layout="list" aria-label="Ver como lista" title="Lista" aria-pressed="' + (catalogLayout === 'list') + '"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M3 6h.01M3 12h.01M3 18h.01"/></svg><span class="gl-visually-hidden">Lista</span></button><button type="button" data-gl-layout="grid" aria-label="Ver como cuadrícula" title="Cuadrícula" aria-pressed="' + (catalogLayout === 'grid') + '"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="gl-visually-hidden">Cuadrícula</span></button></div></div><div class="gl-grid" data-layout="' + catalogLayout + '">' + results(visible, photos, saved) + '</div><p class="gl-status" role="status"></p></section>';
 }
 
 function updateLibrary(): void {
@@ -94,9 +100,12 @@ function updateLibrary(): void {
   const route = root.querySelector('.gl-route');
   if (route) route.innerHTML = routeContents(context.items, saved);
   const visible = filteredItems(context.items, saved);
-  root.querySelector('.gl-grid')!.innerHTML = results(visible, context.photos, saved);
+  const grid = root.querySelector<HTMLElement>('.gl-grid')!;
+  grid.dataset.layout = catalogLayout;
+  grid.innerHTML = results(visible, context.photos, saved);
   root.querySelector('.gl-result-count')!.textContent = visible.length + ' de ' + context.items.length + ' guías';
   root.querySelectorAll<HTMLElement>('[data-gl-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.glView === filters.view)));
+  root.querySelectorAll<HTMLElement>('[data-gl-layout]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.glLayout === catalogLayout)));
 }
 
 function openGuide(item: Guide, uid: string, opener: HTMLElement): void {
@@ -204,6 +213,13 @@ document.addEventListener('click', event => {
   }
   const view = target.closest<HTMLElement>('[data-gl-view]');
   if (view) { filters.view = view.dataset.glView!; updateLibrary(); }
+  const layout = target.closest<HTMLElement>('[data-gl-layout]');
+  if (layout && (layout.dataset.glLayout === 'list' || layout.dataset.glLayout === 'grid')) {
+    catalogLayout = layout.dataset.glLayout;
+    try { localStorage.setItem(layoutStorageKey, catalogLayout); } catch { /* The current view still works without storage. */ }
+    updateLibrary();
+    library.querySelector<HTMLElement>('[data-gl-layout="' + catalogLayout + '"]')?.focus();
+  }
   if (target.closest('[data-gl-reset]')) {
     filters = { search: '', level: '', area: '', duration: '', view: 'all', sort: 'level' };
     library.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-gl-filter]').forEach(input => input.value = input.dataset.glFilter === 'sort' ? 'level' : '');
