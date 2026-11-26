@@ -2795,7 +2795,7 @@ function inventoryActionsMarkup(item: Record<string, any>): string {
 
 function inventoryTableRow(data: InventoryViewItem): string {
   const { item, quantity, damaged, available, minimum, unit, location, low, condition } = data;
-  return `<tr ${inventoryEntryAttributes(data)}><td><div class="inventory-item-cell">${inventoryImageMarkup(data, 38)}<div class="inventory-item-copy"><strong title="${esc(item.nombre)}">${esc(item.nombre)}</strong><small title="${esc(item.descripcion || "")}">${esc(item.descripcion || "")}</small></div></div></td><td><span class="inventory-category">${esc(item.categoria || "Sin categoría")}</span></td><td><strong>${available} ${inventoryUnitLabel(unit, available)}</strong><small class="inventory-stock-meta"><span>${quantity} total</span><span>${damaged} dañadas</span><span class="${low ? "warning-text" : ""}">mín. ${minimum}</span></small></td><td><span class="inventory-location" title="${esc(location)}">${esc(location)}</span></td><td><span class="state-pill ${item.estado === "Disponible" ? "success" : "muted"}">${esc(item.estado || "—")}</span>${damaged ? `<small class="inventory-condition-note warning-text" title="${esc(condition)}">${damaged} dañadas · ${esc(item.detalleDanio || "Revisar")}</small>` : ""}</td><td>${inventoryActionsMarkup(item)}</td></tr>`;
+  return `<tr ${inventoryEntryAttributes(data)}><td data-label="Artículo"><div class="inventory-item-cell">${inventoryImageMarkup(data, 38)}<div class="inventory-item-copy"><strong title="${esc(item.nombre)}">${esc(item.nombre)}</strong><small title="${esc(item.descripcion || "")}">${esc(item.descripcion || "")}</small></div></div></td><td data-label="Categoría"><span class="inventory-category">${esc(item.categoria || "Sin categoría")}</span></td><td data-label="Disponible"><strong>${available} ${inventoryUnitLabel(unit, available)}</strong><small class="inventory-stock-meta"><span>${quantity} total</span><span>${damaged} dañadas</span><span class="${low ? "warning-text" : ""}">mín. ${minimum}</span></small></td><td data-label="Ubicación"><span class="inventory-location" title="${esc(location)}">${esc(location)}</span></td><td data-label="Condición"><span class="state-pill ${item.estado === "Disponible" ? "success" : "muted"}">${esc(item.estado || "—")}</span>${damaged ? `<small class="inventory-condition-note warning-text" title="${esc(condition)}">${damaged} dañadas · ${esc(item.detalleDanio || "Revisar")}</small>` : ""}</td><td data-label="Gestión">${inventoryActionsMarkup(item)}</td></tr>`;
 }
 
 function inventoryGridCard(data: InventoryViewItem): string {
@@ -2808,19 +2808,22 @@ async function renderInventory(): Promise<string> {
   const items: Array<Record<string, any>> = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
   inventoryItemsById = new Map(items.map((item) => [item.id, item]));
   const viewItems = items.map(inventoryViewItem);
-  const inventoryView = localStorage.getItem("cdr-inventory-view") === "grid" ? "grid" : "list";
+  const mobileViewport = window.matchMedia("(max-width: 760px)").matches;
+  const viewPreference = localStorage.getItem(mobileViewport ? "cdr-inventory-view-mobile" : "cdr-inventory-view-desktop") || localStorage.getItem("cdr-inventory-view");
+  const inventoryView = viewPreference ? (viewPreference === "grid" ? "grid" : "list") : (mobileViewport ? "grid" : "list");
   const lowStock = items.filter((item) => inventoryQuantity(item) <= Number(item.stockMinimo ?? 2) && !["Baja", "Retirado"].includes(item.estado));
   const categories = [...new Set(items.map((item) => String(item.categoria || "Sin categoría")))].sort((a, b) => a.localeCompare(b, "es"));
   const locations = [...new Set(items.map((item) => `${String(item.ubicacion || "")} · ${String(item.ubicacionDetalle || "")}`.trim().replace(/ ·$/, "")))].sort((a, b) => a.localeCompare(b, "es"));
-  const filters = `<div class="inventory-filters" id="inventory-filters"><label>Buscar artículo<input data-inventory-filter="search" type="search" placeholder="Nombre, modelo, categoría o ubicación" /></label><label>Categoría<select data-inventory-filter="category"><option value="">Todas las categorías</option>${categories.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ubicación<select data-inventory-filter="location"><option value="">Todas las ubicaciones</option>${locations.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ordenar por<select data-inventory-filter="sort"><option value="name-asc">Nombre A–Z</option><option value="name-desc">Nombre Z–A</option><option value="stock-asc">Menor disponibilidad</option><option value="stock-desc">Mayor disponibilidad</option><option value="category">Categoría</option></select></label><label class="inventory-low-filter"><input data-inventory-filter="low" type="checkbox" /> Solo bajo mínimo</label><span class="inventory-filter-count" aria-live="polite">${items.length} artículos</span></div>`;
+  const filters = `<div class="inventory-filters" id="inventory-filters"><label>Categoría<select data-inventory-filter="category"><option value="">Todas las categorías</option>${categories.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ubicación<select data-inventory-filter="location"><option value="">Todas las ubicaciones</option>${locations.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ordenar por<select data-inventory-filter="sort"><option value="name-asc">Nombre A–Z</option><option value="name-desc">Nombre Z–A</option><option value="stock-asc">Menor disponibilidad</option><option value="stock-desc">Mayor disponibilidad</option><option value="category">Categoría</option></select></label><label class="inventory-low-filter"><input data-inventory-filter="low" type="checkbox" /> Solo bajo mínimo</label></div>`;
   const viewButtons = `<div class="inventory-view-toggle" role="group" aria-label="Vista del inventario"><button type="button" class="secondary-button compact" data-action="set-inventory-view" data-view="list" aria-pressed="${inventoryView === "list"}">Lista</button><button type="button" class="secondary-button compact" data-action="set-inventory-view" data-view="grid" aria-pressed="${inventoryView === "grid"}">Cuadrícula</button></div>`;
   const inventoryContent = items.length
     ? inventoryView === "grid"
       ? `<div class="inventory-card-grid">${viewItems.map(inventoryGridCard).join("")}</div>`
       : `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Disponible / total</th><th>Ubicación</th><th>Condición</th><th>Gestión</th></tr></thead><tbody>${viewItems.map(inventoryTableRow).join("")}</tbody></table></div>`
     : emptyPanel("Inventario vacío", "Agrega el primer artículo del club.");
-  return `${pageHeading("Inventario", "Existencias, ubicaciones, condición y movimientos.", `<div class="inventory-heading-actions">${viewButtons}<button class="secondary-button compact" data-action="view-inventory-history">Historial</button><button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button></div>`)}
-    ${filters}
+  const inventoryControls = `<section class="inventory-controls" id="inventory-controls"><div class="inventory-toolbar"><label class="inventory-search-field"><span>Buscar artículo</span><input data-inventory-filter="search" type="search" placeholder="Nombre, modelo o ubicación" /></label>${viewButtons}</div><details class="inventory-filter-panel" ${mobileViewport ? "" : "open"}><summary><strong>Filtros</strong><span>Categoría, ubicación, orden y stock mínimo</span></summary>${filters}</details><p class="inventory-filter-count" aria-live="polite">${items.length} artículos</p></section>`;
+  return `${pageHeading("Inventario", "Existencias, ubicaciones, condición y movimientos.", `<div class="inventory-heading-actions"><button class="secondary-button compact" data-action="view-inventory-history">Historial</button><button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button></div>`)}
+    ${inventoryControls}
     ${lowStock.length ? `<div class="inventory-low-summary" role="status"><span class="inventory-low-dot"></span><strong>${lowStock.length} ${lowStock.length === 1 ? "artículo bajo" : "artículos bajo"} mínimo</strong><span>Usa el filtro para verlos.</span></div>` : ""}
     ${inventoryContent}`;
 }
@@ -2828,7 +2831,7 @@ async function renderInventory(): Promise<string> {
 function applyInventoryFilters(): void {
   const filters = document.querySelector<HTMLElement>("#inventory-filters");
   if (!filters) return;
-  const search = normalizeInventorySearch(filters.querySelector<HTMLInputElement>('[data-inventory-filter="search"]')?.value || "");
+  const search = normalizeInventorySearch(document.querySelector<HTMLInputElement>('[data-inventory-filter="search"]')?.value || "");
   const category = filters.querySelector<HTMLSelectElement>('[data-inventory-filter="category"]')?.value || "";
   const location = filters.querySelector<HTMLSelectElement>('[data-inventory-filter="location"]')?.value || "";
   const sort = filters.querySelector<HTMLSelectElement>('[data-inventory-filter="sort"]')?.value || "name-asc";
@@ -2856,7 +2859,7 @@ function applyInventoryFilters(): void {
   });
   const entriesParent = rows[0]?.parentElement;
   if (entriesParent) entriesParent.append(...rows);
-  const count = filters.querySelector<HTMLElement>(".inventory-filter-count");
+  const count = document.querySelector<HTMLElement>(".inventory-filter-count");
   if (count) count.textContent = `${visible} de ${rows.length} artículos`;
 }
 
@@ -3050,7 +3053,8 @@ root.addEventListener("click", (event) => {
   } else if (action === "refresh") {
     render();
   } else if (action === "set-inventory-view" && state.page === "inventario" && isAdminInterface()) {
-    localStorage.setItem("cdr-inventory-view", button.dataset.view === "grid" ? "grid" : "list");
+    const mobileViewport = window.matchMedia("(max-width: 760px)").matches;
+    localStorage.setItem(mobileViewport ? "cdr-inventory-view-mobile" : "cdr-inventory-view-desktop", button.dataset.view === "grid" ? "grid" : "list");
     void loadPage();
   } else if (action === "install") {
     void installApp();
@@ -3202,12 +3206,12 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("input", (event) => {
-  if ((event.target as HTMLElement).closest("#inventory-filters")) applyInventoryFilters();
+  if ((event.target as HTMLElement).closest("#inventory-controls")) applyInventoryFilters();
   if ((event.target as HTMLElement).closest("#inventory-history-filters")) applyInventoryHistoryFilters(event.target as HTMLElement);
 });
 
 document.addEventListener("change", (event) => {
-  if ((event.target as HTMLElement).closest("#inventory-filters")) applyInventoryFilters();
+  if ((event.target as HTMLElement).closest("#inventory-controls")) applyInventoryFilters();
   if ((event.target as HTMLElement).closest("#inventory-history-filters")) applyInventoryHistoryFilters(event.target as HTMLElement);
 });
 
