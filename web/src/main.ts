@@ -3422,18 +3422,23 @@ function positionInventoryActionsMenu(menu: HTMLDetailsElement): void {
   const edge = 12;
   const viewportWidth = document.documentElement.clientWidth;
   const viewportHeight = window.innerHeight;
-  popover.style.maxHeight = `${Math.max(120, viewportHeight - edge * 2)}px`;
+  const mobileNavigation = document.querySelector<HTMLElement>(".app-shell > .mobile-nav");
+  const navigationTop = mobileNavigation?.getBoundingClientRect();
+  const visibleBottom = navigationTop && navigationTop.height > 0 && navigationTop.top < viewportHeight
+    ? Math.min(viewportHeight, navigationTop.top)
+    : viewportHeight;
+  popover.style.maxHeight = `${Math.max(0, visibleBottom - edge * 2)}px`;
 
   const trigger = summary.getBoundingClientRect();
   const panel = popover.getBoundingClientRect();
   const left = Math.max(edge, Math.min(trigger.right - panel.width, viewportWidth - panel.width - edge));
-  const availableHeight = Math.min(panel.height, viewportHeight - edge * 2);
+  const availableHeight = Math.max(0, Math.min(panel.height, visibleBottom - edge * 2));
   const below = trigger.bottom + 6;
-  const top = below + availableHeight <= viewportHeight - edge
+  const top = below + availableHeight <= visibleBottom - edge
     ? below
     : trigger.top - availableHeight - 6 >= edge
       ? trigger.top - availableHeight - 6
-      : Math.max(edge, Math.min(trigger.top, viewportHeight - availableHeight - edge));
+      : Math.max(edge, Math.min(trigger.top, visibleBottom - availableHeight - edge));
 
   popover.style.left = `${left}px`;
   popover.style.right = "auto";
@@ -3448,6 +3453,11 @@ document.addEventListener("toggle", (event) => {
     popover?.removeAttribute("style");
     return;
   }
+  document.querySelectorAll<HTMLDetailsElement>(".inventory-actions-menu[open]").forEach((otherMenu) => {
+    if (otherMenu === menu) return;
+    otherMenu.open = false;
+    otherMenu.querySelector<HTMLElement>(".inventory-actions-popover")?.removeAttribute("style");
+  });
   requestAnimationFrame(() => positionInventoryActionsMenu(menu));
 }, true);
 
