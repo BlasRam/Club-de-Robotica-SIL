@@ -3414,6 +3414,47 @@ document.addEventListener("input", (event) => {
   if ((event.target as HTMLElement).closest("#inventory-history-filters")) applyInventoryHistoryFilters(event.target as HTMLElement);
 });
 
+function positionInventoryActionsMenu(menu: HTMLDetailsElement): void {
+  const popover = menu.querySelector<HTMLElement>(".inventory-actions-popover");
+  const summary = menu.querySelector<HTMLElement>("summary");
+  if (!popover || !summary || !menu.open) return;
+
+  const edge = 12;
+  const viewportWidth = document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight;
+  popover.style.maxHeight = `${Math.max(120, viewportHeight - edge * 2)}px`;
+
+  const trigger = summary.getBoundingClientRect();
+  const panel = popover.getBoundingClientRect();
+  const left = Math.max(edge, Math.min(trigger.right - panel.width, viewportWidth - panel.width - edge));
+  const availableHeight = Math.min(panel.height, viewportHeight - edge * 2);
+  const below = trigger.bottom + 6;
+  const top = below + availableHeight <= viewportHeight - edge
+    ? below
+    : trigger.top - availableHeight - 6 >= edge
+      ? trigger.top - availableHeight - 6
+      : Math.max(edge, Math.min(trigger.top, viewportHeight - availableHeight - edge));
+
+  popover.style.left = `${left}px`;
+  popover.style.right = "auto";
+  popover.style.top = `${top}px`;
+}
+
+document.addEventListener("toggle", (event) => {
+  const menu = event.target;
+  if (!(menu instanceof HTMLDetailsElement) || !menu.matches(".inventory-actions-menu")) return;
+  const popover = menu.querySelector<HTMLElement>(".inventory-actions-popover");
+  if (!menu.open) {
+    popover?.removeAttribute("style");
+    return;
+  }
+  requestAnimationFrame(() => positionInventoryActionsMenu(menu));
+}, true);
+
+window.addEventListener("resize", () => {
+  document.querySelectorAll<HTMLDetailsElement>(".inventory-actions-menu[open]").forEach(positionInventoryActionsMenu);
+});
+
 document.addEventListener("change", (event) => {
   if ((event.target as HTMLElement).closest("#inventory-controls")) applyInventoryFilters();
   if ((event.target as HTMLElement).closest("#inventory-history-filters")) applyInventoryHistoryFilters(event.target as HTMLElement);
