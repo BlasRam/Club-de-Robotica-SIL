@@ -40,21 +40,19 @@ function durationBand(item: Guide): string {
   return minutes <= 60 ? 'short' : minutes <= 120 ? 'medium' : 'long';
 }
 
-function card(item: Guide, index: number, saved: Saved, photos: Map<string, string>): string {
+function card(item: Guide, saved: Saved, photos: Map<string, string>): string {
   const favorite = saved.favorites.includes(item.id);
   const count = completed(saved, item).length;
   const total = stepsOf(item).length;
   const finished = total > 0 && count === total;
-  const progress = total ? Math.round(count / total * 100) : 0;
   const technology = String(item.tecnologias || '').split(/[·,]/)[0].trim();
   const materials = String(item.materiales || '').trim();
   return '<article class="gl-card" data-gl-card="' + escape(item.id) + '"><div class="gl-card-top">' +
     (photos.has(item.id) ? '<img src="' + escape(photos.get(item.id)) + '" alt="Prototipo de ' + escape(item.titulo) + '" loading="lazy"/>' : '<span class="gl-circuit">' + circuit + '</span>') +
-    '<span class="gl-number">' + String(index + 1).padStart(2, '0') + '</span><button class="gl-save" data-gl-save="' + escape(item.id) + '" aria-pressed="' + favorite + '" aria-label="' + (favorite ? 'Quitar de guardadas: ' : 'Guardar: ') + escape(item.titulo) + '">' + bookmark + '</button></div>' +
-    '<div class="gl-card-body"><span class="gl-origin">' + (finished ? 'PROYECTO COMPLETADO' : item.guiaInicial ? 'PARA PRACTICAR' : 'PROYECTO DEL CLUB') + '</span><h3>' + escape(item.titulo) + '</h3><p class="gl-card-result"><strong>Vas a construir:</strong> ' + escape(item.resumen) + '</p><div class="gl-tags"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + escape(item.tiempoEstimado || 'Tiempo variable') + '</span>' + (technology ? '<span>' + escape(technology) + '</span>' : '') + '</div>' +
-    (materials ? '<p class="gl-card-materials"><strong>Necesitas:</strong> ' + escape(materials) + '</p>' : '') +
-    (total ? '<div class="gl-card-progress"><div role="progressbar" aria-label="Avance en ' + escape(item.titulo) + '" aria-valuemin="0" aria-valuemax="' + total + '" aria-valuenow="' + count + '"><span style="width:' + progress + '%"></span></div><p class="gl-progress-label">' + (finished ? 'Completaste los ' + total + ' pasos' : count ? count + ' de ' + total + ' pasos · Puedes continuar cuando quieras' : total + ' pasos guiados') + '</p></div>' : '') +
-    '<button class="primary-button" data-gl-open="' + escape(item.id) + '">' + (finished ? 'Volver a la guía' : count ? 'Continuar proyecto' : 'Ver proyecto') + ' <span aria-hidden="true">→</span></button></div></article>';
+    '<button class="gl-save" data-gl-save="' + escape(item.id) + '" aria-pressed="' + favorite + '" aria-label="' + (favorite ? 'Quitar de guardadas: ' : 'Guardar: ') + escape(item.titulo) + '">' + bookmark + '</button></div>' +
+    '<div class="gl-card-body"><div class="gl-card-copy"><h3>' + escape(item.titulo) + '</h3><p>' + escape(item.resumen) + '</p>' + (materials ? '<p class="gl-card-materials">' + escape(materials) + '</p>' : '') + '</div><div class="gl-card-meta"><div class="gl-tags"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + escape(item.tiempoEstimado || 'Tiempo variable') + '</span>' + (technology ? '<span>' + escape(technology) + '</span>' : '') + '</div>' +
+    (total ? '<p class="gl-progress-label">' + (finished ? 'Guía completada' : count ? 'Avance: ' + count + ' de ' + total + ' pasos' : total + ' pasos') + '</p>' : '') + '</div>' +
+    '<button class="gl-open-link" data-gl-open="' + escape(item.id) + '">' + (finished ? 'Ver guía' : count ? 'Continuar' : 'Abrir guía') + ' <span aria-hidden="true">→</span></button></div></article>';
 }
 
 function filteredItems(items: Guide[], saved: Saved): Guide[] {
@@ -72,17 +70,8 @@ function filteredItems(items: Guide[], saved: Saved): Guide[] {
 }
 
 function results(items: Guide[], photos: Map<string, string>, saved: Saved): string {
-  return items.length ? items.map((item, i) => card(item, i, saved, photos)).join('')
-    : '<div class="gl-empty"><h3>No hay guías en esta selección</h3><p>Prueba otro componente, cambia los filtros o guarda una guía para encontrarla aquí.</p><button class="secondary-button" data-gl-reset>Mostrar todas</button></div>';
-}
-
-function recommendationMarkup(items: Guide[], saved: Saved): string {
-  const routeGuides = learningRoute.flatMap(stage => stage.ids.map(id => items.find(item => item.id === id && !item.archivada)).filter((item): item is Guide => Boolean(item)));
-  if (!routeGuides.some(item => completed(saved, item).length > 0)) return '';
-  const nextGuide = routeGuides.find(item => completed(saved, item).length < stepsOf(item).length);
-  if (!nextGuide) return '';
-  const doneGuides = routeGuides.filter(item => stepsOf(item).length > 0 && completed(saved, item).length === stepsOf(item).length).length;
-  return '<section class="gl-recommendation" aria-label="Siguiente guía recomendada"><div><span class="gl-eyebrow">' + (doneGuides ? 'SIGUE TU RUTA' : 'RECOMENDADA PARA EMPEZAR') + '</span><h3>' + escape(nextGuide.titulo) + '</h3><p>' + escape(nextGuide.resumen) + '</p><small>' + escape(nextGuide.nivelDificultad || 'Nivel inicial') + ' · ' + escape(nextGuide.tiempoEstimado || 'Tiempo variable') + ' · ' + doneGuides + ' de ' + routeGuides.length + ' guías completadas</small></div><button class="primary-button" data-gl-open="' + escape(nextGuide.id) + '">' + (completed(saved, nextGuide).length ? 'Continuar ruta' : 'Empezar ruta') + ' →</button></section>';
+  return items.length ? items.map(item => card(item, saved, photos)).join('')
+    : '<div class="gl-empty"><p>No hay proyectos con esta búsqueda.</p><button class="text-button" data-gl-reset>Mostrar todos los proyectos</button></div>';
 }
 
 export function renderGuideLibrary(items: Guide[], photos: Map<string, string>, uid: string, workspace?: GuideWorkspace): string {
@@ -92,24 +81,18 @@ export function renderGuideLibrary(items: Guide[], photos: Map<string, string>, 
   const visible = filteredItems(items, saved);
   const areas = [...new Set(items.flatMap(item => item.areas || []))].sort();
   const option = (label: string, value: string, selected: string) => '<option value="' + escape(value) + '"' + (value === selected ? ' selected' : '') + '>' + escape(label) + '</option>';
-  return '<section class="gl-library" aria-label="Biblioteca de proyectos"><div class="gl-hero"><div><span class="gl-eyebrow">APRENDE CONSTRUYENDO</span><h2>Tu próximo proyecto empieza aquí</h2><p>Elige una idea, prepara los materiales y avanza a tu ritmo.</p></div><div class="gl-total"><strong>' + items.filter(item => !item.archivada).length + '</strong><span>guías para explorar</span></div></div>' +
-    '<div class="gl-recommendation-anchor">' + recommendationMarkup(items, saved) + '</div>' +
-    '<section class="gl-start" aria-label="Elige cómo encontrar un proyecto"><h3>¿Cómo quieres empezar?</h3><div><button type="button" data-gl-intent="beginner"><strong>Quiero empezar</strong><span>Ver proyectos para principiantes</span></button><button type="button" data-gl-intent="components"><strong>Tengo componentes</strong><span>Buscar por sensor o material</span></button><button type="button" data-gl-intent="idea"><strong>Tengo una idea</strong><span>Buscar un proyecto por nombre</span></button></div></section>' +
-    workspaceToolbar(workspace) + routeMarkup(items, saved) + '<div class="gl-toolbar" id="gl-library-filters"><label class="gl-search">Buscar un proyecto o componente<input type="search" data-gl-filter="search" placeholder="Ej.: LED, sensor ultrasónico, robot…" value="' + escape(filters.search) + '"/></label><div class="gl-filter-row"><label>¿Qué nivel buscas?<select data-gl-filter="level">' + option('Cualquier nivel', '', filters.level) + option('Estoy empezando', 'Inicial', filters.level) + option('Ya conozco lo básico', 'Intermedio', filters.level) + option('Busco un reto', 'Avanzado', filters.level) + '</select></label><label>¿Cuánto tiempo tienes?<select data-gl-filter="duration">' + option('Cualquier duración', '', filters.duration) + option('Hasta 1 hora', 'short', filters.duration) + option('De 1 a 2 horas', 'medium', filters.duration) + option('Más de 2 horas', 'long', filters.duration) + '</select></label><label>¿Qué quieres explorar?<select data-gl-filter="area">' + option('Todas las áreas', '', filters.area) + areas.map(a => option(a, a, filters.area)).join('') + '</select></label><label>Ordenar<select data-gl-filter="sort">' + option('Más fáciles primero', 'level', filters.sort) + option('Nombre (A–Z)', 'title', filters.sort) + '</select></label></div>' +
-    '<div class="gl-views" role="group" aria-label="Filtrar biblioteca">' + [['all', 'Todas'], ['saved', 'Guardadas'], ['started', 'Mi avance'], ...(workspace?.admin ? [['archived', 'Archivadas']] : [])].map(([value, label]) => '<button data-gl-view="' + value + '" aria-pressed="' + (filters.view === value) + '">' + label + '</button>').join('') + '<button class="gl-clear" data-gl-reset>Limpiar filtros</button></div></div>' +
-    '<p class="gl-device-note">' + escape(workspace?.progress.status() || 'Avance guardado en este dispositivo.') + '</p><div class="gl-result-count" role="status" aria-live="polite">' + visible.length + ' de ' + items.length + ' guías</div><div class="gl-grid">' + results(visible, photos, saved) + '</div><p class="gl-status" role="status"></p></section>';
+  return '<section class="gl-library" aria-label="Biblioteca de proyectos"><div class="gl-catalog-controls"><label class="gl-search"><span class="gl-visually-hidden">Buscar proyectos, sensores o materiales</span><input type="search" data-gl-filter="search" aria-label="Buscar proyectos, sensores o materiales" placeholder="Ej.: robot móvil, LED, sensor ultrasónico" value="' + escape(filters.search) + '"/></label>' +
+    '<div class="gl-catalog-tabs" role="group" aria-label="Ver proyectos">' + [['all', 'Todos'], ['saved', 'Guardados'], ['started', 'En progreso'], ...(workspace?.admin ? [['archived', 'Archivados']] : [])].map(([value, label]) => '<button type="button" data-gl-view="' + value + '" aria-pressed="' + (filters.view === value) + '">' + label + '</button>').join('') + '</div>' +
+    '<details class="gl-more-filters"><summary>Más filtros</summary><div class="gl-filter-row"><label>Nivel<select data-gl-filter="level">' + option('Todos', '', filters.level) + option('Principiante', 'Inicial', filters.level) + option('Intermedio', 'Intermedio', filters.level) + option('Avanzado', 'Avanzado', filters.level) + '</select></label><label>Duración<select data-gl-filter="duration">' + option('Cualquiera', '', filters.duration) + option('Hasta 1 hora', 'short', filters.duration) + option('1 a 2 horas', 'medium', filters.duration) + option('Más de 2 horas', 'long', filters.duration) + '</select></label><label>Área<select data-gl-filter="area">' + option('Todas', '', filters.area) + areas.map(a => option(a, a, filters.area)).join('') + '</select></label><label>Orden<select data-gl-filter="sort">' + option('Más fáciles primero', 'level', filters.sort) + option('Nombre A–Z', 'title', filters.sort) + '</select></label><button type="button" class="gl-clear" data-gl-reset>Limpiar búsqueda y filtros</button></div></details></div>' +
+    workspaceToolbar(workspace) + routeMarkup(items, saved) + '<p class="gl-result-count" role="status" aria-live="polite">' + visible.length + ' de ' + items.length + ' proyectos</p><div class="gl-grid">' + results(visible, photos, saved) + '</div><p class="gl-status" role="status"></p></section>';
 }
 
 function updateLibrary(): void {
   const root = document.querySelector<HTMLElement>('.gl-library');
   if (!context || !root) return;
   const saved = readSaved(context.uid);
-  const note = root.querySelector('.gl-device-note');
-  if (note && context.workspace) note.textContent = context.workspace.progress.status();
   const route = root.querySelector('.gl-route');
   if (route) route.innerHTML = routeContents(context.items, saved);
-  const recommendation = root.querySelector('.gl-recommendation-anchor');
-  if (recommendation) recommendation.innerHTML = recommendationMarkup(context.items, saved);
   const visible = filteredItems(context.items, saved);
   root.querySelector('.gl-grid')!.innerHTML = results(visible, context.photos, saved);
   root.querySelector('.gl-result-count')!.textContent = visible.length + ' de ' + context.items.length + ' guías';
@@ -221,28 +204,10 @@ document.addEventListener('click', event => {
   }
   const view = target.closest<HTMLElement>('[data-gl-view]');
   if (view) { filters.view = view.dataset.glView!; updateLibrary(); }
-  const intent = target.closest<HTMLElement>('[data-gl-intent]');
-  if (intent) {
-    const search = library.querySelector<HTMLInputElement>('[data-gl-filter="search"]');
-    if (intent.dataset.glIntent === 'beginner') {
-      filters = { search: '', level: 'Inicial', area: '', duration: '', view: 'all', sort: 'level' };
-      library.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-gl-filter]').forEach(input => input.value = input.dataset.glFilter === 'level' ? 'Inicial' : input.dataset.glFilter === 'sort' ? 'level' : '');
-      updateLibrary();
-      library.querySelector('.gl-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      library.querySelector<HTMLElement>('.gl-grid [data-gl-open]')?.focus({ preventScroll: true });
-    } else if (search) {
-      filters = { search: '', level: '', area: '', duration: '', view: 'all', sort: 'level' };
-      library.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-gl-filter]').forEach(input => input.value = input.dataset.glFilter === 'sort' ? 'level' : '');
-      updateLibrary();
-      search.placeholder = intent.dataset.glIntent === 'components' ? 'Escribe un componente: LED, servo, sensor…' : 'Escribe el nombre o resultado que imaginas…';
-      search.focus();
-      search.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-    return;
-  }
   if (target.closest('[data-gl-reset]')) {
     filters = { search: '', level: '', area: '', duration: '', view: 'all', sort: 'level' };
     library.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-gl-filter]').forEach(input => input.value = input.dataset.glFilter === 'sort' ? 'level' : '');
+    library.querySelector<HTMLInputElement>('[data-gl-filter="search"]')!.value = '';
     updateLibrary();
   }
 });
@@ -262,7 +227,7 @@ export function refreshGuideLibrary(): void {
 }
 function workspaceToolbar(workspace?: GuideWorkspace): string {
   if (!workspace?.authorized) return '';
-  return '<div class="gw-toolbar">' + (workspace.admin ? '<button class="primary-button" data-gl-new>Crear guía</button>' : '') + '<button class="secondary-button" data-gl-my-evidence>Mis evidencias</button><button class="secondary-button" data-gl-proposals>' + (workspace.admin ? 'Propuestas de proyectos' : 'Mis propuestas') + '</button>' + (workspace.teacher || workspace.admin ? '<button class="secondary-button" data-gl-inbox>Evidencias para revisar</button>' : '') + '</div>';
+  return '<details class="gl-workspace-tools"><summary>Herramientas del club</summary><div class="gw-toolbar">' + (workspace.admin ? '<button class="primary-button" data-gl-new>Crear guía</button>' : '') + '<button class="secondary-button" data-gl-my-evidence>Mis evidencias</button><button class="secondary-button" data-gl-proposals>' + (workspace.admin ? 'Propuestas de proyectos' : 'Mis propuestas') + '</button>' + (workspace.teacher || workspace.admin ? '<button class="secondary-button" data-gl-inbox>Evidencias para revisar</button>' : '') + '</div></details>';
 }
 function readerActions(workspace: GuideWorkspace | undefined, item: Guide): string {
   if (!workspace?.authorized) return '';
@@ -274,7 +239,7 @@ function troubleshootingMarkup(item: Guide): string {
   return '<section><h3>Si algo no funciona</h3>' + lines.map(line => { const [problem, ...answer] = line.split('|'); return '<details class="gw-trouble"><summary>' + escape(problem) + '</summary><p>' + escape(answer.join('|')) + '</p></details>'; }).join('') + '</section>';
 }
 function routeContents(items: Guide[], saved: Saved): string {
-  return '<summary>Ruta de aprendizaje · de los primeros circuitos a la integración</summary><p>Orden sugerido. Puedes abrir cualquier guía y avanzar a tu ritmo.</p><div class="gw-route-grid">' + learningRoute.map(stage => '<section><h3>' + stage.title + '</h3>' + stage.ids.map(id => {
+  return '<summary>Ver ruta de aprendizaje</summary><p>Orden sugerido para avanzar por los proyectos.</p><div class="gw-route-grid">' + learningRoute.map(stage => '<section><h3>' + stage.title + '</h3>' + stage.ids.map(id => {
     const item = items.find(item => item.id === id && !item.archivada); if (!item) return '';
     const done = completed(saved,item).length; const total = stepsOf(item).length;
     return '<button data-gl-open="' + escape(id) + '"><span>' + escape(item.titulo) + '</span><small>' + (done && done === total ? 'Pasos marcados ✓' : done ? done + '/' + total + ' pasos' : 'Empezar →') + '</small></button>';

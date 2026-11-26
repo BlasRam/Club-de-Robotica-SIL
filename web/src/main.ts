@@ -2100,7 +2100,7 @@ async function renderShowcase(): Promise<string> {
     guideWorkspace?.dispose();
     guideWorkspace = createGuideWorkspace({ db, uid: state.user!.uid, name: fullName(), admin, teacher, authorized, refresh: loadPage, openProject: showProject }, refreshGuideLibrary);
   } else void guideWorkspace.progress.retry();
-  return `${pageHeading("Guías de proyectos", "Ideas para experimentar, aprender y construir en equipo.")}
+  return `<div class="page-heading"><div><h1 tabindex="-1">Guías de proyectos</h1></div></div>
     ${catalogUnavailable ? `<div class="notice-box warning">No pudimos actualizar los proyectos del club. Puedes consultar las guías de práctica.<button class="secondary-button compact" data-action="refresh">Reintentar conexión</button></div>` : ""}
     ${renderGuideLibrary(showcaseCards, photos, state.user!.uid, guideWorkspace)}
     ${canReview ? `<details class="gl-review" ${reviewCards.length || !pending ? "open" : ""}><summary>Revisión docente · ${pending ? reviewCards.length + " pendientes" : "sin conexión"}</summary>
