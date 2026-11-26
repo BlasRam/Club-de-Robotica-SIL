@@ -62,3 +62,20 @@ body:has(.gl-reader[open]){overflow:hidden}
 .gl-empty p{margin:0 0 8px;color:var(--muted)}
 @media(max-width:760px){.gl-more-filters .gl-filter-row{grid-template-columns:repeat(2,minmax(0,1fr))}.gl-route .gw-route-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:540px){.gl-card{grid-template-columns:90px minmax(0,1fr);gap:12px}.gl-card-top{height:84px}.gl-card-body{grid-template-columns:minmax(0,1fr)}.gl-card-copy{grid-column:1}.gl-card-meta{grid-column:1}.gl-open-link{grid-column:1;grid-row:auto;justify-self:start;padding:4px 0}.gl-more-filters .gl-filter-row,.gl-route .gw-route-grid{grid-template-columns:1fr}.gl-catalog-tabs{gap:14px}}
+
+/* Keep catalogue rows and filter controls aligned at every width. */
+.gl-catalog-controls,.gl-catalog-controls>*{min-width:0;width:100%}
+.gl-more-filters .gl-filter-row{grid-template-columns:repeat(4,minmax(0,1fr));align-items:end;gap:12px}
+.gl-more-filters .gl-filter-row label{display:grid;gap:6px;min-width:0;color:var(--ink);font-size:12px;font-weight:700}
+.gl-more-filters .gl-filter-row select{width:100%;min-width:0;min-height:42px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font-size:14px}
+.gl-more-filters .gl-clear{grid-column:1/-1;justify-self:start}
+.gl-card{grid-template-columns:clamp(112px,18vw,176px) minmax(0,1fr);align-items:center;min-width:0;overflow:visible}
+.gl-card-top{width:100%;height:auto;aspect-ratio:4/3;align-self:center}
+.gl-card-body{grid-template-areas:"copy copy" "meta action";grid-template-rows:auto auto;grid-template-columns:minmax(0,1fr) auto;align-content:center;min-width:0}
+.gl-card-copy,.gl-card-meta{min-width:0}
+.gl-card .gl-card-copy>p:not(.gl-card-materials){display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.gl-card-copy{grid-area:copy}
+.gl-card-meta{grid-area:meta;overflow-wrap:anywhere}
+.gl-open-link{grid-area:action;grid-column:auto;grid-row:auto;justify-self:end;min-width:112px;min-height:44px;padding:8px 0;text-align:right}
+@media(max-width:760px){.gl-more-filters .gl-filter-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:540px){.gl-card{grid-template-columns:80px minmax(0,1fr);gap:10px}.gl-card-top{height:auto;aspect-ratio:1}.gl-card-top .gl-circuit{position:absolute;left:0;bottom:0;width:32px;height:32px}.gl-card-top .gl-circuit svg{width:26px;height:26px}.gl-card-body{grid-template-areas:"copy" "meta" "action";grid-template-columns:minmax(0,1fr);gap:6px}.gl-card-copy{grid-column:auto}.gl-card-meta{grid-column:auto}.gl-open-link{grid-column:auto;grid-row:auto;justify-self:start;min-width:0;min-height:40px;padding:4px 0;text-align:left}.gl-more-filters .gl-filter-row,.gl-route .gw-route-grid{grid-template-columns:minmax(0,1fr)}}
