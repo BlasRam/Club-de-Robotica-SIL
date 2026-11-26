@@ -97,3 +97,18 @@ body:has(.gl-reader[open]){overflow:hidden}
 .gl-grid[data-layout=grid] .gl-card-top .gl-circuit{position:relative;inset:auto;width:100%;height:100%;background:#f1f5f8}
 .gl-grid[data-layout=grid] .gl-card-top .gl-circuit svg{width:40px;height:40px}
 @media(max-width:540px){.gl-results-toolbar{gap:8px}.gl-grid[data-layout=grid]{grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:12px}}
+
+/* Project tiles show only their cover and name; opening the tile reveals the guide. */
+.gl-card{display:block;height:auto;padding:0;overflow:visible;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
+.gl-project-open{display:grid;grid-template-columns:clamp(80px,18vw,176px) minmax(0,1fr);align-items:center;gap:18px;width:100%;padding:16px 0;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer}
+.gl-card-top{display:grid;width:100%;height:auto;aspect-ratio:4/3;padding:0;place-items:center;overflow:hidden;border-radius:8px;background:#f1f5f8}
+.gl-card-top img{border-radius:8px}
+.gl-project-name{min-width:0;font-size:18px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.gl-project-open:hover .gl-project-name{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.gl-grid[data-layout=grid] .gl-card{display:block;height:100%;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.gl-grid[data-layout=grid] .gl-project-open{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(56px,auto);gap:0;height:100%;padding:0}
+.gl-grid[data-layout=grid] .gl-card-top{aspect-ratio:16/9;border-radius:0}
+.gl-grid[data-layout=grid] .gl-card-top img{border-radius:0}
+.gl-grid[data-layout=grid] .gl-project-name{padding:14px 16px}
+.gl-reader-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+@media(max-width:540px){.gl-project-open{grid-template-columns:80px minmax(0,1fr);gap:10px}.gl-card-top{aspect-ratio:1}.gl-grid[data-layout=grid] .gl-card-top{aspect-ratio:16/9}.gl-grid[data-layout=grid] .gl-project-name{padding:13px}}

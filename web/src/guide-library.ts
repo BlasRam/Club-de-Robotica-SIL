@@ -27,7 +27,6 @@ function completed(saved: Saved, item: Guide): number[] {
   const list = saved.steps[item.id];
   return Array.isArray(list) ? [...new Set(list.filter(n => Number.isInteger(n) && n >= 0 && n < stepsOf(item).length))] : [];
 }
-const bookmark = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4z"/></svg>';
 const circuit = '<svg viewBox="0 0 48 48" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="13" y="13" width="22" height="22" rx="4"/><path d="M18 6v7m12-7v7M18 35v7m12-7v7M6 18h7m-7 12h7m22-12h7m-7 12h7"/><path d="m21 20-4 4 4 4m6-8 4 4-4 4"/></svg>';
 let context: { uid: string; items: Guide[]; photos: Map<string, string>; workspace?: GuideWorkspace } | null = null;
 let filters = { search: '', level: '', area: '', duration: '', view: 'all', sort: 'level' };
@@ -47,18 +46,10 @@ function durationBand(item: Guide): string {
 }
 
 function card(item: Guide, saved: Saved, photos: Map<string, string>): string {
-  const favorite = saved.favorites.includes(item.id);
-  const count = completed(saved, item).length;
-  const total = stepsOf(item).length;
-  const finished = total > 0 && count === total;
-  const technology = String(item.tecnologias || '').split(/[·,]/)[0].trim();
-  const materials = String(item.materiales || '').trim();
   const coverImage = photos.get(item.id) || item.coverImage;
-  return '<article class="gl-card" data-gl-card="' + escape(item.id) + '"><div class="gl-card-top">' +
+  return '<article class="gl-card" data-gl-card="' + escape(item.id) + '"><button class="gl-project-open" type="button" data-gl-open="' + escape(item.id) + '" aria-label="Abrir guía: ' + escape(item.titulo) + '"><span class="gl-card-top">' +
     (coverImage ? '<img src="' + escape(coverImage) + '" alt="Montaje del proyecto: ' + escape(item.titulo) + '" loading="lazy"/>' : '<span class="gl-circuit">' + circuit + '</span>') +
-    '</div><div class="gl-card-body"><div class="gl-card-copy"><div class="gl-card-heading"><h3>' + escape(item.titulo) + '</h3><button class="gl-save" data-gl-save="' + escape(item.id) + '" aria-pressed="' + favorite + '" aria-label="' + (favorite ? 'Quitar de guardadas: ' : 'Guardar: ') + escape(item.titulo) + '">' + bookmark + '</button></div><p>' + escape(item.resumen) + '</p>' + (materials ? '<p class="gl-card-materials">' + escape(materials) + '</p>' : '') + '</div><div class="gl-card-meta"><div class="gl-tags"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + escape(item.tiempoEstimado || 'Tiempo variable') + '</span>' + (technology ? '<span>' + escape(technology) + '</span>' : '') + '</div>' +
-    (total ? '<p class="gl-progress-label">' + (finished ? 'Guía completada' : count ? 'Avance: ' + count + ' de ' + total + ' pasos' : total + ' pasos') + '</p>' : '') + '</div>' +
-    '<button class="gl-open-link" data-gl-open="' + escape(item.id) + '">' + (finished ? 'Ver guía' : count ? 'Continuar' : 'Abrir guía') + ' <span aria-hidden="true">→</span></button></div></article>';
+    '</span><span class="gl-project-name">' + escape(item.titulo) + '</span></button></article>';
 }
 
 function filteredItems(items: Guide[], saved: Saved): Guide[] {
@@ -115,6 +106,7 @@ function openGuide(item: Guide, uid: string, opener: HTMLElement): void {
   dialog.setAttribute('aria-labelledby', 'gl-reader-title');
   const steps = stepsOf(item);
   const saved = readSaved(uid);
+  const favorite = saved.favorites.includes(item.id);
   const done = completed(saved, item);
   const section = (title: string, value: unknown) => value ? '<section><h3>' + title + '</h3><p>' + escape(value) + '</p></section>' : '';
   const connections = String(item.conexiones || '').split(/;\s*|\n+/).filter(Boolean);
@@ -124,7 +116,7 @@ function openGuide(item: Guide, uid: string, opener: HTMLElement): void {
     const url = new URL(String(item.videoUrl || ''));
     if (url.protocol === 'https:' && ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'vimeo.com', 'www.vimeo.com', 'player.vimeo.com'].includes(url.hostname)) video = url.href;
   } catch { /* La guía puede no incluir video. */ }
-  dialog.innerHTML = '<header class="gl-reader-head"><span>GUÍA DE PROYECTO</span><button class="secondary-button" data-gl-close aria-label="Cerrar guía">Cerrar ×</button></header><div class="gl-reader-content"><span class="gl-origin">' + (item.guiaInicial ? 'PRÁCTICA · ARDUINO UNO · 5 V' : 'PROYECTO DEL CLUB') + '</span><h2 id="gl-reader-title">' + escape(item.titulo) + '</h2><p class="gl-lead">' + escape(item.resumen) + '</p><div class="gl-tags"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + escape(item.tiempoEstimado || '') + '</span></div>' +
+  dialog.innerHTML = '<header class="gl-reader-head"><span>GUÍA DE PROYECTO</span><div class="gl-reader-actions"><button class="secondary-button" data-gl-reader-save aria-pressed="' + favorite + '">' + (favorite ? 'Guardada' : 'Guardar') + '</button><button class="secondary-button" data-gl-close aria-label="Cerrar guía">Cerrar ×</button></div></header><div class="gl-reader-content"><span class="gl-origin">' + (item.guiaInicial ? 'PRÁCTICA · ARDUINO UNO · 5 V' : 'PROYECTO DEL CLUB') + '</span><h2 id="gl-reader-title">' + escape(item.titulo) + '</h2><p class="gl-lead">' + escape(item.resumen) + '</p><div class="gl-tags"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + escape(item.tiempoEstimado || '') + '</span></div>' +
     (photo ? '<img class="gl-reader-photo" src="' + escape(photo) + '" alt="Prototipo de ' + escape(item.titulo) + '"/>' : '') +
     section('El reto', item.problema) + section('Qué vas a aprender', item.aprendizajes) + section('Cómo funciona', item.funcionamiento) +
     '<section class="gl-preparation"><h3>Antes de conectar</h3><p>' + escape(item.seguridad || 'Revisa las conexiones con tu docente antes de alimentar el circuito.') + '</p></section>' + section('Materiales necesarios', item.materiales) + '<section data-gl-inventory></section>' +
@@ -149,6 +141,18 @@ function openGuide(item: Guide, uid: string, opener: HTMLElement): void {
   dialog.addEventListener('click', async event => {
     const target = event.target as HTMLElement;
     if (target === dialog || target.closest('[data-gl-close]')) { dialog.close(); return; }
+    if (target.closest('[data-gl-reader-save]')) {
+      const current = readSaved(uid);
+      current.favorites = current.favorites.includes(item.id) ? current.favorites.filter(id => id !== item.id) : [...current.favorites, item.id];
+      if (!writeSaved(uid, current)) { status('No se pudo guardar en este dispositivo.'); return; }
+      const saveButton = dialog.querySelector<HTMLButtonElement>('[data-gl-reader-save]')!;
+      const isSaved = current.favorites.includes(item.id);
+      saveButton.setAttribute('aria-pressed', String(isSaved));
+      saveButton.textContent = isSaved ? 'Guardada' : 'Guardar';
+      updateLibrary();
+      status(isSaved ? 'Guía guardada.' : 'Guía quitada de guardadas.');
+      return;
+    }
     if (target.closest('[data-gl-copy]')) {
       try { await navigator.clipboard.writeText(String(item.codigoPrueba)); status('Código copiado.'); }
       catch { status('No se pudo copiar. Selecciona el código y cópialo manualmente.'); }
@@ -202,15 +206,6 @@ document.addEventListener('click', event => {
   }
   const opener = target.closest<HTMLElement>('[data-gl-open]');
   if (opener) { const item = context.items.find(item => item.id === opener.dataset.glOpen); if (item) openGuide(item, context.uid, opener); return; }
-  const save = target.closest<HTMLElement>('[data-gl-save]');
-  if (save) {
-    const id = save.dataset.glSave!;
-    const saved = readSaved(context.uid);
-    saved.favorites = saved.favorites.includes(id) ? saved.favorites.filter(value => value !== id) : [...saved.favorites, id];
-    if (!writeSaved(context.uid, saved)) { library.querySelector('.gl-status')!.textContent = 'No se pudo guardar en este dispositivo.'; return; }
-    updateLibrary();
-    ([...library.querySelectorAll<HTMLElement>('[data-gl-save]')].find(el => el.dataset.glSave === id) || library.querySelector<HTMLElement>('[data-gl-view][aria-pressed="true"]'))?.focus();
-  }
   const view = target.closest<HTMLElement>('[data-gl-view]');
   if (view) { filters.view = view.dataset.glView!; updateLibrary(); }
   const layout = target.closest<HTMLElement>('[data-gl-layout]');
