@@ -1611,10 +1611,7 @@ async function loadAdminHomeDashboard(uid: string): Promise<void> {
       ["Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active"],
       ["Proyectos activos", projects.size, "En curso", "proyectos", "project"],
     ] as const;
-    const currentMetrics = metrics.filter(([, value]) => value > 0);
-    const metricsSummary = currentMetrics.length
-      ? `<section class="metrics-grid">${currentMetrics.map(([title, value, hint, page, tone]) => metric(title, value, hint, page as Page, tone)).join("")}</section>`
-      : `<p class="admin-home-all-clear">Todo está al día. Aún no hay actividad registrada.</p>`;
+    const metricsSummary = `<section class="metrics-grid">${metrics.map(([title, value, hint, page, tone]) => metric(title, value, hint, page as Page, tone)).join("")}</section>`;
     container.innerHTML = metricsSummary;
     container.setAttribute("aria-busy", "false");
 
@@ -1776,7 +1773,7 @@ async function renderHome(): Promise<string> {
     return `${pageHeading(`Buen día, ${esc(greeting)}`, "Resumen del club y pendientes de gestión.", `<button class="icon-button refresh-action" data-action="refresh" title="Actualizar" aria-label="Actualizar">${icon("actualizar")}</button>`)}
       ${!isAuthorized() ? `<section class="notice-box warning">${icon("alerta")}<span>Esta cuenta todavía no está autorizada como administradora.</span></section>` : ""}
       <section class="admin-shortcut-section"><div class="section-heading"><h2>Accesos rápidos</h2></div><div class="admin-shortcut-rail" role="group" aria-label="Accesos rápidos de administración">${adminQuickLink("Préstamos de materiales", "prestamos", "prestamos", "loans")}${adminQuickLink("Guías de proyectos", "muestra", "muestra", "projects")}${adminQuickLink("Avisos", "avisos", "avisos", "notices")}</div></section>
-      <div id="admin-home-data" role="status" aria-live="polite" aria-busy="true"><div class="loading-block"><span class="spinner"></span><span>Cargando indicadores y accesos recientes…</span></div></div>`;
+      <div id="admin-home-data" role="status" aria-live="polite" aria-busy="true"><div class="loading-block"><span class="spinner"></span><span>Cargando indicadores del club…</span></div></div>`;
   }
   const teacher = state.profile?.tipoUsuario === "docente";
   if (!teacher) return renderStudentHomeInitial();
