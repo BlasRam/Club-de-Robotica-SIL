@@ -112,3 +112,34 @@ body:has(.gl-reader[open]){overflow:hidden}
 .gl-grid[data-layout=grid] .gl-project-name{padding:14px 16px}
 .gl-reader-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 @media(max-width:540px){.gl-project-open{grid-template-columns:80px minmax(0,1fr);gap:10px}.gl-card-top{aspect-ratio:1}.gl-grid[data-layout=grid] .gl-card-top{aspect-ratio:16/9}.gl-grid[data-layout=grid] .gl-project-name{padding:13px}}
+
+.gl-project-context{margin:18px 0;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.gl-project-context>summary{cursor:pointer;color:var(--school-blue);font-size:14px;font-weight:700}
+.gl-project-context>div>section{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.gl-project-context>div>section:first-child{border-top:0}
+.gl-project-context>div>section h3{margin-bottom:5px;font-size:15px}
+.gl-step-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.gl-step-heading>div>span{color:var(--school-blue);font-size:10px;font-weight:800;letter-spacing:.08em}
+.gl-step-heading h3{margin:5px 0 0}
+.gl-step-heading>strong{flex:none;padding:7px 10px;border-radius:999px;background:#eaf2fb;color:var(--school-blue);font-size:12px}
+.gl-step-journey>progress{width:100%;height:10px;margin:16px 0 8px;accent-color:var(--school-blue)}
+.gl-step-encouragement{margin:0 0 5px!important;color:var(--ink)!important;font-size:14px!important;font-weight:700}
+.gl-step-journey>[data-gl-sync]{display:block;min-height:18px}
+.gl-next-step{min-height:46px;margin:12px 0 4px}
+.gl-completion{display:flex;align-items:center;gap:12px;margin:14px 0;padding:14px;border-radius:10px;background:color-mix(in srgb,var(--green) 10%,var(--paper));color:var(--ink)}
+.gl-completion[hidden]{display:none}
+.gl-completion>span{display:grid;flex:none;width:38px;height:38px;place-items:center;border-radius:50%;background:var(--green);color:#fff;font-size:22px;font-weight:800}
+.gl-completion strong{font-size:15px}
+.gl-completion p{margin:3px 0 0!important;font-size:13px!important}
+.gl-steps{counter-reset:guide-step;margin-top:16px}
+.gl-steps li{counter-increment:guide-step;scroll-margin:100px}
+.gl-steps label{min-height:62px;align-items:center;transition:background-color .2s,border-color .2s}
+.gl-steps input{width:24px;height:24px;margin:0;cursor:pointer}
+.gl-steps label>span{flex:1}
+.gl-steps label>span>b:before{content:counter(guide-step) ". ";color:var(--muted)}
+.gl-steps label>small{flex:none;color:var(--muted);font-size:11px}
+.gl-steps li.is-current label{border-color:var(--school-blue);background:color-mix(in srgb,var(--school-blue) 6%,var(--paper))}
+.gl-steps li.is-current .gl-step-state{color:var(--school-blue);font-weight:800}
+.gl-steps li.is-complete .gl-step-state{color:var(--green);font-weight:700}
+@media(max-width:600px){.gl-step-heading h3{font-size:17px}.gl-step-heading>strong{font-size:11px}.gl-steps label{gap:9px;padding:12px 10px}.gl-steps label>small{max-width:58px;font-size:10px;text-align:right}.gl-next-step{width:100%}}
+@media(prefers-reduced-motion:reduce){.gl-steps label{transition:none}}

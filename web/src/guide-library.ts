@@ -109,8 +109,20 @@ function openGuide(item: Guide, uid: string, opener: HTMLElement): void {
   const favorite = saved.favorites.includes(item.id);
   const done = completed(saved, item);
   const section = (title: string, value: unknown) => value ? '<section><h3>' + title + '</h3><p>' + escape(value) + '</p></section>' : '';
+  const projectContext = [section('El reto', item.problema), section('Qué vas a aprender', item.aprendizajes), section('Cómo funciona', item.funcionamiento)].filter(Boolean).join('');
+  const projectContextMarkup = projectContext ? '<details class="gl-project-context"><summary>Conoce el proyecto</summary><div>' + projectContext + '</div></details>' : '';
   const connections = String(item.conexiones || '').split(/;\s*|\n+/).filter(Boolean);
   const photo = context?.photos.get(item.id) || item.coverImage;
+  const initialNextStep = steps.findIndex((_, index) => !done.includes(index));
+  const initiallyComplete = steps.length > 0 && initialNextStep === -1;
+  const initialPercent = steps.length ? Math.round(done.length / steps.length * 100) : 0;
+  const initialEncouragement = !steps.length
+    ? 'Esta guía todavía no tiene pasos para marcar.'
+    : initiallyComplete
+      ? '¡Ya completaste todos los pasos! Comprueba el resultado del proyecto.'
+      : done.length
+        ? `¡Vas muy bien! Te ${steps.length - done.length === 1 ? 'falta' : 'faltan'} ${steps.length - done.length} ${steps.length - done.length === 1 ? 'paso' : 'pasos'} para terminar.`
+        : 'Empieza por el primer paso y marca cada uno cuando lo termines.';
   let video = '';
   try {
     const url = new URL(String(item.videoUrl || ''));
@@ -118,29 +130,66 @@ function openGuide(item: Guide, uid: string, opener: HTMLElement): void {
   } catch { /* La guía puede no incluir video. */ }
   dialog.innerHTML = '<header class="gl-reader-head"><span>GUÍA DE PROYECTO</span><div class="gl-reader-actions"><button class="secondary-button" data-gl-reader-save aria-pressed="' + favorite + '">' + (favorite ? 'Guardada' : 'Guardar') + '</button><button class="secondary-button" data-gl-close aria-label="Cerrar guía">Cerrar ×</button></div></header><div class="gl-reader-content"><span class="gl-origin">' + (item.guiaInicial ? 'PRÁCTICA · ARDUINO UNO · 5 V' : 'PROYECTO DEL CLUB') + '</span><h2 id="gl-reader-title">' + escape(item.titulo) + '</h2><p class="gl-lead">' + escape(item.resumen) + '</p><div class="gl-tags"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + escape(item.tiempoEstimado || '') + '</span></div>' +
     (photo ? '<img class="gl-reader-photo" src="' + escape(photo) + '" alt="Prototipo de ' + escape(item.titulo) + '"/>' : '') +
-    section('El reto', item.problema) + section('Qué vas a aprender', item.aprendizajes) + section('Cómo funciona', item.funcionamiento) +
+    projectContextMarkup +
     '<section class="gl-preparation"><h3>Antes de conectar</h3><p>' + escape(item.seguridad || 'Revisa las conexiones con tu docente antes de alimentar el circuito.') + '</p></section>' + section('Materiales necesarios', item.materiales) + '<section data-gl-inventory></section>' +
     '<section><h3>Conexiones</h3>' + wiringMarkup(String(item.diagrama || '')) + '<ul class="gl-connections">' + connections.map(line => '<li>' + escape(line) + '</li>').join('') + '</ul></section>' +
-    '<section><h3>Paso a paso</h3><p data-gl-progress>' + done.length + ' de ' + steps.length + ' pasos marcados</p><small data-gl-sync>' + escape(workspace?.progress.status() || '') + '</small><progress max="' + Math.max(steps.length, 1) + '" value="' + done.length + '" aria-label="Avance en la guía"></progress><ol class="gl-steps">' + steps.map((step, i) => '<li><label><input type="checkbox" data-gl-step="' + i + '"' + (done.includes(i) ? ' checked' : '') + '/><span><b>Paso ' + (i + 1) + '</b>' + escape(step) + '</span></label></li>').join('') + '</ol></section>' +
+    '<section class="gl-step-journey"><div class="gl-step-heading"><div><span>RECORRIDO DEL PROYECTO</span><h3>Construye paso a paso</h3></div><strong data-gl-progress>' + done.length + ' de ' + steps.length + ' · ' + initialPercent + '%</strong></div><progress max="' + Math.max(steps.length, 1) + '" value="' + done.length + '" aria-label="Avance en la guía"></progress><p class="gl-step-encouragement" data-gl-motivation role="status" aria-live="polite">' + escape(initialEncouragement) + '</p><small data-gl-sync>' + escape(workspace?.progress.status() || 'Tu avance se guarda automáticamente.') + '</small><button class="primary-button gl-next-step" type="button" data-gl-next ' + (!steps.length || initiallyComplete ? 'hidden' : '') + '>' + (initialNextStep === 0 ? 'Empezar proyecto' : `Continuar · Paso ${initialNextStep + 1}`) + ' →</button><div class="gl-completion" data-gl-complete ' + (initiallyComplete ? '' : 'hidden') + '><span aria-hidden="true">✓</span><div><strong>¡Proyecto terminado!</strong><p>Comprueba el resultado y celebra lo que construiste.</p></div></div><ol class="gl-steps">' + steps.map((step, i) => '<li data-gl-step-row="' + i + '"><label><input type="checkbox" data-gl-step="' + i + '" aria-label="Marcar como terminado el paso ' + (i + 1) + '"' + (done.includes(i) ? ' checked' : '') + '/><span><b>Paso ' + (i + 1) + '</b><span>' + escape(step) + '</span></span><small class="gl-step-state"></small></label></li>').join('') + '</ol></section>' +
     (item.codigoPrueba ? '<section><div class="gl-code-head"><h3>Código de prueba</h3><div><button class="secondary-button" data-gl-copy>Copiar código</button><button class="secondary-button" data-gl-download>Descargar .ino</button></div></div><pre class="gl-code"><code>' + escape(item.codigoPrueba) + '</code></pre><small>Selecciona la placa y el puerto correctos en Arduino IDE antes de cargar el programa.</small></section>' : '') +
     section('Comprueba el resultado', item.pruebas) + troubleshootingMarkup(item) + readerActions(workspace, item) + (video ? '<a href="' + escape(video) + '" target="_blank" rel="noopener noreferrer">Ver demostración en video ↗</a>' : '') + '<p class="gl-status" role="status" aria-live="polite"></p></div>';
   document.body.append(dialog);
   const status = (message: string) => { dialog.querySelector('.gl-status')!.textContent = message; };
+  const updateStepJourney = () => {
+    const inputs = [...dialog.querySelectorAll<HTMLInputElement>('[data-gl-step]')];
+    const completedCount = inputs.filter(input => input.checked).length;
+    const nextIndex = inputs.findIndex(input => !input.checked);
+    const allComplete = inputs.length > 0 && nextIndex === -1;
+    const percent = inputs.length ? Math.round(completedCount / inputs.length * 100) : 0;
+    const progress = dialog.querySelector<HTMLProgressElement>('progress')!;
+    progress.max = Math.max(inputs.length, 1);
+    progress.value = completedCount;
+    dialog.querySelector('[data-gl-progress]')!.textContent = `${completedCount} de ${inputs.length} · ${percent}%`;
+    dialog.querySelector('[data-gl-motivation]')!.textContent = !inputs.length
+      ? 'Esta guía todavía no tiene pasos para marcar.'
+      : allComplete
+        ? '¡Ya completaste todos los pasos! Comprueba el resultado del proyecto.'
+        : completedCount
+          ? `¡Vas muy bien! Te ${inputs.length - completedCount === 1 ? 'falta' : 'faltan'} ${inputs.length - completedCount} ${inputs.length - completedCount === 1 ? 'paso' : 'pasos'} para terminar.`
+          : 'Empieza por el primer paso y marca cada uno cuando lo termines.';
+    const nextButton = dialog.querySelector<HTMLButtonElement>('[data-gl-next]')!;
+    nextButton.hidden = !inputs.length || allComplete;
+    nextButton.textContent = nextIndex === 0 ? 'Empezar proyecto →' : `Continuar · Paso ${nextIndex + 1} →`;
+    dialog.querySelector<HTMLElement>('[data-gl-complete]')!.hidden = !allComplete;
+    inputs.forEach((input, index) => {
+      const row = input.closest<HTMLElement>('[data-gl-step-row]')!;
+      const isCurrent = index === nextIndex;
+      row.classList.toggle('is-complete', input.checked);
+      row.classList.toggle('is-current', isCurrent);
+      if (isCurrent) row.setAttribute('aria-current', 'step');
+      else row.removeAttribute('aria-current');
+      row.querySelector<HTMLElement>('.gl-step-state')!.textContent = input.checked ? 'Listo ✓' : isCurrent ? 'Siguiente' : 'Pendiente';
+    });
+  };
+  updateStepJourney();
   dialog.addEventListener('change', event => {
     const input = event.target as HTMLInputElement;
     if (!input.matches('[data-gl-step]')) return;
     const saved = readSaved(uid);
     const checked = [...dialog.querySelectorAll<HTMLInputElement>('[data-gl-step]:checked')].map(el => Number(el.dataset.glStep));
     saved.steps[item.id] = checked;
-    if (!writeSaved(uid, saved)) { input.checked = !input.checked; status('No se pudo guardar el avance en este dispositivo.'); return; }
-    dialog.querySelector('progress')!.value = checked.length;
-    dialog.querySelector('[data-gl-progress]')!.textContent = checked.length + ' de ' + steps.length + ' pasos marcados';
-    status(checked.length === steps.length ? 'Pasos marcados. Comprueba el resultado del circuito con tu docente.' : 'Avance guardado.');
+    if (!writeSaved(uid, saved)) { input.checked = !input.checked; updateStepJourney(); status('No se pudo guardar el avance en este dispositivo.'); return; }
+    updateStepJourney();
+    status(checked.length === steps.length && steps.length ? '¡Terminaste todos los pasos! Comprueba el resultado con tu docente.' : 'Avance guardado. ¡Un paso más cerca!');
     updateLibrary();
   });
   dialog.addEventListener('click', async event => {
     const target = event.target as HTMLElement;
     if (target === dialog || target.closest('[data-gl-close]')) { dialog.close(); return; }
+    if (target.closest('[data-gl-next]')) {
+      const nextInput = dialog.querySelector<HTMLInputElement>('[data-gl-step]:not(:checked)');
+      nextInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      nextInput?.focus({ preventScroll: true });
+      return;
+    }
     if (target.closest('[data-gl-reader-save]')) {
       const current = readSaved(uid);
       current.favorites = current.favorites.includes(item.id) ? current.favorites.filter(id => id !== item.id) : [...current.favorites, item.id];
@@ -178,8 +227,7 @@ function openGuide(item: Guide, uid: string, opener: HTMLElement): void {
     const checked = completed(readSaved(uid), item);
     dialog.querySelector('[data-gl-sync]')!.textContent = workspace?.progress.status() || '';
     dialog.querySelectorAll<HTMLInputElement>('[data-gl-step]').forEach(input => input.checked = checked.includes(Number(input.dataset.glStep)));
-    dialog.querySelector('progress')!.value = checked.length;
-    dialog.querySelector('[data-gl-progress]')!.textContent = checked.length + ' de ' + steps.length + ' pasos marcados';
+    updateStepJourney();
   };
   document.addEventListener('guide-progress-changed', repaint);
   dialog.addEventListener('close', () => document.removeEventListener('guide-progress-changed', repaint), { once: true });
