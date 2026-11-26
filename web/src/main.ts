@@ -2885,16 +2885,145 @@ async function renderInventory(): Promise<string> {
   const locations = [...new Set(items.map((item) => `${String(item.ubicacion || "")} · ${String(item.ubicacionDetalle || "")}`.trim().replace(/ ·$/, "")))].sort((a, b) => a.localeCompare(b, "es"));
   const filters = `<div class="inventory-filters" id="inventory-filters"><label>Categoría<select data-inventory-filter="category"><option value="">Todas las categorías</option>${categories.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ubicación<select data-inventory-filter="location"><option value="">Todas las ubicaciones</option>${locations.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}</select></label><label>Ordenar por<select data-inventory-filter="sort"><option value="name-asc">Nombre A–Z</option><option value="name-desc">Nombre Z–A</option><option value="stock-asc">Menor disponibilidad</option><option value="stock-desc">Mayor disponibilidad</option><option value="category">Categoría</option></select></label><label class="inventory-low-filter"><input data-inventory-filter="low" type="checkbox" /> Solo bajo mínimo</label></div>`;
   const viewButtons = `<div class="inventory-view-toggle" role="group" aria-label="Vista del inventario"><button type="button" class="secondary-button compact" data-action="set-inventory-view" data-view="list" aria-pressed="${inventoryView === "list"}">Lista</button><button type="button" class="secondary-button compact" data-action="set-inventory-view" data-view="grid" aria-pressed="${inventoryView === "grid"}">Cuadrícula</button></div>`;
+  const exportCategories = `<option value="">Inventario completo</option>${categories.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
+  const exportPanel = `<details class="inventory-export-panel"><summary>Descargar inventario</summary><div class="inventory-export-options"><label>Contenido<select data-inventory-export-category>${exportCategories}</select></label><button type="button" class="secondary-button compact" data-action="export-inventory-pdf">PDF</button><button type="button" class="primary-button compact" data-action="export-inventory-excel">Excel (.xlsx)</button></div><p>El Excel completo incluye una pestaña general y otra por categoría.</p></details>`;
   const inventoryContent = items.length
     ? inventoryView === "grid"
       ? `<div class="inventory-card-grid">${viewItems.map(inventoryGridCard).join("")}</div>`
       : `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Disponible / total</th><th>Ubicación</th><th>Condición</th><th>Gestión</th></tr></thead><tbody>${viewItems.map(inventoryTableRow).join("")}</tbody></table></div>`
     : emptyPanel("Inventario vacío", "Agrega el primer artículo del club.");
-  const inventoryControls = `<section class="inventory-controls" id="inventory-controls"><div class="inventory-toolbar"><label class="inventory-search-field"><span>Buscar artículo</span><input data-inventory-filter="search" type="search" placeholder="Nombre, modelo o ubicación" /></label>${viewButtons}</div><details class="inventory-filter-panel" ${mobileViewport ? "" : "open"}><summary><strong>Filtros</strong><span>Categoría, ubicación, orden y stock mínimo</span></summary>${filters}</details><p class="inventory-filter-count" aria-live="polite">${items.length} artículos</p></section>`;
+  const inventoryControls = `<section class="inventory-controls" id="inventory-controls"><div class="inventory-toolbar"><label class="inventory-search-field"><span>Buscar artículo</span><input data-inventory-filter="search" type="search" placeholder="Nombre, modelo o ubicación" /></label>${viewButtons}</div><details class="inventory-filter-panel" ${mobileViewport ? "" : "open"}><summary><strong>Filtros</strong><span>Categoría, ubicación, orden y stock mínimo</span></summary>${filters}</details>${exportPanel}<p class="inventory-filter-count" aria-live="polite">${items.length} artículos</p></section>`;
   return `${pageHeading("Inventario", "Existencias, ubicaciones, condición y movimientos.", `<div class="inventory-heading-actions"><button class="secondary-button compact" data-action="view-inventory-history">Historial</button><button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button></div>`)}
     ${inventoryControls}
     ${lowStock.length ? `<div class="inventory-low-summary" role="status"><span class="inventory-low-dot"></span><strong>${lowStock.length} ${lowStock.length === 1 ? "artículo bajo" : "artículos bajo"} mínimo</strong><span>Usa el filtro para verlos.</span></div>` : ""}
     ${inventoryContent}`;
+}
+
+type InventoryExportRecord = { data: InventoryViewItem; item: Record<string, any> };
+
+function inventoryExportSelection(): { category: string; records: InventoryExportRecord[] } {
+  const category = document.querySelector<HTMLSelectElement>("[data-inventory-export-category]")?.value || "";
+  const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
+  const records = [...inventoryItemsById.values()]
+    .filter((item) => !category || String(item.categoria || "Sin categoría") === category)
+    .map((item) => ({ item, data: inventoryViewItem(item) }))
+    .sort((a, b) => collator.compare(String(a.item.categoria || "Sin categoría"), String(b.item.categoria || "Sin categoría"))
+      || collator.compare(String(a.item.nombre || ""), String(b.item.nombre || "")));
+  return { category, records };
+}
+
+function inventoryExportFilename(category: string, extension: string): string {
+  const scope = category ? normalizeInventorySearch(category).replace(/\s+/g, "-") : "completo";
+  return `inventario-${scope}-${new Date().toISOString().slice(0, 10)}.${extension}`;
+}
+
+function inventoryExportColumns(): string[] {
+  return ["Artículo", "Categoría", "Modelo", "Descripción", "Unidad", "Cantidad total", "Cantidad dañada", "Disponible", "Stock mínimo", "Estado", "Ubicación", "Compartimento", "Detalle de daños"];
+}
+
+function inventoryExportValues(item: Record<string, any>): Array<string | number> {
+  const data = inventoryViewItem(item);
+  return [
+    String(item.nombre || "Artículo"), String(item.categoria || "Sin categoría"), String(item.modelo || ""),
+    String(item.descripcion || ""), data.unit, data.quantity, data.damaged, data.available, data.minimum,
+    String(item.estado || "—"), String(item.ubicacion || ""), String(item.ubicacionDetalle || ""),
+    data.damaged ? String(item.detalleDanio || "Revisar condición") : "",
+  ];
+}
+
+function xmlEscape(value: unknown): string {
+  return String(value ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "")
+    .replace(/[<>&'\"]/g, (character) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", "\"": "&quot;" })[character]!);
+}
+
+function excelColumnName(index: number): string {
+  let name = "";
+  for (let number = index + 1; number > 0; number = Math.floor((number - 1) / 26)) name = String.fromCharCode(65 + (number - 1) % 26) + name;
+  return name;
+}
+
+function inventorySheetName(name: string, used: Set<string>): string {
+  const base = name.replace(/[\\/*?:\[\]]/g, " ").trim().slice(0, 31) || "Categoría";
+  let candidate = base;
+  for (let index = 2; used.has(candidate.toLocaleLowerCase("es")); index++) {
+    const suffix = ` (${index})`;
+    candidate = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+  }
+  used.add(candidate.toLocaleLowerCase("es"));
+  return candidate;
+}
+
+async function exportInventoryExcel(): Promise<void> {
+  const { category, records } = inventoryExportSelection();
+  if (!records.length) { notify("No hay artículos para exportar en esta categoría.", "error"); return; }
+  try {
+    const { zipSync, strToU8 } = await import("fflate");
+    const groups = new Map<string, InventoryExportRecord[]>();
+    records.forEach((record) => {
+      const name = String(record.item.categoria || "Sin categoría");
+      groups.set(name, [...(groups.get(name) || []), record]);
+    });
+    const sources: Array<[string, InventoryExportRecord[]]> = category
+      ? [[category, records]]
+      : [["Inventario completo", records], ...[...groups.entries()].sort(([a], [b]) => a.localeCompare(b, "es"))];
+    const usedNames = new Set<string>();
+    const sheets = sources.map(([name, rows]) => ({ name: inventorySheetName(name, usedNames), rows }));
+    const relsNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const spreadsheetNamespace = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    const documentRelsNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const sheetContentTypes = sheets.map((_, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("");
+    const workbookSheets = sheets.map((sheet, index) => `<sheet name="${xmlEscape(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("");
+    const workbookRels = sheets.map((_, index) => `<Relationship Id="rId${index + 1}" Type="${documentRelsNamespace}/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("");
+    const files: Record<string, Uint8Array> = {
+      "[Content_Types].xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheetContentTypes}</Types>`),
+      "_rels/.rels": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${relsNamespace}"><Relationship Id="rId1" Type="${documentRelsNamespace}/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
+      "xl/workbook.xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="${spreadsheetNamespace}" xmlns:r="${documentRelsNamespace}"><sheets>${workbookSheets}</sheets></workbook>`),
+      "xl/_rels/workbook.xml.rels": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${relsNamespace}">${workbookRels}</Relationships>`),
+    };
+    const headers = inventoryExportColumns();
+    sheets.forEach((sheet, index) => {
+      const rows: Array<Array<string | number>> = [headers, ...sheet.rows.map(({ item }) => inventoryExportValues(item))];
+      const sheetRows = rows.map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((value, columnIndex) => {
+        const reference = `${excelColumnName(columnIndex)}${rowIndex + 1}`;
+        return typeof value === "number" && Number.isFinite(value)
+          ? `<c r="${reference}"><v>${value}</v></c>`
+          : `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
+      }).join("")}</row>`).join("");
+      files[`xl/worksheets/sheet${index + 1}.xml`] = strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="${spreadsheetNamespace}"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:M${rows.length}"/></worksheet>`);
+    });
+    const bytes = zipSync(files, { level: 6 });
+    const file = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    downloadInventoryFile(file, inventoryExportFilename(category, "xlsx"));
+    notify(`Excel preparado con ${records.length} ${records.length === 1 ? "artículo" : "artículos"}.`);
+  } catch (error) {
+    notify(errorMessage(error, "No se pudo generar el archivo Excel."), "error");
+  }
+}
+
+function downloadInventoryFile(file: Blob, name: string): void {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function exportInventoryPdf(): void {
+  const { category, records } = inventoryExportSelection();
+  if (!records.length) { notify("No hay artículos para exportar en esta categoría.", "error"); return; }
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) { notify("El navegador bloqueó la ventana de impresión. Permite ventanas emergentes e inténtalo de nuevo.", "error"); return; }
+  const title = category ? `Inventario · ${category}` : "Inventario completo";
+  const rows = records.map(({ data, item }) => `<tr><td>${esc(item.nombre || "Artículo")}</td><td>${esc(item.categoria || "Sin categoría")}</td><td>${esc(item.modelo || "—")}</td><td>${data.quantity}</td><td>${data.damaged}</td><td>${data.available}</td><td>${data.minimum}</td><td>${esc(item.estado || "—")}</td><td>${esc(data.location)}</td><td>${esc(data.damaged ? item.detalleDanio || "Revisar" : "—")}</td></tr>`).join("");
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
+    @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font:12px/1.4 Arial,sans-serif;color:#17202b;margin:0}header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:16px}h1{font-size:21px;margin:0 0 4px}p{margin:0;color:#566273}.print-button{padding:9px 14px;border:0;border-radius:5px;background:#104877;color:white;font-weight:700;cursor:pointer}table{width:100%;border-collapse:collapse;font-size:9px}thead{display:table-header-group}tr{break-inside:avoid}th,td{padding:6px 5px;border:1px solid #cbd3dc;text-align:left;vertical-align:top}th{background:#eaf1f7;color:#173957;font-size:8px;text-transform:uppercase;letter-spacing:.03em}tbody tr:nth-child(even){background:#f6f8fa}.foot{margin-top:9px;font-size:9px;color:#667384}@media print{.print-button{display:none}}
+    </style></head><body><header><div><h1>${esc(title)}</h1><p>${records.length} artículos · Generado ${new Intl.DateTimeFormat("es", { dateStyle: "medium", timeStyle: "short" }).format(new Date())}</p></div><button class="print-button" onclick="window.print()">Imprimir o guardar como PDF</button></header><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Modelo</th><th>Total</th><th>Dañadas</th><th>Disponible</th><th>Mínimo</th><th>Estado</th><th>Ubicación</th><th>Detalle</th></tr></thead><tbody>${rows}</tbody></table><p class="foot">Club de Robótica San Ignacio de Loyola · Documento de inventario</p><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));</script></body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
 }
 
 function applyInventoryFilters(): void {
@@ -3126,6 +3255,10 @@ root.addEventListener("click", (event) => {
     const mobileViewport = window.matchMedia("(max-width: 760px)").matches;
     localStorage.setItem(mobileViewport ? "cdr-inventory-view-mobile" : "cdr-inventory-view-desktop", button.dataset.view === "grid" ? "grid" : "list");
     void loadPage();
+  } else if (action === "export-inventory-pdf" && state.page === "inventario" && isAdminInterface()) {
+    exportInventoryPdf();
+  } else if (action === "export-inventory-excel" && state.page === "inventario" && isAdminInterface()) {
+    void exportInventoryExcel();
   } else if (action === "install") {
     void installApp();
   } else if (action === "toggle-student-preview" && isAdmin()) {
