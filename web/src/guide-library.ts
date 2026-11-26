@@ -53,8 +53,9 @@ function card(item: Guide, saved: Saved, photos: Map<string, string>): string {
   const finished = total > 0 && count === total;
   const technology = String(item.tecnologias || '').split(/[·,]/)[0].trim();
   const materials = String(item.materiales || '').trim();
+  const coverImage = photos.get(item.id) || item.coverImage;
   return '<article class="gl-card" data-gl-card="' + escape(item.id) + '"><div class="gl-card-top">' +
-    (photos.has(item.id) ? '<img src="' + escape(photos.get(item.id)) + '" alt="Prototipo de ' + escape(item.titulo) + '" loading="lazy"/>' : '<span class="gl-circuit">' + circuit + '</span>') +
+    (coverImage ? '<img src="' + escape(coverImage) + '" alt="Montaje del proyecto: ' + escape(item.titulo) + '" loading="lazy"/>' : '<span class="gl-circuit">' + circuit + '</span>') +
     '<button class="gl-save" data-gl-save="' + escape(item.id) + '" aria-pressed="' + favorite + '" aria-label="' + (favorite ? 'Quitar de guardadas: ' : 'Guardar: ') + escape(item.titulo) + '">' + bookmark + '</button></div>' +
     '<div class="gl-card-body"><div class="gl-card-copy"><h3>' + escape(item.titulo) + '</h3><p>' + escape(item.resumen) + '</p>' + (materials ? '<p class="gl-card-materials">' + escape(materials) + '</p>' : '') + '</div><div class="gl-card-meta"><div class="gl-tags"><span>' + escape(item.nivelDificultad || 'Nivel sin indicar') + '</span><span>' + escape(item.tiempoEstimado || 'Tiempo variable') + '</span>' + (technology ? '<span>' + escape(technology) + '</span>' : '') + '</div>' +
     (total ? '<p class="gl-progress-label">' + (finished ? 'Guía completada' : count ? 'Avance: ' + count + ' de ' + total + ' pasos' : total + ' pasos') + '</p>' : '') + '</div>' +
@@ -118,7 +119,7 @@ function openGuide(item: Guide, uid: string, opener: HTMLElement): void {
   const done = completed(saved, item);
   const section = (title: string, value: unknown) => value ? '<section><h3>' + title + '</h3><p>' + escape(value) + '</p></section>' : '';
   const connections = String(item.conexiones || '').split(/;\s*|\n+/).filter(Boolean);
-  const photo = context?.photos.get(item.id);
+  const photo = context?.photos.get(item.id) || item.coverImage;
   let video = '';
   try {
     const url = new URL(String(item.videoUrl || ''));

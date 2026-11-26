@@ -122,6 +122,7 @@ const guides: Guide[] = [
 
 export const starterGuides = guides.map((guide) => enrichGuide({
   ...guide,
+  coverImage: `/assets/guides/${guide.id}.webp`,
   guiaInicial: true,
   problema: `Objetivo: ${guide.resumen}`,
   tecnologias: "Arduino Uno · electrónica y programación",
