@@ -371,6 +371,7 @@ colorScheme.addEventListener?.("change", () => {
 let pageTrail: Page[] = [state.page];
 let lastRenderedPage: Page | null = null;
 let adminHomeRequest = 0;
+let pendingResumeGuideId = "";
 let exitArmed = false;
 let exitInProgress = false;
 let exitTimer = 0;
@@ -1199,6 +1200,13 @@ async function loadPage(): Promise<void> {
         if (lastRenderedPage !== requestedPage) title.focus({ preventScroll: true });
       }
       lastRenderedPage = requestedPage;
+      if (requestedPage === "muestra" && pendingResumeGuideId) {
+        const resumeButton = [...page.querySelectorAll<HTMLButtonElement>("[data-gl-open]")]
+          .find((button) => button.dataset.glOpen === pendingResumeGuideId);
+        pendingResumeGuideId = "";
+        if (resumeButton) window.setTimeout(() => resumeButton.click(), 0);
+        else notify("No encontramos esa guía entre las publicadas. Puedes explorar la biblioteca.", "error");
+      }
       if (requestedPage === "inicio" && isAdminInterface() && state.user) void loadAdminHomeDashboard(state.user.uid);
       if (requestedPage === "inicio" && isAuthorized() && !isAdminInterface() && state.profile?.tipoUsuario !== "docente" && !isStudentPreview() && state.user) {
         void loadStudentHomeProgressively(state.user.uid);
@@ -1514,9 +1522,20 @@ function renderStudentSandbox(page: Page): string {
   const heading = (title: string, subtitle: string, action = "") => pageHeading(title, subtitle, action);
   if (page === "componentes") return renderComponentCatalog();
   if (page === "inicio") {
+    const pendingTask = demo.taskDone ? "Documentar el montaje" : "Probar sensores ultrasónicos";
+    const loanAlerts = demo.loans.map((loan, index) => {
+      const due = new Date(`${loan.due}T00:00:00`);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const soon = new Date(today); soon.setDate(soon.getDate() + 7);
+      if (loan.status !== "Pendiente" && !(loan.status === "Aprobada" && due <= soon)) return "";
+      const label = loan.status === "Pendiente" ? "Solicitud pendiente de aprobación" : due < today ? `Devolución atrasada · ${dateText(due)}` : `Devolución próxima · ${dateText(due)}`;
+      return `<button class="home-loan-alert ${due < today ? "overdue" : ""}" data-action="preview-loan-detail" data-index="${index}"><span class="quick-icon ${due < today ? "coral" : "green"}">${icon("prestamos", 18)}</span><span><strong>${esc(loan.item)}</strong><small>${esc(label)}</small></span>${icon("ir", 15)}</button>`;
+    }).filter(Boolean).slice(0, 2).join("");
     return `${heading(`Hola, ${esc(fullName().split(" ")[0])}`, "Aquí tienes lo que requiere tu atención hoy.")}
-      <section class="component-home-card"><span class="component-mark">${icon("componentes", 24)}</span><div><span class="eyebrow">GUÍA DE ELECTRÓNICA</span><h2>Conoce tus componentes</h2><p>Aprende para qué sirve cada sensor o actuador y cómo conectarlo.</p></div><button class="secondary-button" data-page="componentes">Explorar el catálogo ${icon("ir", 15)}</button></section>
-      <section class="unframed-section"><div class="section-heading"><h2>Avisos recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${sandboxNotice("aviso-lab", "Reunión del club", "Nos reunimos el jueves a las 15:00 en el laboratorio.")}</section>`;
+      <section class="unframed-section home-priority-section"><div class="section-heading"><h2>Qué sigue</h2><button class="text-button" data-page="tareas">Ver tareas ${icon("ir", 14)}</button></div><button class="home-task-item" data-action="preview-project-detail"><span class="home-task-project">ROBOT MÓVIL</span><strong>${pendingTask}</strong><small>${demo.taskDone ? "Pendiente · Abrir proyecto" : "Vence esta semana · Abrir proyecto"}</small></button></section>
+      ${loanAlerts ? `<section class="unframed-section home-priority-section"><div class="section-heading"><h2>Préstamos por atender</h2><button class="text-button" data-page="prestamos">Ver todos ${icon("ir", 14)}</button></div><div class="home-loan-alert-list">${loanAlerts}</div></section>` : ""}
+      <section class="unframed-section student-team-section"><div class="section-heading"><div><h2>Continúa tu proyecto</h2><p>Retoma el siguiente paso con tu equipo.</p></div><button class="text-button" data-page="proyectos">Ver todos ${icon("ir", 14)}</button></div><button class="student-team-card" data-action="preview-project-detail"><strong>Robot móvil</strong><span class="student-team-next"><b>Próximo paso</b>${esc(pendingTask)}</span><span class="student-team-open">Continuar proyecto ${icon("ir", 14)}</span></button></section>
+      <section class="unframed-section"><div class="section-heading"><h2>Avisos recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${sandboxNotice("aviso-lab", "Reunión del club", "Nos reunimos el jueves a las 15:00 en el laboratorio.")}</section>${renderStudentHomeModules()}`;
   }
   if (page === "tareas") {
     return `${heading("Tareas", "Seguimiento de tus responsabilidades.")}
@@ -1537,13 +1556,6 @@ function renderStudentSandbox(page: Page): string {
       return `<article class="course-card"><div class="course-card-top"><span class="course-mark">${icon("cursos", 20)}</span><span class="state-pill success">Publicado</span></div><h2>${course.title}</h2><p>${course.detail}</p><small>${course.date}</small><button class="${enrolled ? "secondary-button" : "primary-button"} compact" data-action="preview-course-enroll" data-id="${course.id}">${enrolled ? "Cancelar inscripción" : "Inscribirme"}</button></article>`;
     }).join("")}</div>`;
   }
-  if (page === "inicio") {
-    return `${heading("Hola", "Tu calendario de ejemplo para la vista estudiante.")}<section class="calendar-panel calendar-home-panel"><div class="calendar-toolbar"><button class="icon-button" data-action="calendar-previous" aria-label="Mes anterior">${icon("anterior", 17)}</button><h2>${new Intl.DateTimeFormat("es-PY", { month: "long", year: "numeric" }).format(state.calendarMonth)}</h2><button class="icon-button" data-action="calendar-next" aria-label="Mes siguiente">${icon("siguiente", 17)}</button><button class="secondary-button compact calendar-today" data-action="calendar-today">Hoy</button></div><p class="empty-inline">Calendario de demostración: aquí aparecerán tus clases, exámenes y actividades del club.</p><div class="calendar-weekdays"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div><div class="calendar-grid">${Array.from({ length: 42 }, (_, index) => {
-      const first = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth(), 1 - ((state.calendarMonth.getDay() + 6) % 7));
-      const day = new Date(first.getFullYear(), first.getMonth(), first.getDate() + index);
-      return `<button class="calendar-day ${day.getMonth() === state.calendarMonth.getMonth() ? "" : "outside-month"}" data-page="calendario"><span>${day.getDate()}</span><span class="calendar-markers"></span></button>`;
-    }).join("")}</div></section>`;
-  }
   if (page === "avisos") {
     return `${heading("Avisos", "Comunicaciones y notificaciones del club.")}
       <div class="notice-list">${sandboxNotice("aviso-lab", "Reunión del club", "Nos reunimos el jueves a las 15:00 en el laboratorio.")}${sandboxNotice("aviso-feria", "Feria tecnológica", "Inscríbete para presentar los proyectos del semestre.")}</div>`;
@@ -1561,14 +1573,7 @@ function renderStudentHomeModules(): string {
 }
 
 function renderSandboxCalendar(): string {
-  const month = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth(), 1);
-  const first = new Date(month.getFullYear(), month.getMonth(), 1 - ((month.getDay() + 6) % 7));
-  const monthLabel = new Intl.DateTimeFormat("es-PY", { month: "long", year: "numeric" }).format(month);
-  const cells = Array.from({ length: 42 }, (_, index) => {
-    const day = new Date(first.getFullYear(), first.getMonth(), first.getDate() + index);
-    return `<button class="calendar-day ${day.getMonth() === month.getMonth() ? "" : "outside-month"}" data-page="calendario"><span>${day.getDate()}</span><span class="calendar-markers"></span></button>`;
-  }).join("");
-  return `<section class="home-calendar"><div class="section-heading"><h2>Calendario</h2><span class="state-pill muted">Demostración</span></div><div class="calendar-panel calendar-home-panel"><div class="calendar-toolbar"><button class="icon-button" data-action="calendar-previous" aria-label="Mes anterior">${icon("anterior", 17)}</button><h2>${esc(monthLabel)}</h2><button class="icon-button" data-action="calendar-next" aria-label="Mes siguiente">${icon("siguiente", 17)}</button><button class="secondary-button compact calendar-today" data-action="calendar-today">Hoy</button></div><p class="empty-inline">Las clases, exámenes y actividades aparecerán aquí.</p><div class="calendar-weekdays"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div><div class="calendar-grid">${cells}</div></div></section>`;
+  return `<section class="home-calendar"><div class="section-heading"><div><h2>Próximas actividades</h2><p>Las dos semanas que vienen.</p></div><span class="state-pill muted">Demostración</span></div><p class="empty-inline">No hay actividades cargadas en esta vista de prueba.</p><button class="text-button" data-page="calendario">Abrir calendario completo ${icon("ir", 14)}</button></section>`;
 }
 
 function sandboxNotice(id: string, title: string, message: string): string {
@@ -1599,15 +1604,20 @@ async function loadAdminHomeDashboard(uid: string): Promise<void> {
     const students = studentRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
     const pendingAccess = students.filter((item) => item.get("autorizado") === false);
     const recentEntries = recent.docs.filter((item) => item.get("tipo") === "entrada").slice(0, 5);
-    container.innerHTML = `<section class="metrics-grid">
-      ${metric("Estudiantes", students.length, "Personas registradas", "estudiantes", "people")}
-      ${metric("Docentes", teacherRecords.size, "Cuentas docentes", "docentes", "people")}
-      ${metric("Cuentas pendientes", pendingAccess.length, "Estudiantes por revisar", "estudiantes", "alert")}
-      ${metric("Guías por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase")}
-      ${metric("Préstamos pendientes", pendingLoans.size, "Solicitudes por resolver", "prestamos", "loan")}
-      ${metric("Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active")}
-      ${metric("Proyectos activos", projects.size, "En curso", "proyectos", "project")}
-    </section>
+    const metrics = [
+      ["Estudiantes", students.length, "Personas registradas", "estudiantes", "people"],
+      ["Docentes", teacherRecords.size, "Cuentas docentes", "docentes", "people"],
+      ["Cuentas pendientes", pendingAccess.length, "Estudiantes por revisar", "estudiantes", "alert"],
+      ["Guías por revisar", pendingShowcase?.size ?? 0, "Revisión docente", "muestra", "showcase"],
+      ["Préstamos pendientes", pendingLoans.size, "Solicitudes por resolver", "prestamos", "loan"],
+      ["Préstamos activos", activeLoans.size, "Artículos fuera del inventario", "prestamos", "active"],
+      ["Proyectos activos", projects.size, "En curso", "proyectos", "project"],
+    ] as const;
+    const currentMetrics = metrics.filter(([, value]) => value > 0);
+    const metricsSummary = currentMetrics.length
+      ? `<section class="metrics-grid">${currentMetrics.map(([title, value, hint, page, tone]) => metric(title, value, hint, page as Page, tone)).join("")}</section>`
+      : `<p class="admin-home-all-clear">Todo está al día. Aún no hay actividad registrada.</p>`;
+    container.innerHTML = `${metricsSummary}
     <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
     container.setAttribute("aria-busy", "false");
 
@@ -1627,11 +1637,13 @@ function renderStudentHomeInitial(): string {
   const loading = `<div class="loading-block" role="status"><span class="spinner"></span><span>Cargando…</span></div>`;
   return `${pageHeading(`Hola, ${esc(greeting)}`, "Panel del estudiante · tus tareas, equipo y actividad del club.")}
     <section id="student-home-next" class="unframed-section home-priority-section" aria-busy="true"><div class="section-heading"><div><h2>Qué sigue</h2><p>Revisando tus tareas pendientes.</p></div></div>${loading}</section>
-    <div id="student-home-modules">${renderStudentHomeModules()}</div>
+    <div id="student-home-loans"></div>
     <div id="student-home-team" aria-busy="true"><section class="unframed-section student-team-section"><div class="section-heading"><div><h2>Mi equipo</h2><p>Tus proyectos, avances y próximos pasos.</p></div></div>${loading}</section></div>
+    <div id="student-home-resume-guide"></div>
     <div id="student-home-calendar" aria-busy="true">${loading}</div>
+    <section id="student-home-notices" class="unframed-section" aria-busy="true"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${loading}</section>
     <div id="student-home-showcase"></div>
-    <section id="student-home-notices" class="unframed-section" aria-busy="true"><div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${loading}</section>`;
+    <div id="student-home-modules">${renderStudentHomeModules()}</div>`;
 }
 
 function studentHomeIsCurrent(uid: string): boolean {
@@ -1646,6 +1658,35 @@ function updateStudentHomeSection(id: string, uid: string, content: string): voi
   section.setAttribute("aria-busy", "false");
 }
 
+function renderStudentLoanAlerts(snapshot: { docs: QueryDocumentSnapshot<DocumentData>[] } | null): string {
+  if (!snapshot) return `<div class="home-loan-error notice-box warning" role="status">No se pudo consultar tus préstamos. <button class="secondary-button compact" data-action="refresh">Reintentar</button></div>`;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const soon = new Date(today);
+  soon.setDate(soon.getDate() + 7);
+  const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+    .map((loan) => {
+      const dueDate = taskDueDate({ fechaLimite: loan.fechaDevolucion });
+      const requestPending = loan.estadoSolicitud === "Pendiente";
+      const pending = loan.estado === "Pendiente";
+      const dueDay = dueDate ? new Date(dueDate) : null;
+      dueDay?.setHours(0, 0, 0, 0);
+      const needsAttention = pending || requestPending || (loan.estado === "Aprobada" && !!dueDay && dueDay <= soon);
+      const priority = dueDay && dueDay < today ? 0 : pending ? 1 : requestPending ? 2 : dueDay ? 3 : 4;
+      const label = requestPending
+        ? `Solicitud de ${loan.accionSolicitada === "Devolucion" ? "devolución" : "prórroga"} en revisión`
+        : pending ? "Solicitud pendiente de aprobación"
+          : dueDay && dueDay < today ? `Devolución atrasada · ${dateText(dueDay)}`
+            : dueDay ? `Devolución próxima · ${dateText(dueDay)}` : "";
+      return { ...loan, dueDay, needsAttention, priority, label };
+    })
+    .filter((loan) => loan.needsAttention)
+    .sort((a, b) => a.priority - b.priority || (a.dueDay?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.dueDay?.getTime() ?? Number.MAX_SAFE_INTEGER))
+    .slice(0, 2);
+  if (!items.length) return "";
+  return `<div class="section-heading"><div><h2>Préstamos por atender</h2><p>Solicitudes y devoluciones próximas.</p></div><button class="text-button" data-page="prestamos">Ver todos ${icon("ir", 14)}</button></div><div class="home-loan-alert-list">${items.map((loan) => `<button class="home-loan-alert ${loan.dueDay && loan.dueDay < today ? "overdue" : ""}" data-page="prestamos"><span class="quick-icon ${loan.dueDay && loan.dueDay < today ? "coral" : "green"}">${icon("prestamos", 18)}</span><span><strong>${esc(loan.recursoNombre || "Material")}</strong><small>${esc(loan.label)}</small></span>${icon("ir", 15)}</button>`).join("")}</div>`;
+}
+
 function renderStudentNextTasks(snapshots: Array<QueryDocumentSnapshot<DocumentData> | null>, projectNames: Map<string, string>): string {
   if (snapshots.every((snapshot) => snapshot === null)) {
     return `<div class="section-heading"><h2>Qué sigue</h2></div><div class="notice-box warning">No se pudieron cargar tus tareas. Comprueba tu conexión e inténtalo de nuevo.</div><button class="secondary-button compact" data-action="refresh">Reintentar</button>`;
@@ -1657,7 +1698,7 @@ function renderStudentNextTasks(snapshots: Array<QueryDocumentSnapshot<DocumentD
   const ordered = [...tasks.values()].sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER));
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const overdue = ordered.filter((task) => task.get("fechaLimite")?.toDate?.() instanceof Date && task.get("fechaLimite").toDate() < today);
-  const next = ordered.slice(0, 3);
+  const next = ordered.slice(0, 1);
   if (!next.length) return `<div class="section-heading"><h2>Qué sigue</h2></div><div class="home-empty-next"><span class="state-pill success">Al día</span><p>No tienes tareas pendientes. Revisa tus proyectos o los avisos del club.</p><button class="secondary-button compact" data-page="proyectos">Ver mis proyectos</button></div>`;
   return `${overdue.length ? `<div class="notice-box warning home-overdue-alert"><strong>Hay ${overdue.length} tarea${overdue.length === 1 ? " atrasada" : "s atrasadas"}.</strong><span>Revisa las fechas y acuerda con tu equipo un nuevo plan.</span><button class="secondary-button compact" data-page="tareas" data-task-filter="overdue">Ver atrasadas</button></div>` : ""}
     <div class="section-heading"><div><h2>Qué sigue</h2><p>${ordered.length} tarea${ordered.length === 1 ? " pendiente" : "s pendientes"}.</p></div><button class="text-button" data-page="tareas" data-task-filter="pending">Ver tareas ${icon("ir", 14)}</button></div><div class="home-task-list">${next.map((task) => homeTaskCard(task, projectNames)).join("")}</div>`;
@@ -1670,6 +1711,7 @@ async function loadStudentHomeProgressively(uid: string): Promise<void> {
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUid", "==", uid), limit(20))).catch(() => null),
     getDocs(query(collectionGroup(db, "tareas"), where("responsableUids", "array-contains", uid), limit(20))).catch(() => null),
   ]);
+  const loanQuery = getDocs(query(collection(db, "reservas"), where("solicitanteUid", "==", uid), limit(60))).catch(() => null);
   const projectQuery = Promise.all([
     getDocs(query(collection(db, "proyectos"), where("miembrosUids", "array-contains", uid), limit(20))).catch(() => null),
     getDocs(query(collection(db, "proyectos"), where("responsableUid", "==", uid), limit(20))).catch(() => null),
@@ -1683,12 +1725,15 @@ async function loadStudentHomeProgressively(uid: string): Promise<void> {
   const noticeQuery = getDocs(query(collection(db, "avisos"), orderBy("fechaCreacion", "desc"), limit(10))).catch(() => null);
   const calendarQuery = renderHomeCalendar().catch(() => `<section class="unframed-section"><div class="section-heading"><h2>Calendario</h2><button class="text-button" data-page="calendario">Ver agenda ${icon("ir", 14)}</button></div><div class="empty-inline">No se pudo cargar la agenda. Puedes consultarla desde el apartado Calendario.</div></section>`);
   const guideQuery = getDocs(query(collection(db, "guiasPublicadas"), limit(12))).catch(() => null);
+  const guideProgressQuery = getDocs(query(collection(db, "usuarios", uid, "guiaProgreso"), orderBy("updatedAt", "desc"), limit(5))).catch(() => null);
 
   void taskQueries.then((snapshots) => {
     if (!studentHomeIsCurrent(uid)) return;
     loadedTaskSnapshots = snapshots;
     updateStudentHomeSection("student-home-next", uid, renderStudentNextTasks(snapshots, projectNames));
   });
+
+  void loanQuery.then((loans) => updateStudentHomeSection("student-home-loans", uid, renderStudentLoanAlerts(loans)));
 
   void projectQuery.then(async (records) => {
     if (!studentHomeIsCurrent(uid)) return;
@@ -1710,12 +1755,15 @@ async function loadStudentHomeProgressively(uid: string): Promise<void> {
     const content = `<div class="section-heading"><h2>Avisos importantes y recientes</h2><button class="text-button" data-page="avisos">Ver todos ${icon("ir", 14)}</button></div>${important.length ? `<div class="notice-list">${important.map((item) => noticeCard(item.id, item.data, false)).join("")}</div>` : emptyInline("No hay avisos publicados.")}`;
     updateStudentHomeSection("student-home-notices", uid, content);
   });
-  void guideQuery.then((guides) => {
+  void Promise.all([guideQuery, guideProgressQuery]).then(async ([guides, progress]) => {
     if (!studentHomeIsCurrent(uid)) return;
     const items = guides?.docs.map((item) => ({ ...item.data(), id: item.id })) ?? [];
     const ids = new Set(items.map((item) => item.id));
-    const featured = [...items, ...featuredGuides.filter((item) => !ids.has(item.id))].filter((item) => !item.archivada).slice(0, 3);
+    const availableGuides = [...items, ...featuredGuides.filter((item) => !ids.has(item.id))].filter((item) => !item.archivada);
+    const featured = availableGuides.slice(0, 2);
+    const resumeGuide = await findStudentResumeGuide(availableGuides, uid, progress?.docs ?? []);
     void loadHomeGuidePhotos(featured, uid);
+    updateStudentHomeSection("student-home-resume-guide", uid, renderStudentResumeGuide(resumeGuide));
     updateStudentHomeSection("student-home-showcase", uid, renderHomeShowcase(featured, new Map()));
   });
 }
@@ -1814,10 +1862,7 @@ async function renderStudentProjectDashboard(records: { docs: QueryDocumentSnaps
     return projectLead(data) === uid || (Array.isArray(data.miembrosUids) && data.miembrosUids.includes(uid));
   }).sort((a, b) => Number(b.get("estado") === "Activo") - Number(a.get("estado") === "Activo")).slice(0, 3);
   const overview = await Promise.all(projects.map(async (project) => {
-    const [tasks, latestStage] = await Promise.all([
-      getDocs(query(collection(db, "proyectos", project.id, "tareas"), limit(50))).catch(() => null),
-      getDocs(query(collection(db, "proyectos", project.id, "etapas"), orderBy("fechaCreacion", "desc"), limit(1))).catch(() => null),
-    ]);
+    const tasks = await getDocs(query(collection(db, "proyectos", project.id, "tareas"), limit(50))).catch(() => null);
     const allTasks = tasks?.docs ?? [];
     const pending = allTasks.filter((task) => task.get("estado") !== "Completada");
     pending.sort((a, b) => (a.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.get("fechaLimite")?.toMillis?.() ?? Number.MAX_SAFE_INTEGER));
@@ -1828,10 +1873,11 @@ async function renderStudentProjectDashboard(records: { docs: QueryDocumentSnaps
       total: allTasks.length,
       completed,
       nextTask: pending[0]?.data() ?? null,
-      latest: latestStage?.docs[0]?.get("fechaCreacion") ?? project.get("fechaCreacion"),
     };
   }));
-  return `<section class="unframed-section student-team-section"><div class="section-heading"><div><h2>Mi equipo</h2><p>Tus proyectos, avances y próximos pasos.</p></div><button class="text-button" data-page="proyectos">Ver proyectos ${icon("ir", 14)}</button></div>${overview.length ? `<div class="student-team-grid">${overview.map((item) => {
+  overview.sort((a, b) => Number(b.data.estado === "Activo") - Number(a.data.estado === "Activo")
+    || (a.nextTask?.fechaLimite?.toMillis?.() ?? Number.MAX_SAFE_INTEGER) - (b.nextTask?.fechaLimite?.toMillis?.() ?? Number.MAX_SAFE_INTEGER));
+  return `<section class="unframed-section student-team-section"><div class="section-heading"><div><h2>${overview.length ? "Continúa tu proyecto" : "Mi equipo"}</h2><p>${overview.length ? "Retoma el siguiente paso con tu equipo." : "Tus proyectos aparecerán aquí cuando te unas a un equipo."}</p></div><button class="text-button" data-page="proyectos">Ver todos ${icon("ir", 14)}</button></div>${overview.length ? `<div class="student-team-grid">${overview.slice(0, 1).map((item) => {
     const progress = item.total ? Math.round(item.completed / item.total * 100) : 0;
     const nextTask = item.nextTask;
     const due = nextTask ? taskDueDate(nextTask) : null;
@@ -1841,13 +1887,57 @@ async function renderStudentProjectDashboard(records: { docs: QueryDocumentSnaps
     dueDay?.setHours(0, 0, 0, 0);
     const dueLabel = !dueDay ? "Sin fecha" : dueDay < today ? `Atrasada · vencía ${dateText(dueDay)}` : dueDay.getTime() === today.getTime() ? "Vence hoy" : `Entrega: ${dateText(dueDay)}`;
     const nextTaskInfo = nextTask ? `${nextTask.titulo || "Tarea pendiente"} · ${dueLabel}` : item.total ? "Todas las tareas están completadas." : "El equipo todavía no creó tareas.";
-    return `<button class="student-team-card" data-action="project-detail" data-id="${esc(item.id)}"><span class="student-team-top"><span class="project-mark">${icon("proyectos", 20)}</span><span class="state-pill ${item.data.estado === "Activo" ? "success" : "muted"}">${esc(item.data.estado || "Proyecto")}</span></span><strong>${esc(item.data.nombre || item.data.titulo || "Proyecto")}</strong><small class="student-team-objective">${esc(item.data.objetivo || item.data.descripcion || "Proyecto de Robótica SIL")}</small><div class="student-team-progress"><span>Avance</span><strong>${item.total ? `${progress}%` : "Sin tareas"}</strong><progress max="100" value="${progress}" aria-label="Avance de ${esc(item.data.nombre || "proyecto")}"></progress><small>${item.total ? `${item.completed} de ${item.total} tareas completadas` : "El responsable puede agregar tareas al proyecto."}</small></div><span class="student-team-next"><b>Próximo paso</b>${esc(nextTaskInfo)}</span><small class="student-team-latest">${item.latest ? `Último avance: ${dateText(item.latest, true)}` : "Sin avances registrados todavía."}</small><span class="student-team-open">Abrir proyecto ${icon("ir", 14)}</span></button>`;
+    return `<button class="student-team-card" data-action="project-detail" data-id="${esc(item.id)}" aria-label="Continuar proyecto ${esc(item.data.nombre || item.data.titulo || "Proyecto")}"><span class="student-team-top"><span class="project-mark">${icon("proyectos", 20)}</span><span class="state-pill ${item.data.estado === "Activo" ? "success" : "muted"}">${esc(item.data.estado || "Proyecto")}</span></span><strong>${esc(item.data.nombre || item.data.titulo || "Proyecto")}</strong><div class="student-team-progress"><span>Avance</span><strong>${item.total ? `${progress}%` : "Sin tareas"}</strong><progress max="100" value="${progress}" aria-label="Avance de ${esc(item.data.nombre || "proyecto")}"></progress><small>${item.total ? `${item.completed} de ${item.total} tareas completadas` : "Sin tareas registradas todavía."}</small></div><span class="student-team-next"><b>Próximo paso</b>${esc(nextTaskInfo)}</span><span class="student-team-open">Continuar proyecto ${icon("ir", 14)}</span></button>`;
   }).join("")}</div>` : `<div class="student-project-empty"><span class="state-pill muted">Aún sin equipo</span><p>Cuando te unas a un proyecto, aquí verás el avance y la próxima tarea.</p><div><button class="secondary-button compact" data-page="proyectos">Explorar proyectos</button><button class="text-button" data-page="sugerencias">Ayuda y sugerencias</button></div></div>`}</section>`;
 }
 
 function renderHomeShowcase(items: Array<{ id: string; titulo?: string; resumen?: string; problema?: string; aprendizajes?: string }>, photos: Map<string, string>): string {
   if (!items.length) return "";
   return `<section class="unframed-section home-showcase"><div class="section-heading"><div><h2>Ideas para construir</h2><p>Guías de práctica y proyectos compartidos por el club.</p></div><button class="text-button" data-page="muestra">Ver guías de proyectos ${icon("ir", 14)}</button></div><div class="home-showcase-grid">${items.map((item) => `<button class="home-showcase-card" data-home-guide-id="${esc(item.id)}" data-page="muestra">${photos.has(item.id) ? `<img class="home-showcase-photo" src="${esc(photos.get(item.id)!)}" alt="Imagen del proyecto ${esc(item.titulo || "destacado")}" loading="lazy" />` : `<span class="project-mark">${icon("muestra", 20)}</span>`}<strong>${esc(item.titulo || "Proyecto destacado")}</strong><small>${esc(item.problema || item.resumen || "Conoce el prototipo.")}</small>${item.aprendizajes ? `<span class="home-showcase-learning"><b>Aprendizaje:</b> ${esc(item.aprendizajes)}</span>` : ""}</button>`).join("")}</div></section>`;
+}
+
+type StudentResumeGuide = { id: string; titulo?: string; pasosImplementacion?: unknown; completedSteps: number[] };
+
+async function findStudentResumeGuide(
+  items: Array<{ id: string; titulo?: string; pasosImplementacion?: unknown }>,
+  uid: string,
+  progress: QueryDocumentSnapshot<DocumentData>[],
+): Promise<StudentResumeGuide | undefined> {
+  let savedSteps: Record<string, number[]> = {};
+  try {
+    const saved = JSON.parse(localStorage.getItem(`club-guide-library-v1:${uid}`) || "{}");
+    if (saved.steps && typeof saved.steps === "object" && !Array.isArray(saved.steps)) savedSteps = saved.steps;
+  } catch { /* No hay avance guardado en este dispositivo. */ }
+  const totalSteps = (guide: { pasosImplementacion?: unknown }) => String(guide.pasosImplementacion || "").split(/(?:^|\s+)\d+\.\s+|\n+/).map((step) => step.trim()).filter(Boolean).length;
+  const findGuide = async (id: string) => {
+    const listed = items.find((item) => item.id === id);
+    if (listed) return listed;
+    const published = await getDoc(doc(db, "guiasPublicadas", id)).catch(() => null);
+    if (published?.exists()) return { ...published.data(), id: published.id };
+    const { starterGuides } = await import("./starter-guides");
+    return starterGuides.find((item) => item.id === id);
+  };
+  for (const entry of progress) {
+    const completed = entry.get("steps");
+    if (!Array.isArray(completed) || !completed.length) continue;
+    const guide = await findGuide(entry.id);
+    const total = guide ? totalSteps(guide) : 0;
+    if (guide && completed.length < total) return { ...guide, completedSteps: completed };
+  }
+  for (const [id, completed] of Object.entries(savedSteps)) {
+    if (!Array.isArray(completed) || !completed.length) continue;
+    const guide = await findGuide(id);
+    const total = guide ? totalSteps(guide) : 0;
+    if (guide && completed.length < total) return { ...guide, completedSteps: completed };
+  }
+  return undefined;
+}
+
+function renderStudentResumeGuide(guide?: StudentResumeGuide): string {
+  if (!guide) return "";
+  const total = String(guide.pasosImplementacion || "").split(/(?:^|\s+)\d+\.\s+|\n+/).map((step) => step.trim()).filter(Boolean).length;
+  const done = new Set(guide.completedSteps).size;
+  return `<section class="home-resume-guide"><div><span class="eyebrow">TU AVANCE</span><h2>${esc(guide.titulo || "Tu guía")}</h2><p>${done} de ${total} pasos completados</p></div><button class="primary-button compact" data-page="muestra" data-resume-guide="${esc(guide.id)}">Continuar guía ${icon("ir", 15)}</button></section>`;
 }
 
 function metric(title: string, value: number, hint: string, page: Page, tone = "plain"): string {
@@ -2327,53 +2417,63 @@ type CalendarItem = {
 
 async function renderHomeCalendar(): Promise<string> {
   if (!isAuthorized()) return "";
-  const month = new Date(state.calendarMonth.getFullYear(), state.calendarMonth.getMonth(), 1);
-  const year = month.getFullYear();
-  const monthIndex = month.getMonth();
-  const monthStart = new Date(year, monthIndex, 1);
-  const nextMonth = new Date(year, monthIndex + 1, 1);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const horizon = new Date(today);
+  horizon.setDate(horizon.getDate() + 14);
   const [personal, activities] = await Promise.all([
     getDocs(query(collection(db, "usuarios", state.user!.uid, "calendario"), limit(100))),
-    getDocs(query(collection(db, "actividadesClub"), where("fechaInicio", ">=", Timestamp.fromDate(monthStart)), where("fechaInicio", "<", Timestamp.fromDate(nextMonth)), orderBy("fechaInicio", "asc"), limit(100))),
+    getDocs(query(collection(db, "actividadesClub"), where("fechaInicio", ">=", Timestamp.fromDate(today)), where("fechaInicio", "<", Timestamp.fromDate(horizon)), orderBy("fechaInicio", "asc"), limit(100))),
   ]);
-  const datesWithEvents = new Map<string, Set<string>>();
-  const addMarker = (date: Date, kind: string) => {
-    const key = calendarDateKey(date);
-    const kinds = datesWithEvents.get(key) || new Set<string>();
-    kinds.add(kind);
-    datesWithEvents.set(key, kinds);
-  };
+  const upcoming: CalendarItem[] = [];
   personal.docs.forEach((snapshot) => {
     const entry = snapshot.data();
-    if (entry.tipo === "examen" && entry.fechaHora instanceof Timestamp) addMarker(entry.fechaHora.toDate(), "examen");
+    if (entry.tipo === "examen" && entry.fechaHora instanceof Timestamp) {
+      const startsAt = entry.fechaHora.toDate();
+      if (startsAt >= now && startsAt < horizon) upcoming.push({
+        id: snapshot.id, kind: "examen", title: String(entry.titulo || entry.materia || "Examen"),
+        detail: [entry.materia, entry.lugar].filter(Boolean).join(" · "), startsAt, source: "personal",
+      });
+    }
     if (entry.tipo === "clase" && entry.desde instanceof Timestamp && entry.hasta instanceof Timestamp) {
       const from = entry.desde.toDate();
       const through = entry.hasta.toDate();
       const weekdays = Array.isArray(entry.diasSemana) ? entry.diasSemana : [];
-      const first = new Date(year, monthIndex, 1 - ((monthStart.getDay() + 6) % 7));
-      for (let offset = 0; offset < 42; offset += 1) {
-        const day = new Date(first.getFullYear(), first.getMonth(), first.getDate() + offset);
+      for (let offset = 0; offset < 14; offset += 1) {
+        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
         const weekday = day.getDay() || 7;
         if (day >= new Date(from.getFullYear(), from.getMonth(), from.getDate())
           && day <= new Date(through.getFullYear(), through.getMonth(), through.getDate())
-          && weekdays.includes(weekday)) addMarker(day, "clase");
+          && weekdays.includes(weekday)) {
+          const startsAt = dateAtTime(calendarDateKey(day), String(entry.horaInicio || "00:00"));
+          if (startsAt >= now) upcoming.push({
+            id: snapshot.id, kind: "clase", title: String(entry.materia || "Clase"),
+            detail: String(entry.aula || "Horario semanal"), startsAt,
+            endsAt: dateAtTime(calendarDateKey(day), String(entry.horaFin || entry.horaInicio || "00:00")), source: "personal",
+          });
+        }
       }
     }
   });
   activities.docs.forEach((snapshot) => {
-    const start = snapshot.get("fechaInicio");
-    if (start instanceof Timestamp) addMarker(start.toDate(), "actividad");
+    const activity = snapshot.data();
+    if (!(activity.fechaInicio instanceof Timestamp)) return;
+    const startsAt = activity.fechaInicio.toDate();
+    if (startsAt < now) return;
+    upcoming.push({
+      id: snapshot.id, kind: "actividad", title: String(activity.titulo || "Actividad del club"),
+      detail: [activity.categoria, activity.lugar].filter(Boolean).join(" · "), startsAt,
+      endsAt: activity.fechaFin instanceof Timestamp ? activity.fechaFin.toDate() : undefined, source: "club",
+    });
   });
-  const gridStart = new Date(year, monthIndex, 1 - ((monthStart.getDay() + 6) % 7));
-  const days = Array.from({ length: 42 }, (_, index) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index));
-  const cells = days.map((day) => {
-    const key = calendarDateKey(day);
-    const markers = [...(datesWithEvents.get(key) || [])].map((kind) => `<i class="${kind}" aria-hidden="true"></i>`).join("");
-    return `<button class="calendar-day ${day.getMonth() === monthIndex ? "" : "outside-month"} ${key === state.calendarSelectedDate ? "selected" : ""}" data-action="calendar-select-date" data-date="${key}" aria-label="${esc(new Intl.DateTimeFormat("es-PY", { dateStyle: "full" }).format(day))}, ${markers ? "con eventos" : "sin eventos"}"><span>${day.getDate()}</span><span class="calendar-markers">${markers}</span></button>`;
+  upcoming.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+  const rows = upcoming.slice(0, 3).map((item) => {
+    const dateLabel = new Intl.DateTimeFormat("es-PY", { weekday: "short", day: "numeric", month: "short" }).format(item.startsAt);
+    const time = item.endsAt ? `${timeText(item.startsAt)}–${timeText(item.endsAt)}` : timeText(item.startsAt);
+    const kind = item.kind === "clase" ? "Clase" : item.kind === "examen" ? "Examen" : "Club";
+    return `<button class="home-upcoming-item ${item.kind}" data-page="calendario"><span class="home-upcoming-date">${esc(dateLabel)}</span><span class="home-upcoming-copy"><strong>${esc(item.title)}</strong><small>${kind} · ${time}${item.detail ? ` · ${esc(item.detail)}` : ""}</small></span></button>`;
   }).join("");
-  const monthLabel = new Intl.DateTimeFormat("es-PY", { month: "long", year: "numeric" }).format(month);
-  const title = monthLabel.charAt(0).toLocaleUpperCase("es-PY") + monthLabel.slice(1);
-  return `<section class="home-calendar"><div class="section-heading"><h2>Calendario</h2><button class="text-button" data-page="calendario">Ver agenda completa ${icon("ir", 14)}</button></div><div class="calendar-panel calendar-home-panel"><div class="calendar-toolbar"><button class="icon-button" data-action="calendar-previous" aria-label="Mes anterior">${icon("anterior", 17)}</button><h2>${esc(title)}</h2><button class="icon-button" data-action="calendar-next" aria-label="Mes siguiente">${icon("siguiente", 17)}</button><button class="secondary-button compact calendar-today" data-action="calendar-today">Hoy</button></div><div class="calendar-weekdays"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div><div class="calendar-grid">${cells}</div><div class="calendar-legend"><span><i class="clase"></i>Clases</span><span><i class="examen"></i>Exámenes</span><span><i class="actividad"></i>Actividades Robótica SIL</span></div></div></section>`;
+  return `<section class="home-calendar"><div class="section-heading"><div><h2>Próximas actividades</h2><p>Clases, exámenes y actividades de las próximas dos semanas.</p></div><button class="text-button" data-page="calendario">Abrir agenda ${icon("ir", 14)}</button></div>${rows ? `<div class="home-upcoming-list">${rows}</div>` : `<p class="empty-inline">No tienes actividades próximas.</p>`}</section>`;
 }
 
 function calendarDateKey(date: Date): string {
@@ -2948,6 +3048,7 @@ root.addEventListener("click", (event) => {
   const page = button.dataset.page as Page | undefined;
   if (page) {
     event.preventDefault();
+    pendingResumeGuideId = page === "muestra" ? button.dataset.resumeGuide || "" : "";
     navigatePage(page, button.dataset.taskFilter as TaskFilter | undefined);
     return;
   }
