@@ -815,3 +815,34 @@ html[data-theme="dark"] .component-type.control{background:#3a3021;color:#f0d49a
   .table-wrap td .inventory-condition-note{max-width:100%;white-space:normal}
   .table-wrap td .inventory-actions-menu summary{width:44px;height:44px}
 }
+
+/* Inicio: acciones próximas y contenido compacto. */
+.home-loan-alert-list,.home-upcoming-list{display:grid;gap:7px}
+.home-loan-alert{display:grid;grid-template-columns:32px minmax(0,1fr) 18px;align-items:center;gap:10px;width:100%;min-height:58px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);text-align:left;cursor:pointer}
+.home-loan-alert:hover,.home-upcoming-item:hover{border-color:var(--school-blue)}
+.home-loan-alert>span:nth-child(2){display:grid;gap:2px;min-width:0}
+.home-loan-alert strong,.home-upcoming-copy strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-loan-alert small,.home-upcoming-copy small{color:var(--muted);font-size:11px;line-height:1.35}
+.home-loan-alert.overdue{border-color:#dfb5ba;background:color-mix(in srgb,#b52b3a 5%,var(--paper))}
+.home-loan-error{justify-content:space-between;align-items:center;margin:0;padding:9px 11px}
+.home-resume-guide{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:16px 0;padding:14px;border:1px solid color-mix(in srgb,var(--school-blue) 28%,var(--line));border-radius:8px;background:color-mix(in srgb,var(--school-blue) 5%,var(--paper))}
+.home-resume-guide .eyebrow{margin:0;color:var(--school-blue)}
+.home-resume-guide h2{margin:4px 0;font:700 15px Manrope,sans-serif}
+.home-resume-guide p{margin:0;color:var(--muted);font-size:11px}
+.home-upcoming-item{display:grid;grid-template-columns:84px minmax(0,1fr);align-items:center;gap:10px;min-height:54px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink);text-align:left;cursor:pointer}
+.home-upcoming-date{color:var(--school-blue);font-size:11px;font-weight:700;text-transform:capitalize}
+.home-upcoming-copy{display:grid;gap:2px;min-width:0}
+.home-upcoming-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.home-upcoming-item.examen .home-upcoming-date{color:#a73543}
+.home-upcoming-item.actividad .home-upcoming-date{color:#187252}
+.admin-home-all-clear{margin:12px 0;padding:13px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--muted);font-size:13px}
+html[data-theme="dark"] .home-resume-guide{background:color-mix(in srgb,var(--school-blue) 12%,var(--paper))}
+@media(max-width:680px){
+  .home-resume-guide{align-items:flex-start;flex-direction:column;gap:9px;margin:12px 0;padding:12px}
+  .home-resume-guide .primary-button{width:100%;min-height:42px}
+  .home-upcoming-item{grid-template-columns:72px minmax(0,1fr);gap:8px;padding:8px}
+  .home-upcoming-date{font-size:10px}
+  .home-upcoming-copy small{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .home-loan-alert{min-height:54px}
+  .admin-home-all-clear{margin:8px 0;font-size:12px}
+}
