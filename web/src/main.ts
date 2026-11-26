@@ -102,6 +102,7 @@ const inventoryImageUrls = new Map<string, string>();
 const pendingInventoryImages = new Set<string>();
 let inventoryItemsById = new Map<string, Record<string, any>>();
 let inventoryImageObserver: IntersectionObserver | null = null;
+let inventorySearchOpen = false;
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const NOTIFICATION_WORKER_URL = "https://TU-WORKER.workers.dev";
 type EntryDeliveryPhase = "waiting" | "released" | "failed";
@@ -2893,7 +2894,8 @@ async function renderInventory(): Promise<string> {
       ? `<div class="inventory-card-grid">${viewItems.map(inventoryGridCard).join("")}</div>`
       : `<div class="inventory-compact-list">${viewItems.map(inventoryCompactRow).join("")}</div>`
     : emptyPanel("Inventario vacío", "Agrega el primer artículo del club.");
-  const inventoryControls = `<section class="inventory-controls" id="inventory-controls"><div class="inventory-toolbar"><label class="inventory-search-field"><span>Buscar artículo</span><input data-inventory-filter="search" type="search" placeholder="Nombre, modelo o ubicación" /></label>${viewButtons}</div><details class="inventory-filter-panel" ${mobileViewport ? "" : "open"}><summary><strong>Filtros</strong><span>Categoría, ubicación, orden y stock mínimo</span></summary>${filters}</details>${exportPanel}<p class="inventory-filter-count" aria-live="polite">${items.length} artículos</p></section>`;
+  const searchControl = `<div class="inventory-search-control ${inventorySearchOpen ? "is-open" : ""}"><button type="button" class="inventory-search-toggle" data-action="toggle-inventory-search" aria-label="${inventorySearchOpen ? "Cerrar búsqueda" : "Buscar artículos"}" aria-expanded="${inventorySearchOpen}" title="${inventorySearchOpen ? "Cerrar búsqueda" : "Buscar artículos"}">${inventorySearchOpen ? `<span aria-hidden="true">×</span>` : icon("buscar", 20)}</button>${inventorySearchOpen ? `<input id="inventory-search-input" data-inventory-filter="search" type="search" placeholder="Buscar artículo…" aria-label="Buscar artículo" autocomplete="off" />` : ""}</div>`;
+  const inventoryControls = `<section class="inventory-controls" id="inventory-controls"><div class="inventory-toolbar">${searchControl}${viewButtons}</div><details class="inventory-filter-panel" ${mobileViewport ? "" : "open"}><summary><strong>Filtros</strong><span>Categoría, ubicación, orden y stock mínimo</span></summary>${filters}</details>${exportPanel}<p class="inventory-filter-count" aria-live="polite">${items.length} artículos</p></section>`;
   return `${pageHeading("Inventario", "Existencias, ubicaciones, condición y movimientos.", `<div class="inventory-heading-actions"><button class="secondary-button compact" data-action="view-inventory-history">Historial</button><button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button></div>`)}
     ${inventoryControls}
     ${lowStock.length ? `<div class="inventory-low-summary" role="status"><span class="inventory-low-dot"></span><strong>${lowStock.length} ${lowStock.length === 1 ? "artículo bajo" : "artículos bajo"} mínimo</strong><span>Usa el filtro para verlos.</span></div>` : ""}
@@ -3256,6 +3258,11 @@ root.addEventListener("click", (event) => {
     const mobileViewport = window.matchMedia("(max-width: 760px)").matches;
     localStorage.setItem(mobileViewport ? "cdr-inventory-view-mobile" : "cdr-inventory-view-desktop", button.dataset.view === "grid" ? "grid" : "list");
     void loadPage();
+  } else if (action === "toggle-inventory-search" && state.page === "inventario" && isAdminInterface()) {
+    inventorySearchOpen = !inventorySearchOpen;
+    void loadPage().then(() => {
+      if (inventorySearchOpen) document.querySelector<HTMLInputElement>("#inventory-search-input")?.focus();
+    });
   } else if (action === "export-inventory-pdf" && state.page === "inventario" && isAdminInterface()) {
     exportInventoryPdf();
   } else if (action === "export-inventory-excel" && state.page === "inventario" && isAdminInterface()) {
