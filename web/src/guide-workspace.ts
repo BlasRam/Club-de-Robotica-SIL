@@ -1,9 +1,8 @@
-import { collection, doc, getDoc, getDocs, limit, query, where, orderBy, startAfter, serverTimestamp, setDoc, updateDoc, deleteDoc, runTransaction, Timestamp, type Firestore, type Query, type DocumentData, type QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, where, orderBy, startAfter, serverTimestamp, setDoc, updateDoc, deleteDoc, runTransaction, type Firestore, type Query, type DocumentData, type QueryDocumentSnapshot } from 'firebase/firestore';
 import { createGuideProgress } from './guide-progress';
 export type LibraryGuide = Record<string, any> & { id: string };
 export type WorkspaceOptions = { db: Firestore; uid: string; name: string; admin: boolean; teacher: boolean; authorized: boolean; refresh: () => Promise<void>; openProject: (id: string) => Promise<void> };
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-const norm = (value: unknown) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export const guideSteps = (guide: LibraryGuide) => String(guide.pasosImplementacion || '').split(/(?:^|\s+)\d+\.\s+|\n+/).map(s => s.trim()).filter(Boolean).slice(0, 100);
 const fields: [string, string, number, boolean][] = [
   ['titulo','Título',100,true], ['resumen','Resumen',600,true], ['problema','Objetivo',600,true], ['funcionamiento','Cómo funciona',1000,true],
@@ -44,15 +43,12 @@ export function createGuideWorkspace(options: WorkspaceOptions, changed: () => v
   const { db, uid } = options;
   const progress = createGuideProgress(db, uid, changed);
   const directory = async () => (await getDocs(query(collection(db, 'directorioClub'), orderBy('nombreCompleto'), limit(300)))).docs;
-  const inventory = async () => (await getDocs(query(collection(db, 'inventario'), orderBy('nombre'), limit(300)))).docs;
   function payload(guide: LibraryGuide, data?: FormData, archived = false) {
     const result: Record<string, any> = { proyectoId: guide.id, estado: 'publicada', archivada: archived, tipoGuia: guide.guiaInicial || guide.tipoGuia === 'practica' ? 'practica' : 'proyecto' };
     for (const [field] of fields) result[field] = data ? String(data.get(field) || '').trim() : String(guide[field] || '');
     result.areas = data ? data.getAll('areas').map(String) : guide.areas || [];
     result.nivelDificultad = data ? String(data.get('nivelDificultad')) : guide.nivelDificultad;
     result.tiempoEstimado = data ? String(data.get('tiempoEstimado')) : guide.tiempoEstimado;
-    result.inventarioIds = data ? data.getAll('inventarioIds').map(String) : guide.inventarioIds || [];
-    if (result.inventarioIds.length > 20) throw new Error('Vincula hasta 20 artículos.');
     const wires = result.diagrama.split('\n').filter((line: string) => line.trim());
     if (wires.length > 24 || wires.some((line: string) => {
       const parts = line.split('|').map(value => value.trim());
@@ -75,15 +71,11 @@ export function createGuideWorkspace(options: WorkspaceOptions, changed: () => v
   }
   async function editGuide(source?: LibraryGuide) {
     const guide: LibraryGuide = source || { id: doc(collection(db, 'guiasPublicadas')).id, areas: ['Electrónica','Programación'], nivelDificultad: 'Inicial', tiempoEstimado: '1-2 horas', tecnologias: 'Arduino Uno', guiaInicial: true };
-    const dialog = modal(source ? 'Editar guía' : 'Crear guía'); dialog.body.textContent = 'Cargando inventario…';
-    let items: QueryDocumentSnapshot[] = [];
-    try { items = await inventory(); } catch { dialog.status('No se pudo leer el inventario. Puedes guardar el contenido conservando los vínculos existentes.'); }
-    if (!dialog.element.isConnected) return;
+    const dialog = modal(source ? 'Editar guía' : 'Crear guía');
     dialog.body.innerHTML = '<form class="gw-form">' + fields.map(([field, label, max, required]) => '<label>' + label + '<textarea name="' + field + '" rows="' + (field === 'codigoPrueba' ? 10 : field === 'titulo' ? 1 : 3) + '" maxlength="' + max + '"' + (required ? ' required' : '') + '>' + esc(guide[field] || '') + '</textarea></label>').join('') +
-      '<label>Nivel<select name="nivelDificultad">' + ['Inicial','Intermedio','Avanzado'].map(v => '<option' + (v === guide.nivelDificultad ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label><label>Tiempo<select name="tiempoEstimado">' + ['1-2 horas','3-5 horas','Más de 5 horas'].map(v => '<option' + (v === guide.tiempoEstimado ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label><fieldset><legend>Áreas</legend>' + ['Electrónica','Mecánica','Programación'].map(v => '<label><input type="checkbox" name="areas" value="' + v + '"' + (guide.areas?.includes(v) ? ' checked' : '') + '/>' + v + '</label>').join('') + '</fieldset><label>Materiales vinculados (hasta 20)<select name="inventarioIds" multiple size="6">' + items.map(item => '<option value="' + esc(item.id) + '"' + (guide.inventarioIds?.includes(item.id) ? ' selected' : '') + '>' + esc(item.get('nombre')) + '</option>').join('') + '</select></label><button class="primary-button" type="submit">Guardar y publicar guía</button></form>';
+      '<label>Nivel<select name="nivelDificultad">' + ['Inicial','Intermedio','Avanzado'].map(v => '<option' + (v === guide.nivelDificultad ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label><label>Tiempo<select name="tiempoEstimado">' + ['1-2 horas','3-5 horas','Más de 5 horas'].map(v => '<option' + (v === guide.tiempoEstimado ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></label><fieldset><legend>Áreas</legend>' + ['Electrónica','Mecánica','Programación'].map(v => '<label><input type="checkbox" name="areas" value="' + v + '"' + (guide.areas?.includes(v) ? ' checked' : '') + '/>' + v + '</label>').join('') + '</fieldset><button class="primary-button" type="submit">Guardar y publicar guía</button></form>';
     formSubmit(dialog, async data => {
       const value = payload(guide, data, source?.archivada === true);
-      if (!items.length) value.inventarioIds = guide.inventarioIds || [];
       await saveGuide(guide, value); dialog.element.close(); await options.refresh();
     });
   }
@@ -91,33 +83,6 @@ export function createGuideWorkspace(options: WorkspaceOptions, changed: () => v
     const dialog = modal(guide.archivada ? 'Restaurar guía' : 'Archivar guía');
     dialog.body.innerHTML = '<form><p>' + esc(guide.titulo) + '</p><p>' + (guide.archivada ? 'Volverá a aparecer en la biblioteca.' : 'Se ocultará del catálogo; administración podrá restaurarla.') + '</p><button type="submit" class="primary-button">Confirmar</button></form>';
     formSubmit(dialog, async () => { await saveGuide(guide, payload(guide, undefined, !guide.archivada)); dialog.element.close(); await options.refresh(); });
-  }
-  async function requestMaterial(item: QueryDocumentSnapshot, guide: LibraryGuide) {
-    const dialog = modal('Solicitar ' + item.get('nombre'));
-    dialog.body.innerHTML = '<form class="gw-form"><p>La solicitud requiere aprobación de administración.</p><label>Cantidad<input type="number" name="cantidad" min="1" max="' + Number(item.get('cantidad')) + '" value="1" required/></label><label>Inicio<input type="date" name="inicio" required/></label><label>Devolución prevista<input type="date" name="fin" required/></label><button type="submit" class="primary-button">Enviar solicitud</button></form>';
-    formSubmit(dialog, async data => {
-      const start = new Date(String(data.get('inicio')) + 'T12:00:00'); const end = new Date(String(data.get('fin')) + 'T12:00:00'); const amount = Number(data.get('cantidad'));
-      if (!Number.isInteger(amount) || amount < 1 || !Number.isFinite(+start) || !Number.isFinite(+end) || end < start) throw new Error('Revisa cantidad y fechas.');
-      await setDoc(doc(collection(db, 'reservas')), { recursoNombre: item.get('nombre'), recursoId: item.id, cantidadSolicitada: amount, motivo: 'Guía: ' + String(guide.titulo).slice(0, 100), solicitanteUid: uid, solicitanteNombre: options.name, estado: 'Pendiente', fechaReserva: Timestamp.fromDate(start), fechaInicioUso: Timestamp.fromDate(start), fechaDevolucion: Timestamp.fromDate(end), fechaCreacion: serverTimestamp() });
-      dialog.body.innerHTML = '<p>Solicitud enviada. Puedes seguir su estado en Préstamos.</p>'; dialog.status('');
-    });
-  }
-  async function mountInventory(host: HTMLElement, guide: LibraryGuide) {
-    if (!options.authorized) { host.textContent = 'Tu cuenta debe estar autorizada para consultar materiales y pedir préstamos.'; return; }
-    host.textContent = 'Consultando existencias…';
-    try {
-      const items = await inventory(); if (!host.isConnected) return;
-      const ids = Array.isArray(guide.inventarioIds) ? guide.inventarioIds : [];
-      const tokens = norm(guide.materiales).split(/[^a-z0-9]+/).filter(s => s.length > 2 && !['arduino','para','con','una','del','los','las','tres','dos','cables'].includes(s));
-      const linked = ids.length ? items.filter(item => ids.includes(item.id)) : items.filter(item => tokens.some(token => norm(item.get('nombre')).includes(token)));
-      host.innerHTML = '<h3>Materiales del inventario</h3><p>' + (ids.length ? 'Artículos vinculados por administración.' : 'Coincidencias por nombre: comprueba modelo y valores antes de solicitar.') + '</p><label>Buscar en el inventario<input type="search" data-gw-inventory placeholder="Nombre del componente"/></label><div data-gw-items></div><small>Consulta de hasta 300 artículos. La existencia se vuelve a validar al solicitar y aprobar el préstamo.</small>';
-      const list = host.querySelector<HTMLElement>('[data-gw-items]')!;
-      const show = (records: QueryDocumentSnapshot[]) => {
-        list.innerHTML = records.length ? records.map(item => '<div class="gw-item"><div><strong>' + esc(item.get('nombre')) + '</strong><small>' + (item.get('estado') === 'Disponible' ? Number(item.get('cantidad') || 0) + ' disponibles' : esc(item.get('estado'))) + '</small></div><button class="secondary-button" data-gw-loan="' + esc(item.id) + '"' + (item.get('estado') !== 'Disponible' || Number(item.get('cantidad')) < 1 ? ' disabled' : '') + '>Solicitar</button></div>').join('') : '<p>No se encontraron artículos. Puedes buscar otro nombre o consultar a administración.</p>';
-      }; show(linked);
-      host.querySelector('input')!.addEventListener('input', event => { const term = norm((event.target as HTMLInputElement).value); show(term ? items.filter(item => norm(item.get('nombre')).includes(term)) : linked); });
-      host.addEventListener('click', event => { const id = (event.target as Element).closest<HTMLElement>('[data-gw-loan]')?.dataset.gwLoan; const item = items.find(item => item.id === id); if (item) void requestMaterial(item, guide); });
-    } catch { host.innerHTML = '<p>No se pudo consultar el inventario.</p><button class="secondary-button" data-gw-retry>Reintentar</button>'; host.querySelector('button')!.onclick = () => void mountInventory(host, guide); }
   }
   async function proposeProject(guide: LibraryGuide) {
     if (options.admin) return projectForm(guide);
@@ -190,6 +155,6 @@ export function createGuideWorkspace(options: WorkspaceOptions, changed: () => v
     more.onclick = () => void load(); await load();
     dialog.body.addEventListener('click', async e => { const button = (e.target as Element).closest<HTMLButtonElement>('[data-gw-approve],[data-gw-reject],[data-gw-feedback],[data-gw-withdraw]'); if (!button) return; const id = button.dataset.gwApprove || button.dataset.gwReject || button.dataset.gwFeedback || button.dataset.gwWithdraw; const item = records.get(id!); if (!item) return; button.disabled = true; try { await action(button,item); } catch (error) { dialog.status((error as Error).message || 'No se pudo guardar.'); } finally { button.disabled = false; } });
   }
-  return { ...options, progress, editGuide, archiveGuide, mountInventory, proposeProject, proposals, sendEvidence, evidenceInbox, dispose: () => progress.dispose() };
+  return { ...options, progress, editGuide, archiveGuide, proposeProject, proposals, sendEvidence, evidenceInbox, dispose: () => progress.dispose() };
 }
 export type GuideWorkspace = ReturnType<typeof createGuideWorkspace>;
