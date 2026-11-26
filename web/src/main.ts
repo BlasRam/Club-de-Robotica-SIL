@@ -1591,19 +1591,17 @@ async function loadAdminHomeDashboard(uid: string): Promise<void> {
   const container = document.querySelector<HTMLElement>("#admin-home-data");
   if (!container) return;
   try {
-    const [studentRecords, pendingLoans, activeLoans, projects, pendingShowcase, teacherRecords, recent] = await Promise.all([
+    const [studentRecords, pendingLoans, activeLoans, projects, pendingShowcase, teacherRecords] = await Promise.all([
       getDocs(query(collection(db, "usuarios"), where("rol", "==", "estudiante"))),
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Pendiente"))),
       getDocs(query(collection(db, "reservas"), where("estado", "==", "Aprobada"))),
       getDocs(query(collection(db, "proyectos"), where("estado", "==", "Activo"))),
       getDocs(query(collection(db, "guiasClub"), where("estado", "==", "pendiente"), limit(30))).catch(() => null),
       getDocs(query(collection(db, "usuarios"), where("tipoUsuario", "==", "docente"), limit(100))),
-      getDocs(query(collection(db, "accesos"), orderBy("fechaHora", "desc"), limit(30))),
     ]);
     if (requestId !== adminHomeRequest || state.page !== "inicio" || state.user?.uid !== uid) return;
     const students = studentRecords.docs.filter((item) => item.get("tipoUsuario") !== "docente");
     const pendingAccess = students.filter((item) => item.get("autorizado") === false);
-    const recentEntries = recent.docs.filter((item) => item.get("tipo") === "entrada").slice(0, 5);
     const metrics = [
       ["Estudiantes", students.length, "Personas registradas", "estudiantes", "people"],
       ["Docentes", teacherRecords.size, "Cuentas docentes", "docentes", "people"],
@@ -1617,8 +1615,7 @@ async function loadAdminHomeDashboard(uid: string): Promise<void> {
     const metricsSummary = currentMetrics.length
       ? `<section class="metrics-grid">${currentMetrics.map(([title, value, hint, page, tone]) => metric(title, value, hint, page as Page, tone)).join("")}</section>`
       : `<p class="admin-home-all-clear">Todo está al día. Aún no hay actividad registrada.</p>`;
-    container.innerHTML = `${metricsSummary}
-    <section class="unframed-section"><div class="section-heading"><h2>Entradas recientes</h2></div>${recentEntries.length === 0 ? emptyInline("Todavía no hay entradas registradas.") : `<div class="activity-list">${recentEntries.map((item) => activityRow(item.data())).join("")}</div>`}</section>`;
+    container.innerHTML = metricsSummary;
     container.setAttribute("aria-busy", "false");
 
     // Mantiene la sincronización del directorio fuera del camino que dibuja el inicio.
