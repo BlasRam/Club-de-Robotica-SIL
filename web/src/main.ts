@@ -2862,9 +2862,10 @@ function inventoryActionsMarkup(item: Record<string, any>): string {
   return `<details class="inventory-actions-menu"><summary aria-label="Acciones para ${esc(item.nombre)}" title="Acciones">⋯</summary><div class="inventory-actions-popover"><button data-action="adjust-stock" data-id="${esc(item.id)}">Ajustar stock</button><button data-action="count-stock" data-id="${esc(item.id)}">Conteo físico</button><button data-action="item-condition" data-id="${esc(item.id)}">Condición y daños</button><button data-action="item-settings" data-id="${esc(item.id)}">Ubicación y mínimo</button></div></details>`;
 }
 
-function inventoryTableRow(data: InventoryViewItem): string {
-  const { item, quantity, damaged, available, minimum, unit, location, low, condition } = data;
-  return `<tr ${inventoryEntryAttributes(data)}><td data-label="Artículo"><div class="inventory-item-cell">${inventoryImageMarkup(data, 38)}<div class="inventory-item-copy"><strong title="${esc(item.nombre)}">${esc(item.nombre)}</strong><small title="${esc(item.descripcion || "")}">${esc(item.descripcion || "")}</small></div></div></td><td data-label="Categoría"><span class="inventory-category">${esc(item.categoria || "Sin categoría")}</span></td><td data-label="Disponible"><strong>${available} ${inventoryUnitLabel(unit, available)}</strong><small class="inventory-stock-meta"><span>${quantity} total</span><span>${damaged} dañadas</span><span class="${low ? "warning-text" : ""}">mín. ${minimum}</span></small></td><td data-label="Ubicación"><span class="inventory-location" title="${esc(location)}">${esc(location)}</span></td><td data-label="Condición"><span class="state-pill ${item.estado === "Disponible" ? "success" : "muted"}">${esc(item.estado || "—")}</span>${damaged ? `<small class="inventory-condition-note warning-text" title="${esc(condition)}">${damaged} dañadas · ${esc(item.detalleDanio || "Revisar")}</small>` : ""}</td><td data-label="Gestión">${inventoryActionsMarkup(item)}</td></tr>`;
+function inventoryCompactRow(data: InventoryViewItem): string {
+  const { item, quantity, available, unit } = data;
+  const quantityLabel = `${available} ${inventoryUnitLabel(unit, available)} disponibles, ${quantity} en total`;
+  return `<article class="inventory-compact-row" ${inventoryEntryAttributes(data)}><div class="inventory-compact-item">${inventoryImageMarkup(data, 46)}<strong title="${esc(item.nombre)}">${esc(item.nombre)}</strong></div><div class="inventory-compact-quantity" aria-label="${esc(quantityLabel)}" title="${esc(quantityLabel)}"><strong>${available}<span> / ${quantity}</span></strong><small>disp. / total</small></div>${inventoryActionsMarkup(item)}</article>`;
 }
 
 function inventoryGridCard(data: InventoryViewItem): string {
@@ -2890,7 +2891,7 @@ async function renderInventory(): Promise<string> {
   const inventoryContent = items.length
     ? inventoryView === "grid"
       ? `<div class="inventory-card-grid">${viewItems.map(inventoryGridCard).join("")}</div>`
-      : `<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Categoría</th><th>Disponible / total</th><th>Ubicación</th><th>Condición</th><th>Gestión</th></tr></thead><tbody>${viewItems.map(inventoryTableRow).join("")}</tbody></table></div>`
+      : `<div class="inventory-compact-list">${viewItems.map(inventoryCompactRow).join("")}</div>`
     : emptyPanel("Inventario vacío", "Agrega el primer artículo del club.");
   const inventoryControls = `<section class="inventory-controls" id="inventory-controls"><div class="inventory-toolbar"><label class="inventory-search-field"><span>Buscar artículo</span><input data-inventory-filter="search" type="search" placeholder="Nombre, modelo o ubicación" /></label>${viewButtons}</div><details class="inventory-filter-panel" ${mobileViewport ? "" : "open"}><summary><strong>Filtros</strong><span>Categoría, ubicación, orden y stock mínimo</span></summary>${filters}</details>${exportPanel}<p class="inventory-filter-count" aria-live="polite">${items.length} artículos</p></section>`;
   return `${pageHeading("Inventario", "Existencias, ubicaciones, condición y movimientos.", `<div class="inventory-heading-actions"><button class="secondary-button compact" data-action="view-inventory-history">Historial</button><button class="primary-button compact" data-action="new-item">${icon("sumar")} Nuevo artículo</button></div>`)}
